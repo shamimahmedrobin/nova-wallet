@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { gradientFor, initials } from '../lib/utils'
@@ -45,6 +45,14 @@ export const statusTone = (s: string) =>
   : ['rejected', 'suspended'].includes(s) ? 'red' : 'slate'
 
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  // Lock background page scroll while any modal is open
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev; document.documentElement.style.overflow = '' }
+  }, [open ])
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4">

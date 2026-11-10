@@ -7,10 +7,10 @@ create table account_levels (
   requirement text
 );
 insert into account_levels values
-  (1,'Basic','Start your wallet journey',25000,200000,10000,0,'Default for every new account'),
-  (2,'Silver','For verified everyday users',50000,500000,30000,5,'KYC verified'),
-  (3,'Gold','Higher limits, lower fees',100000,1000000,60000,10,'KYC verified + 20 completed transactions'),
-  (4,'Platinum','Maximum limits, priority support',250000,2500000,100000,20,'KYC verified + 50 transactions + admin review');
+  (1,'Level 1','Start your wallet journey',25000,200000,10000,0,'Default for every new account'),
+  (2,'Level 2','For verified everyday users',50000,500000,30000,5,'KYC verified'),
+  (3,'Level 3','Higher limits, lower fees',100000,1000000,60000,10,'KYC verified + 20 completed transactions'),
+  (4,'Level 4','Maximum limits, priority support',250000,2500000,100000,20,'KYC verified + 50 transactions + admin review');
 alter table users add column level int not null default 1 references account_levels(level);
 create table level_upgrade_requests (
   id uuid primary key default gen_random_uuid(),

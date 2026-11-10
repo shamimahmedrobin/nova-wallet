@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, ChevronRight, FileText, Globe, HelpCircle, KeyRound, LogOut, Moon, ShieldCheck, Smartphone, Sun, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, Input, Modal, statusTone, useConfirm } from '../components/ui'
+import { Avatar, Badge, Btn, Card, Input, Modal, useConfirm } from '../components/ui'
 import { fmtBDT } from '../lib/utils'
 
 export default function Profile() {
@@ -28,9 +28,9 @@ export default function Profile() {
     else if (label === 'Change password') setModal('pw')
     else if (label === 'Change transaction PIN') setModal('pin')
     else if (label === 'KYC verification') setModal('kyc')
-    else if (label === 'Two-factor authentication') { updateProfile({ twoFA: !user.twoFA }); toast({ kind: 'success', title: 'Two-factor ' + (!user.twoFA ? 'enabled' : 'disabled') }) }
+    else if (label === 'Two-factor authentication') setModal('2fa')
     else if (label === 'Notification preferences') setModal('notif')
-    else if (label === 'Language') { const l = user.language === 'en' ? 'bn' : 'en'; updateProfile({ language: l }); toast({ kind: 'success', title: 'Language: ' + (l === 'bn' ? 'বাংলা' : 'English') }) }
+    else if (label === 'Language') setModal('lang')
     else if (label === 'Help & support') setModal('support')
     else if (label === 'Login activity & sessions') setModal('sessions')
     else if (label === 'Linked payment methods') setModal('methods')
@@ -44,7 +44,7 @@ export default function Profile() {
         <p className="text-sm text-slate-500">@{user.username} · {user.email}</p>
         <p className="text-sm text-slate-500">{user.phone} · ID {user.id}</p>
         <div className="flex gap-2 justify-center mt-3">
-          <Badge tone={statusTone(user.kyc)}>{user.kyc === 'verified' ? '✅ KYC Verified' : 'KYC ' + user.kyc}</Badge>
+          <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? '✅ Verified' : 'Non KYC'}</Badge>
           <Badge tone={user.status === 'active' ? 'green' : 'red'}>{user.status}</Badge>
           <Badge tone="violet">{fmtBDT(w.available + w.locked)} wallet</Badge>
         </div>
@@ -57,7 +57,7 @@ export default function Profile() {
             <span className="text-[9px] font-bold uppercase">Level</span><span className="text-xl font-extrabold">{user.level}</span>
           </div>
           <div className="flex-1 min-w-[140px]">
-            <p className="font-extrabold">Level {user.level} · {db.levels.find(l => l.level === user.level)?.name}</p>
+            <p className="font-extrabold">Level {user.level}</p>
             <p className="text-xs text-slate-500">{db.levels.find(l => l.level === user.level)?.tagline} · Daily limit {fmtBDT(db.levels.find(l => l.level === user.level)?.dailyLimit ?? 0)} · Loan up to {fmtBDT(db.levels.find(l => l.level === user.level)?.loanLimit ?? 0)}</p>
           </div>
           {user.level < 4
@@ -81,7 +81,7 @@ export default function Profile() {
           <button key={label} onClick={() => act(label)} className="w-full flex items-center gap-3 p-3.5 font-semibold text-[15px] hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-2xl text-left">
             <span className="text-violet-600">{icon}</span> {label}
             {label === 'Two-factor authentication' && <Badge tone={user.twoFA ? 'green' : 'slate'}>{user.twoFA ? 'On' : 'Off'}</Badge>}
-            {label === 'KYC verification' && <Badge tone={statusTone(user.kyc)}>{user.kyc}</Badge>}
+            {label === 'KYC verification' && <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? 'Verified' : 'Non KYC'}</Badge>}
             {label === 'Language' && <span className="ml-auto text-sm text-slate-400">{user.language === 'bn' ? 'বাংলা' : 'English'}</span>}
             <ChevronRight size={17} className="ml-auto text-slate-300" />
           </button>
@@ -103,7 +103,7 @@ export default function Profile() {
               <div key={l.level} className={`rounded-3xl border-2 p-4 ${isCurrent ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
                 <div className="flex items-center gap-3">
                   <span className={`w-10 h-10 rounded-xl bg-gradient-to-br ${l.gradient} text-white flex items-center justify-center font-extrabold`}>{l.level}</span>
-                  <div className="flex-1"><p className="font-extrabold">Level {l.level} · {l.name} {isCurrent && <Badge tone="violet">Current</Badge>}</p><p className="text-xs text-slate-500">{l.tagline}</p></div>
+                  <div className="flex-1"><p className="font-extrabold">Level {l.level} {isCurrent && <Badge tone="violet">Current</Badge>}</p><p className="text-xs text-slate-500">{l.tagline}</p></div>
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 text-xs mt-3 text-slate-600 dark:text-slate-300">
                   <span>Daily limit: <b>{fmtBDT(l.dailyLimit)}</b></span><span>Monthly: <b>{fmtBDT(l.monthlyLimit)}</b></span>
@@ -142,7 +142,7 @@ export default function Profile() {
       </Modal>
       <Modal open={modal === 'kyc'} onClose={() => setModal(null)} title="KYC verification">
         <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-          <p>Status: <Badge tone={statusTone(user.kyc)}>{user.kyc}</Badge></p>
+          <p>Status: <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? 'Verified' : 'Non KYC'}</Badge>{user.kyc === 'pending' && <span className="ml-2 text-amber-600 font-semibold">Documents under admin review</span>}</p>
           <p>Submit your NID / passport for admin review. Verified KYC unlocks loans and higher limits.</p>
           <Input label="NID / Passport number" placeholder="e.g. 1234567890" />
           <Btn className="w-full" disabled={user.kyc !== 'unverified'} onClick={() => { submitKyc(); setModal(null); toast({ kind: 'success', title: 'KYC submitted', body: 'An admin will review your documents.' }) }}>{user.kyc === 'verified' ? 'Already verified' : user.kyc === 'pending' ? 'Under review…' : 'Submit for verification'}</Btn>
@@ -176,6 +176,25 @@ export default function Profile() {
           <Input label="Message" value={ticket.message} onChange={e => setTicket(t => ({ ...t, message: e.target.value }))} />
           <Btn className="w-full" onClick={() => { addTicket(ticket.subject, ticket.message); setModal(null); toast({ kind: 'success', title: 'Support ticket created' }) }}>Send ticket</Btn>
           <p className="text-xs text-slate-400">Open tickets: {db.tickets.filter(t => t.userId === user.id && t.status === 'open').length} · Support email: support@novawallet.app</p>
+        </div>
+      </Modal>
+      <Modal open={modal === '2fa'} onClose={() => setModal(null)} title="Two-factor authentication">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">When 2FA is on, sensitive actions (login on a new device, cash out, PIN change) need a second verification step in addition to your password.</p>
+          <label className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 font-semibold text-sm">Two-factor authentication
+            <input type="checkbox" checked={user.twoFA} onChange={e => { updateProfile({ twoFA: e.target.checked }); toast({ kind: 'success', title: 'Two-factor ' + (e.target.checked ? 'enabled' : 'disabled') }) }} className="w-5 h-5 accent-violet-600" /></label>
+          <Btn className="w-full" onClick={() => setModal(null)}>Done</Btn>
+        </div>
+      </Modal>
+      <Modal open={modal === 'lang'} onClose={() => setModal(null)} title="Language">
+        <div className="space-y-2">
+          {([['en', 'English', 'Interface in English'], ['bn', 'বাংলা', 'বাংলায় ইন্টারফেস']] as const).map(([code, label, sub]) => (
+            <button key={code} onClick={() => { updateProfile({ language: code }); setModal(null); toast({ kind: 'success', title: 'Language: ' + label }) }}
+              className={`w-full flex items-center gap-3 rounded-2xl border-2 p-4 text-left ${user.language === code ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
+              <span className="flex-1"><span className="block font-bold">{label}</span><span className="text-xs text-slate-500">{sub}</span></span>
+              {user.language === code && <Badge tone="violet">Current</Badge>}
+            </button>
+          ))}
         </div>
       </Modal>
       <Modal open={modal === 'terms'} onClose={() => setModal(null)} title="Terms & Privacy">

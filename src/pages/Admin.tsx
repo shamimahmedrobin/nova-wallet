@@ -232,7 +232,6 @@ export default function Admin() {
                       <Badge tone="slate">{db.users.filter(u => u.level === l.level && u.role === 'user').length} users</Badge>
                     </div>
                     <div className="grid sm:grid-cols-2 gap-3">
-                      <Input label="Name" value={f.name} onChange={e => upd('name', e.target.value)} />
                       <Input label="Tagline" value={f.tagline} onChange={e => upd('tagline', e.target.value)} />
                       <Input label="Daily limit (BDT)" type="number" value={f.dailyLimit} onChange={e => upd('dailyLimit', Number(e.target.value))} />
                       <Input label="Monthly limit (BDT)" type="number" value={f.monthlyLimit} onChange={e => upd('monthlyLimit', Number(e.target.value))} />
@@ -252,7 +251,7 @@ export default function Admin() {
                   <Avatar name={u.name} size={36} />
                   <div className="flex-1 min-w-[120px]"><p className="font-bold text-sm">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · KYC {u.kyc}</p></div>
                   <select value={u.level} onChange={e => { setUserLevel(u.id, Number(e.target.value)); toast({ kind: 'success', title: u.name + ' → Level ' + e.target.value }) }} className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-bold">
-                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>Level {n} · {db.levels.find(x => x.level === n)?.name}</option>)}
+                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>Level {n}</option>)}
                   </select>
                 </Card>
               ))}

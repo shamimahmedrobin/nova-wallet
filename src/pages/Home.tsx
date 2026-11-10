@@ -59,11 +59,11 @@ export default function Home() {
               </div>
             ))}
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <p className="text-[11px] text-white/60">User ID: {user.id} · {user.kyc === 'verified' ? '✅ KYC Verified' : 'KYC: ' + user.kyc}</p>
-            <span className="ml-auto flex items-center gap-2">
-              <span className="rounded-full bg-white/20 px-3 py-1 text-[11px] font-extrabold">🏅 Level {user.level} · {db.levels.find(l => l.level === user.level)?.name ?? ''}</span>
-              {user.level < 4 && <button onClick={() => navigate('/app/profile')} className="rounded-full bg-white text-violet-700 px-3 py-1 text-[11px] font-extrabold shadow">Upgrade ⬆</button>}
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-white/70 whitespace-nowrap overflow-hidden text-ellipsis">{user.id} · {user.kyc === 'verified' ? '✅ Verified' : '⚪ Non KYC'}</p>
+            <span className="flex items-center gap-1.5 shrink-0">
+              <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-extrabold whitespace-nowrap">🏅 Level {user.level}</span>
+              {user.level < 4 && <button onClick={() => navigate('/app/profile')} className="rounded-full bg-white text-violet-700 px-2.5 py-1 text-[11px] font-extrabold shadow whitespace-nowrap">Upgrade ⬆</button>}
             </span>
           </div>
         </div>
