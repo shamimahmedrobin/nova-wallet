@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, Gift, HandCoins, Moon, Repeat, Send, ShieldCheck, Sun } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, Gift, HandCoins, Repeat, Send, ShieldCheck } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Btn, Input } from '../components/ui'
-import { LANGUAGES } from '../lib/i18n'
 import { Logo } from '../components/Layout'
 
 export default function Auth() {
-  const { login, register, toast, theme, toggleTheme, t, lang, setLanguage } = useApp()
+  const { login, register, toast, t } = useApp()
   const navigate = useNavigate()
   const refCode = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('ref') ?? ''
   const [mode, setMode] = useState<'landing' | 'login' | 'register'>(refCode ? 'register' : 'landing')
@@ -38,28 +37,18 @@ export default function Auth() {
     { icon: HandCoins, t: t('act_loan'), d: t('feat_loan_d') },
     { icon: Gift, t: t('act_referral'), d: t('feat_ref_d') },
   ]
-  const langPicker = (
-    <select value={lang} onChange={e => setLanguage(e.target.value)} aria-label="Language" className="rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-semibold outline-none cursor-pointer">
-      {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.native}</option>)}
-    </select>
-  )
   if (mode === 'landing') return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <header className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+      <header className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
         <Logo />
-        <div className="flex gap-2">
-          {langPicker}
-          <button onClick={toggleTheme} className="p-2.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
-          <Btn variant="ghost" onClick={() => setMode('login')}>{t('login')}</Btn>
-          <Btn onClick={() => setMode('register')}>{t('get_started')}</Btn>
-        </div>
+        <Btn className="px-6 whitespace-nowrap shrink-0" onClick={() => setMode('login')}>{t('login')}</Btn>
       </header>
       <section className="max-w-5xl mx-auto px-4 pt-10 pb-16 text-center">
         <div className="anim-fade-up">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 px-3 py-1 text-xs font-bold"><ShieldCheck size={13} /> {t('landing_badge')}</span>
           <h1 className="mt-5 text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.05]">{t('landing_title_a')}<br /><span className="bg-gradient-to-r from-violet-600 via-purple-500 to-cyan-500 bg-clip-text text-transparent">{t('landing_title_b')}</span></h1>
           <p className="mt-4 text-slate-500 dark:text-slate-400 max-w-xl mx-auto">{t('landing_sub')}</p>
-          <div className="mt-7 flex gap-3 justify-center">
+          <div className="mt-7 flex flex-wrap gap-3 justify-center px-1">
             <Btn className="px-6 py-3.5 text-base" onClick={() => setMode('register')}>{t('create_free_account')}</Btn>
             <Btn variant="outline" className="px-6 py-3.5 text-base" onClick={() => setMode('login')}>{t('login')}</Btn>
           </div>
@@ -79,7 +68,7 @@ export default function Auth() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md anim-fade-up">
-        <div className="flex items-center justify-between mb-6"><Logo /><span>{langPicker}</span></div>
+        <div className="flex justify-center mb-6"><Logo /></div>
         <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 p-6 shadow-xl">
           <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5">
             {(['login', 'register'] as const).map(m => (
