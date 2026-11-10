@@ -3,10 +3,10 @@ import { Bell, Home, Moon, Newspaper, ShieldCheck, Sun, User as UserIcon, Wallet
 import { useApp } from '../lib/store'
 
 const NAV = [
-  { to: '/app', key: 'nav_home', icon: Home, end: true },
-  { to: '/app/transactions', key: 'nav_transactions', icon: ArrowLeftRight },
-  { to: '/app/news', key: 'nav_news', icon: Newspaper },
-  { to: '/app/profile', key: 'nav_profile', icon: UserIcon },
+  { to: '/home', key: 'nav_home', icon: Home, end: true },
+  { to: '/transactions', key: 'nav_transactions', icon: ArrowLeftRight },
+  { to: '/news', key: 'nav_news', icon: Newspaper },
+  { to: '/profile', key: 'nav_profile', icon: UserIcon },
 ]
 export function Logo({ size = 34 }: { size?: number }) {
   return (
@@ -51,7 +51,7 @@ export default function Layout() {
             <div className="hidden lg:block text-sm text-slate-500">{t('welcome_back')}, <span className="font-bold text-slate-800 dark:text-slate-100">{user?.name.split(' ')[0]}</span></div>
             <div className="flex items-center gap-2">
               <button onClick={toggleTheme} className="lg:hidden p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
-              <button onClick={() => navigate('/app/notifications')} className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">
+              <button onClick={() => navigate('/notifications')} className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">
                 <Bell size={18} />
                 {unread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{unread}</span>}
               </button>

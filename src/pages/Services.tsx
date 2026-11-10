@@ -169,7 +169,7 @@ export function SendMoney() {
         <Btn className="w-full py-3.5" disabled={!to} onClick={submit}>Review & send</Btn>
         <p className="text-[11px] text-center text-slate-400">Transfers above your available balance are always blocked server-side in production.</p>
       </Card>
-      <SuccessModal open={!!receipt} onClose={() => { setReceipt(null); navigate('/app/transactions') }} title="Transfer successful 🎉"
+      <SuccessModal open={!!receipt} onClose={() => { setReceipt(null); navigate('/transactions') }} title="Transfer successful 🎉"
         rows={receipt ? [['Transaction ID', receipt.id], ['To', receipt.counterparty], ['Amount', fmtBDT(receipt.amount)], ['Fee', fmtBDT(receipt.fee, 2)], ['Status', 'Completed']] : []} />
     </div>
   )

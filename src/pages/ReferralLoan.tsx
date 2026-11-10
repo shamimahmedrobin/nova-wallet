@@ -9,7 +9,7 @@ import { PageHead } from './Services'
 export function Referral() {
   const { user, db, toast, t } = useApp()
   if (!user) return null
-  const link = `${location.origin}${location.pathname}#/register?ref=${user.referralCode}`
+  const link = `${location.origin}${import.meta.env.BASE_URL}register?ref=${user.referralCode}`
   const refs = db.users.filter(u => u.referredBy === user.id)
   const earnings = db.referralEarnings.filter(r => r.userId === user.id)
   const totalEarned = earnings.reduce((s, r) => s + r.amount, 0)
@@ -111,7 +111,7 @@ export function LoanPage() {
       {user.kyc === 'unverified' && (
         <Card className="p-4 mb-4 border-l-4 !border-l-amber-500">
           <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">{t('kyc_need_loan')}</p>
-          <Btn variant="outline" className="w-full mt-3" onClick={() => navigate('/app/profile')}>{t('kyc_do_now')}</Btn>
+          <Btn variant="outline" className="w-full mt-3" onClick={() => navigate('/profile')}>{t('kyc_do_now')}</Btn>
         </Card>
       )}
       <Card className="p-5 space-y-4">

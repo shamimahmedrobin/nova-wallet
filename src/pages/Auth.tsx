@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, Gift, HandCoins, Repeat, Send, ShieldCheck } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Btn, Input } from '../components/ui'
 import { Logo } from '../components/Layout'
 
-export default function Auth() {
+export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landing' | 'login' | 'register' }) {
   const { login, register, toast, t } = useApp()
   const navigate = useNavigate()
-  const refCode = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('ref') ?? ''
-  const [mode, setMode] = useState<'landing' | 'login' | 'register'>(refCode ? 'register' : 'landing')
+  const location = useLocation()
+  const refCode = new URLSearchParams(window.location.search).get('ref') ?? ''
+  const [mode] = useState<'landing' | 'login' | 'register'>(refCode ? 'register' : initialMode)
   const [form, setForm] = useState({ name: '', username: '', email: '', phone: '', password: '', pin: '', referralCode: refCode })
   const [loginId, setLoginId] = useState(''); const [loginPw, setLoginPw] = useState('')
   const [err, setErr] = useState('')
@@ -19,7 +20,8 @@ export default function Auth() {
     const e = login(id.trim().toLowerCase(), pw)
     if (e) { setErr(e); return }
     toast({ kind: 'success', title: 'Welcome back!' })
-    navigate(id.includes('admin') ? '/admin' : '/app')
+    const from = (location.state as any)?.from as string | undefined
+    navigate(id.includes('admin') ? '/admin' : (from && from !== '/login' ? from : '/home'))
   }
   const doRegister = () => {
     if (form.password.length < 6) return setErr('Password must be at least 6 characters.')
@@ -27,7 +29,7 @@ export default function Auth() {
     const e = register({ ...form, email: form.email.trim().toLowerCase(), username: form.username.trim().toLowerCase(), referralCode: form.referralCode.trim() || undefined })
     if (e) return setErr(e)
     toast({ kind: 'success', title: 'Account created', body: 'Welcome to NovaWallet.' })
-    navigate('/app')
+    navigate('/home')
   }
   const features = [
     { icon: ArrowDownToLine, t: t('act_add'), d: t('feat_add_d') },
@@ -41,7 +43,7 @@ export default function Auth() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <header className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
         <Logo />
-        <Btn className="px-6 whitespace-nowrap shrink-0" onClick={() => setMode('login')}>{t('login')}</Btn>
+        <Btn className="px-6 whitespace-nowrap shrink-0" onClick={() => navigate('/login')}>{t('login')}</Btn>
       </header>
       <section className="max-w-5xl mx-auto px-4 pt-10 pb-16 text-center">
         <div className="anim-fade-up">
@@ -49,8 +51,8 @@ export default function Auth() {
           <h1 className="mt-5 text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.05]">{t('landing_title_a')}<br /><span className="bg-gradient-to-r from-violet-600 via-purple-500 to-cyan-500 bg-clip-text text-transparent">{t('landing_title_b')}</span></h1>
           <p className="mt-4 text-slate-500 dark:text-slate-400 max-w-xl mx-auto">{t('landing_sub')}</p>
           <div className="mt-7 flex flex-wrap gap-3 justify-center px-1">
-            <Btn className="px-6 py-3.5 text-base" onClick={() => setMode('register')}>{t('create_free_account')}</Btn>
-            <Btn variant="outline" className="px-6 py-3.5 text-base" onClick={() => setMode('login')}>{t('login')}</Btn>
+            <Btn className="px-6 py-3.5 text-base" onClick={() => navigate('/register')}>{t('create_free_account')}</Btn>
+            <Btn variant="outline" className="px-6 py-3.5 text-base" onClick={() => navigate('/login')}>{t('login')}</Btn>
           </div>
         </div>
         <div className="mt-12 grid grid-cols-2 sm:grid-cols-3 gap-3 text-left">
@@ -72,7 +74,7 @@ export default function Auth() {
         <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 p-6 shadow-xl">
           <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5">
             {(['login', 'register'] as const).map(m => (
-              <button key={m} onClick={() => { setMode(m); setErr('') }} className={`py-2 rounded-xl text-sm font-bold ${mode === m ? 'bg-white dark:bg-slate-900 shadow text-violet-600' : 'text-slate-500'}`}>{m === 'login' ? t('login') : t('register')}</button>
+              <button key={m} onClick={() => { navigate(m === 'login' ? '/login' : '/register'); setErr('') }} className={`py-2 rounded-xl text-sm font-bold ${mode === m ? 'bg-white dark:bg-slate-900 shadow text-violet-600' : 'text-slate-500'}`}>{m === 'login' ? t('login') : t('register')}</button>
             ))}
           </div>
           {err && <div className="mb-4 rounded-2xl bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 px-4 py-3 text-sm font-semibold">{err}</div>}
@@ -90,22 +92,18 @@ export default function Auth() {
           ) : (
             <div className="space-y-4">
               <Input label={t('full_name')} placeholder="Your name" value={form.name} onChange={set('name')} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={t('username')} placeholder="username" value={form.username} onChange={set('username')} />
-                <Input label={t('phone')} placeholder="01XXXXXXXXX" value={form.phone} onChange={set('phone')} />
-              </div>
+              <Input label={t('username')} placeholder="username" value={form.username} onChange={set('username')} />
+              <Input label={t('phone')} placeholder="01XXXXXXXXX" value={form.phone} onChange={set('phone')} />
               <Input label="Email" type="email" placeholder="you@email.com" value={form.email} onChange={set('email')} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={t('password_min')} type="password" value={form.password} onChange={set('password')} />
-                <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} value={form.pin} onChange={set('pin')} />
-              </div>
+              <Input label={t('password_min')} type="password" placeholder="••••••••" value={form.password} onChange={set('password')} />
+              <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={form.pin} onChange={set('pin')} />
               <Input label={t('referral_code_opt')} placeholder="NOVA-XXXXX" value={form.referralCode} onChange={set('referralCode')} />
               <Btn className="w-full py-3.5" onClick={doRegister}>{t('create_account')}</Btn>
               <p className="text-[11px] text-center text-slate-400">{t('join_terms')}</p>
             </div>
           )}
         </div>
-        <button onClick={() => setMode('landing')} className="mt-4 w-full text-center text-sm text-slate-500">← {t('back_to_home')}</button>
+        <button onClick={() => navigate('/')} className="mt-4 w-full text-center text-sm text-slate-500">← {t('back_to_home')}</button>
       </div>
     </div>
   )

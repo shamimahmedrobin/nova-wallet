@@ -113,7 +113,7 @@ export function NewsList() {
         {NEWS_CATS.map(c => <button key={c} onClick={() => setCat(c)} className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold ${cat === c ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}>{c}</button>)}
       </div>
       {featured && (
-        <Link to={'/app/news/' + featured.id}>
+        <Link to={'/news/' + featured.id}>
           <div className={`rounded-[28px] bg-gradient-to-br ${featured.gradient} text-white p-6 mb-4`}>
             <div className="flex items-center gap-3"><NewsLogo coin={featured.coin} category={featured.category} size={46} /><Badge tone="violet">Featured</Badge></div>
             <h2 className="text-2xl font-extrabold mt-3 leading-snug">{featured.title}</h2>
@@ -125,7 +125,7 @@ export function NewsList() {
       {list.length === 0 ? <Card><Empty title="No news found" /></Card> : (
         <div className="space-y-3">
           {list.filter(n => n.id !== featured?.id).map(n => (
-            <Link key={n.id} to={'/app/news/' + n.id}>
+            <Link key={n.id} to={'/news/' + n.id}>
               <Card className="p-4 flex gap-4 mb-3">
                 <NewsLogo coin={n.coin} category={n.category} size={56} />
                 <div className="min-w-0"><Badge tone="cyan">{n.category}</Badge><p className="font-bold leading-snug mt-1">{n.title}</p><p className="text-xs text-slate-400 mt-1 line-clamp-2">{n.excerpt}</p><p className="text-[11px] text-slate-400 mt-1">{n.source} · {fmtDate(n.date)}</p></div>

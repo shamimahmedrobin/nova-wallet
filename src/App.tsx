@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
 import { lazy, Suspense } from 'react'
 const Market = lazy(() => import('./pages/Market'))
@@ -27,7 +27,6 @@ function ScrollManager() {
   useEffect(() => {
     if (navType === 'POP') {
       const y = positions.current[key] ?? 0
-      // restore after the new page has rendered
       requestAnimationFrame(() => setTimeout(() => window.scrollTo(0, y), 30))
     } else {
       window.scrollTo(0, 0)
@@ -37,43 +36,49 @@ function ScrollManager() {
 }
 function Guard({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const { user } = useApp(); const loc = useLocation()
-  if (!user) return <Navigate to="/" replace state={{ from: loc.pathname }} />
-  if (admin && user.role !== 'admin') return <Navigate to="/app" replace />
+  if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />
+  if (admin && user.role !== 'admin') return <Navigate to="/home" replace />
   return <>{children}</>
 }
 function Root() {
   const { user } = useApp()
-  if (user) return <Navigate to="/app" replace />
-  return <Auth />
+  if (user) return <Navigate to="/home" replace />
+  return <Auth initialMode="landing" />
+}
+function AuthPage({ mode }: { mode: 'login' | 'register' }) {
+  const { user } = useApp()
+  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/home'} replace />
+  return <Auth initialMode={mode} />
 }
 export default function App() {
   return (
     <AppProvider>
-      <HashRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
         <ScrollManager />
         <Toasts />
         <Routes>
           <Route path="/" element={<Root />} />
-          <Route path="/register" element={<Root />} />
-          <Route path="/app" element={<Guard><Layout /></Guard>}>
-            <Route index element={<Home />} />
-            <Route path="add" element={<AddMoney />} />
-            <Route path="cashout" element={<CashOut />} />
-            <Route path="send" element={<SendMoney />} />
-            <Route path="receive" element={<ReceiveMoney />} />
-            <Route path="referral" element={<Referral />} />
-            <Route path="loan" element={<LoanPage />} />
-            <Route path="market" element={<Suspense fallback={<div className="p-8 text-center">Loading market…</div>}><Market /></Suspense>} />
-            <Route path="transactions" element={<Transactions />} />
-            <Route path="news" element={<NewsList />} />
-            <Route path="news/:id" element={<NewsDetail />} />
-            <Route path="notifications" element={<Notifications />} />
-            <Route path="profile" element={<Profile />} />
+          <Route path="/login" element={<AuthPage mode="login" />} />
+          <Route path="/register" element={<AuthPage mode="register" />} />
+          <Route element={<Guard><Layout /></Guard>}>
+            <Route path="/home" element={<Home />} />
+            <Route path="/add" element={<AddMoney />} />
+            <Route path="/cashout" element={<CashOut />} />
+            <Route path="/send" element={<SendMoney />} />
+            <Route path="/receive" element={<ReceiveMoney />} />
+            <Route path="/referral" element={<Referral />} />
+            <Route path="/loan" element={<LoanPage />} />
+            <Route path="/crypto" element={<Suspense fallback={<div className="p-8 text-center">Loading market…</div>}><Market /></Suspense>} />
+            <Route path="/transactions" element={<Transactions />} />
+            <Route path="/news" element={<NewsList />} />
+            <Route path="/news/:id" element={<NewsDetail />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
           <Route path="/admin" element={<Guard admin><Suspense fallback={<div className="p-8 text-center">Loading admin…</div>}><Admin /></Suspense></Guard>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     </AppProvider>
   )
 }
