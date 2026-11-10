@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Bell, Download, FileText, Search } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Badge, Btn, Card, Empty, Modal, statusTone } from '../components/ui'
+import { Badge, Btn, Card, Empty, Modal, NewsLogo, statusTone } from '../components/ui'
 import { downloadFile, fmtBDT, fmtDate, fmtDateTime } from '../lib/utils'
 import { PageHead } from './Services'
 import type { Tx } from '../lib/types'
@@ -97,7 +97,7 @@ export function NewsList() {
       {featured && (
         <Link to={'/app/news/' + featured.id}>
           <div className={`rounded-[28px] bg-gradient-to-br ${featured.gradient} text-white p-6 mb-4`}>
-            <Badge tone="violet">Featured</Badge>
+            <div className="flex items-center gap-3"><NewsLogo coin={featured.coin} category={featured.category} size={46} /><Badge tone="violet">Featured</Badge></div>
             <h2 className="text-2xl font-extrabold mt-3 leading-snug">{featured.title}</h2>
             <p className="text-white/85 text-sm mt-2">{featured.excerpt}</p>
             <p className="text-xs text-white/70 mt-3">{featured.source} · {fmtDate(featured.date)}</p>
@@ -109,7 +109,7 @@ export function NewsList() {
           {list.filter(n => n.id !== featured?.id).map(n => (
             <Link key={n.id} to={'/app/news/' + n.id}>
               <Card className="p-4 flex gap-4 mb-3">
-                <div className={`w-16 h-16 shrink-0 rounded-2xl bg-gradient-to-br ${n.gradient} flex items-center justify-center text-white text-2xl font-extrabold`}>{n.title[0]}</div>
+                <NewsLogo coin={n.coin} category={n.category} size={56} />
                 <div className="min-w-0"><Badge tone="cyan">{n.category}</Badge><p className="font-bold leading-snug mt-1">{n.title}</p><p className="text-xs text-slate-400 mt-1 line-clamp-2">{n.excerpt}</p><p className="text-[11px] text-slate-400 mt-1">{n.source} · {fmtDate(n.date)}</p></div>
               </Card>
             </Link>
@@ -126,7 +126,7 @@ export function NewsDetail() {
   return (
     <article className="anim-fade-up">
       <div className={`rounded-[28px] bg-gradient-to-br ${n.gradient} text-white p-6 mb-5`}>
-        <Badge tone="violet">{n.category}</Badge>
+        <div className="flex items-center gap-3"><NewsLogo coin={n.coin} category={n.category} size={54} /><Badge tone="violet">{n.category}</Badge></div>
         <h1 className="text-2xl sm:text-3xl font-extrabold mt-3 leading-snug">{n.title}</h1>
         <p className="text-sm text-white/80 mt-3">✍️ {n.source} · 📅 {fmtDate(n.date)}</p>
       </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, ChevronRight, Eye, EyeOff, Gift, HandCoins, Lock, QrCode, Send, ShoppingCart, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../lib/store'
@@ -21,6 +21,13 @@ export default function Home() {
   const navigate = useNavigate()
   const { coins, loading, isLive } = useMarket()
   const [hide, setHide] = useState(false)
+  const [bannerIdx, setBannerIdx] = useState(0)
+  const activeBanners = db.banners.filter(b => b.active)
+  useEffect(() => {
+    if (activeBanners.length < 2) return
+    const t = setInterval(() => setBannerIdx(i => (i + 1) % activeBanners.length), 5000)
+    return () => clearInterval(t)
+  }, [activeBanners.length])
   const w = user ? walletOf(user.id) : null
   const priceOf = (s: string) => coins.find(c => c.symbol === s)?.priceUsd ?? 0
   const cryptoBdt = useMemo(() => w ? Object.entries(w.holdings).reduce((sum, [s, amt]) => sum + amt * priceOf(s) * db.settings.bdtPerUsd, 0) : 0, [w, coins, db.settings.bdtPerUsd])
@@ -52,12 +59,18 @@ export default function Home() {
               </div>
             ))}
           </div>
-          <p className="mt-4 text-[11px] text-white/60">User ID: {user.id} · {user.kyc === 'verified' ? '✅ KYC Verified' : 'KYC: ' + user.kyc}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <p className="text-[11px] text-white/60">User ID: {user.id} · {user.kyc === 'verified' ? '✅ KYC Verified' : 'KYC: ' + user.kyc}</p>
+            <span className="ml-auto flex items-center gap-2">
+              <span className="rounded-full bg-white/20 px-3 py-1 text-[11px] font-extrabold">🏅 Level {user.level} · {db.levels.find(l => l.level === user.level)?.name ?? ''}</span>
+              {user.level < 4 && <button onClick={() => navigate('/app/profile')} className="rounded-full bg-white text-violet-700 px-3 py-1 text-[11px] font-extrabold shadow">Upgrade ⬆</button>}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-x-3 gap-y-5">
         {ACTIONS.map(a => (
           <button key={a.label} onClick={() => navigate(a.to)} className="flex flex-col items-center gap-2 group">
             <span className={`w-14 h-14 rounded-[20px] bg-gradient-to-br ${a.g} text-white flex items-center justify-center shadow-lg group-active:scale-95 transition`}><a.icon size={23} /></span>
@@ -66,15 +79,20 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Banners */}
-      <div className="flex gap-3 overflow-x-auto no-scrollbar snap-x -mx-4 px-4">
-        {db.banners.filter(b => b.active).map(b => (
-          <div key={b.id} className={`snap-start shrink-0 w-[85%] sm:w-[46%] rounded-3xl bg-gradient-to-br ${b.gradient} text-white p-5`}>
-            <p className="font-extrabold text-lg leading-snug">{b.title}</p>
-            <p className="text-white/80 text-sm mt-1">{b.subtitle}</p>
+      {/* Banners — single full-width rotating banner, aligned with the cards above/below */}
+      {activeBanners.length > 0 && (
+        <div>
+          <div key={activeBanners[bannerIdx % activeBanners.length].id} className={`anim-fade-up w-full rounded-3xl bg-gradient-to-br ${activeBanners[bannerIdx % activeBanners.length].gradient} text-white p-5`}>
+            <p className="font-extrabold text-lg leading-snug">{activeBanners[bannerIdx % activeBanners.length].title}</p>
+            <p className="text-white/80 text-sm mt-1">{activeBanners[bannerIdx % activeBanners.length].subtitle}</p>
           </div>
-        ))}
-      </div>
+          <div className="flex justify-center gap-1.5 mt-2.5">
+            {activeBanners.map((b, i) => (
+              <button key={b.id} onClick={() => setBannerIdx(i)} aria-label={'Banner ' + (i + 1)} className={`h-1.5 rounded-full transition-all ${i === bannerIdx % activeBanners.length ? 'w-6 bg-violet-600' : 'w-1.5 bg-slate-300 dark:bg-slate-700'}`} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Market overview */}
       <Card className="p-5">

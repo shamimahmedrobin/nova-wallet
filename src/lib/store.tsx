@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { DB, Loan, NewsItem, Tx, User } from './types'
-import { seedDB } from './seed'
+import { DEFAULT_LEVELS, seedDB } from './seed'
 import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
 
 const KEY = 'novawallet.db.v2'
@@ -9,7 +9,15 @@ const SESSION = 'novawallet.session'
 function load(): DB {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const db = JSON.parse(raw) as DB
+      // migrate older saves: add account levels without wiping balances/history
+      if (!db.levels) db.levels = DEFAULT_LEVELS
+      if (!db.levelRequests) db.levelRequests = []
+      db.users.forEach(u => { if (!u.level) u.level = u.role === 'admin' ? 4 : u.kyc === 'verified' ? 2 : 1 })
+      db.news.forEach(n => { if (!n.coin) n.coin = ({ Bitcoin: 'BTC', Ethereum: 'ETH' } as any)[n.category] ?? 'NOVA' })
+      return db
+    }
   } catch { /* fresh seed */ }
   const db = seedDB(); localStorage.setItem(KEY, JSON.stringify(db)); return db
 }
@@ -44,6 +52,10 @@ interface Ctx {
   deleteNews: (id: string) => void
   updateSettings: (s: Partial<DB['settings']>) => void
   toggleBanner: (id: string) => void
+  requestUpgrade: (toLevel: number) => string | null
+  decideUpgrade: (id: string, ok: boolean) => void
+  updateLevelDef: (level: number, patch: Partial<DB['levels'][number]>) => void
+  setUserLevel: (userId: string, level: number) => void
   addTicket: (subject: string, message: string) => void
   resetDemo: () => void
 }
@@ -112,7 +124,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const nu: User = {
       id: uid('USR'), name: p.name, username: p.username, email: p.email, phone: p.phone,
       passwordHash: hashSecret(p.password), pinHash: hashSecret(p.pin), role: 'user', status: 'active',
-      kyc: 'unverified', referralCode: 'NOVA-' + p.username.toUpperCase().slice(0, 6), referredBy: referrer?.id ?? null,
+      kyc: 'unverified', level: 1, referralCode: 'NOVA-' + p.username.toUpperCase().slice(0, 6), referredBy: referrer?.id ?? null,
       twoFA: false, language: 'en', createdAt: nowISO(), lastLogin: nowISO(),
       sessions: [{ id: rid(), device: 'Web · Browser', at: nowISO(), current: true }],
     }
@@ -316,6 +328,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return
     mutate(d => d.tickets.unshift({ id: uid('TKT'), userId: user.id, subject, message, status: 'open', createdAt: nowISO() }))
   }
+  const requestUpgrade: Ctx['requestUpgrade'] = (toLevel) => {
+    if (!user) return 'Not signed in'
+    if (toLevel !== user.level + 1) return 'You can only request the next level.'
+    if (toLevel > 4) return 'You are already at the highest level.'
+    if (dbRef.current.levelRequests.some(r => r.userId === user.id && r.status === 'pending')) return 'You already have a pending upgrade request.'
+    mutate(d => {
+      d.levelRequests.unshift({ id: uid('LVR'), userId: user.id, fromLevel: user.level, toLevel, status: 'pending', createdAt: nowISO() })
+      notify(d, user.id, 'Upgrade requested', 'Your request to reach Level ' + toLevel + ' is pending admin review.', 'security')
+    })
+    return null
+  }
+  const decideUpgrade: Ctx['decideUpgrade'] = (id, ok) => mutate(d => {
+    const r = d.levelRequests.find(x => x.id === id); if (!r || r.status !== 'pending') return
+    r.status = ok ? 'approved' : 'rejected'
+    if (ok) { const u = d.users.find(x => x.id === r.userId); if (u) u.level = r.toLevel }
+    audit(d, 'admin', ok ? 'level.approve' : 'level.reject', `${r.userId} → Level ${r.toLevel}`)
+    notify(d, r.userId, ok ? '🎉 Level upgraded' : 'Upgrade request rejected', ok ? 'Your account is now Level ' + r.toLevel + '. Higher limits are active.' : 'Your upgrade request was not approved. Check the level requirements and try again.', 'security')
+  })
+  const updateLevelDef: Ctx['updateLevelDef'] = (level, patch) => mutate(d => {
+    const def = d.levels.find(x => x.level === level); if (def) { Object.assign(def, patch); audit(d, 'admin', 'level.update', 'Level ' + level) }
+  })
+  const setUserLevel: Ctx['setUserLevel'] = (userId2, level) => mutate(d => {
+    const u = d.users.find(x => x.id === userId2); if (u) { u.level = level; audit(d, 'admin', 'level.set', `${userId2} → Level ${level}`); notify(d, userId2, 'Account level changed', 'An admin set your account to Level ' + level + '.', 'security') }
+  })
   const resetDemo = () => { const fresh = seedDB(); localStorage.setItem(KEY, JSON.stringify(fresh)); setDb(fresh) }
 
   const value: Ctx = {
@@ -324,6 +360,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     applyLoan, decideLoan, repayLoan, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, resetDemo,
+    requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

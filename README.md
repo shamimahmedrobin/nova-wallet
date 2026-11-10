@@ -33,6 +33,7 @@ Other seeded users (arif, nusrat, tanvir, priya, karim) use password `123456` / 
 - **Loans** — eligibility (KYC) checker, EMI / interest / total-payable calculator, admin-reviewed applications, disbursement, repayments, outstanding tracking
 - **Transactions** — search by ID, category / status / date filters, detail view, PDF receipt (print), CSV export
 - **News** — featured + category filters, search, detail pages with source attribution, admin-managed publishing
+- **Account Levels (1–4)** — Basic / Silver / Gold / Platinum with admin-managed limits, loan caps and fee discounts; users request the next level with the **Upgrade** button (Profile + Home balance card), admins approve/reject and can set levels directly in the Admin **Levels** tab
 - **Profile** — edit profile, change password & PIN, 2FA toggle, KYC submission, linked methods, notification prefs, EN/বাংলা toggle, sessions, support tickets, Terms & Privacy
 - **Notifications** — deposits, withdrawals, transfers, referral rewards, loan updates, security & market alerts, unread counter
 - **Admin Panel** (`/admin`) — live stats & volume chart, deposit/withdrawal approvals, user management

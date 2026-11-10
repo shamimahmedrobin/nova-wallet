@@ -9,7 +9,7 @@ export type TxCategory =
 export interface User {
   id: string; name: string; username: string; email: string; phone: string
   passwordHash: string; pinHash: string; role: Role; status: UserStatus; kyc: KycStatus
-  referralCode: string; referredBy: string | null; twoFA: boolean
+  referralCode: string; referredBy: string | null; twoFA: boolean; level: number
   language: 'en' | 'bn'; createdAt: string; lastLogin: string
   sessions: { id: string; device: string; at: string; current: boolean }[]
 }
@@ -35,7 +35,15 @@ export interface Loan {
 }
 export interface NewsItem {
   id: string; title: string; category: string; excerpt: string; body: string
-  source: string; date: string; featured: boolean; gradient: string
+  source: string; date: string; featured: boolean; gradient: string; coin?: string
+}
+export interface LevelDef {
+  level: number; name: string; tagline: string; dailyLimit: number; monthlyLimit: number
+  loanLimit: number; feeDiscountPct: number; requirement: string; gradient: string
+}
+export interface LevelRequest {
+  id: string; userId: string; fromLevel: number; toLevel: number
+  status: 'pending' | 'approved' | 'rejected'; createdAt: string
 }
 export interface Banner { id: string; title: string; subtitle: string; gradient: string; active: boolean }
 export interface Notif { id: string; userId: string; title: string; body: string; kind: string; read: boolean; createdAt: string }
@@ -52,5 +60,6 @@ export interface DB {
   deposits: DepositReq[]; withdrawals: WithdrawReq[]; loans: Loan[]
   news: NewsItem[]; banners: Banner[]; notifications: Notif[]
   settings: Settings; audit: Audit[]; tickets: SupportTicket[]
+  levels: LevelDef[]; levelRequests: LevelRequest[]
   watchlist: Record<string, string[]>; referralEarnings: { id: string; userId: string; fromUser: string; amount: number; createdAt: string }[]
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, LayoutDashboard, Megaphone, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText } from 'lucide-react'
+import { ArrowLeft, Check, LayoutDashboard, Megaphone, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, statusTone } from '../components/ui'
@@ -12,19 +12,21 @@ const TABS = [
   { id: 'users', label: 'Users & KYC', icon: Users },
   { id: 'loans', label: 'Loans', icon: HandCoins },
   { id: 'referrals', label: 'Referrals', icon: Gift },
+  { id: 'levels', label: 'Levels', icon: Award },
   { id: 'content', label: 'News & Banners', icon: Newspaper },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ] as const
 
 export default function Admin() {
-  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo } = useApp()
+  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel } = useApp()
   const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
   const [userQ, setUserQ] = useState('')
   const [adj, setAdj] = useState<{ userId: string; amount: string; reason: string } | null>(null)
   const [newsForm, setNewsForm] = useState<any>(null)
   const [setForm, setSetForm] = useState({ ...db.settings })
+  const [levelForms, setLevelForms] = useState<Record<number, any>>({})
 
   const stats = useMemo(() => {
     const plain = db.users.filter(u => u.role === 'user')
@@ -135,7 +137,7 @@ export default function Admin() {
                     <div className="flex flex-wrap items-center gap-3">
                       <Avatar name={u.name} />
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {fmtBDT((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
-                      <Badge tone={statusTone(u.kyc)}>KYC {u.kyc}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
+                      <Badge tone={statusTone(u.kyc)}>KYC {u.kyc}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
                     </div>
                     {u.role === 'user' && (
                       <div className="flex flex-wrap gap-2 mt-3">
@@ -184,7 +186,7 @@ export default function Admin() {
         {tab === 'content' && (
           <div className="anim-fade-up space-y-6">
             <section>
-              <div className="flex items-center justify-between mb-3"><h3 className="font-extrabold">News</h3><Btn onClick={() => setNewsForm({ title: '', category: 'Bitcoin', excerpt: '', body: '', source: 'Nova Market Desk', featured: false, gradient: 'from-violet-500 to-purple-700' })}>+ Publish news</Btn></div>
+              <div className="flex items-center justify-between mb-3"><h3 className="font-extrabold">News</h3><Btn onClick={() => setNewsForm({ title: '', category: 'Bitcoin', excerpt: '', body: '', source: 'Nova Market Desk', featured: false, gradient: 'from-violet-500 to-purple-700', coin: 'BTC' })}>+ Publish news</Btn></div>
               {db.news.map(n => (
                 <Card key={n.id} className="p-4 mb-2 flex items-center gap-3">
                   <div className="flex-1 min-w-0"><p className="font-bold truncate">{n.title}</p><p className="text-xs text-slate-400">{n.category} · {n.source} · {fmtDateTime(n.date)}{n.featured ? ' · ⭐ Featured' : ''}</p></div>
@@ -200,6 +202,59 @@ export default function Admin() {
                   <div className="flex-1"><p className="font-extrabold">{b.title}</p><p className="text-white/80 text-sm">{b.subtitle}</p></div>
                   <button onClick={() => toggleBanner(b.id)} className="rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold">{b.active ? 'Active — tap to hide' : 'Hidden — tap to show'}</button>
                 </div>
+              ))}
+            </section>
+          </div>
+        )}
+
+        {tab === 'levels' && (
+          <div className="anim-fade-up space-y-6">
+            <section>
+              <h3 className="font-extrabold mb-3">Upgrade requests</h3>
+              {db.levelRequests.length === 0 ? <Card><Empty title="No upgrade requests" /></Card> : db.levelRequests.map(r => (
+                <Card key={r.id} className="p-4 mb-2 flex flex-wrap items-center gap-3">
+                  <div className="flex-1 min-w-[180px]"><p className="font-bold">{nameOf(r.userId)} — Level {r.fromLevel} → Level {r.toLevel}</p><p className="text-xs text-slate-400">{r.id} · {fmtDateTime(r.createdAt)}</p></div>
+                  <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                  {r.status === 'pending' && <><Btn variant="success" className="!py-2" onClick={() => { decideUpgrade(r.id, true); toast({ kind: 'success', title: 'Level upgraded' }) }}><Check size={15} /> Approve</Btn><Btn variant="danger" className="!py-2" onClick={() => decideUpgrade(r.id, false)}><X size={15} /> Reject</Btn></>}
+                </Card>
+              ))}
+            </section>
+            <section>
+              <h3 className="font-extrabold mb-3">Level definitions (managed here, applied everywhere)</h3>
+              {db.levels.map(l => {
+                const f = levelForms[l.level] ?? l
+                const upd = (k: string, v: any) => setLevelForms(prev => ({ ...prev, [l.level]: { ...f, [k]: v } }))
+                return (
+                  <Card key={l.level} className="p-4 mb-3">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className={`w-10 h-10 rounded-xl bg-gradient-to-br ${l.gradient} text-white flex items-center justify-center font-extrabold`}>{l.level}</span>
+                      <p className="font-extrabold">Level {l.level}</p>
+                      <Badge tone="slate">{db.users.filter(u => u.level === l.level && u.role === 'user').length} users</Badge>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <Input label="Name" value={f.name} onChange={e => upd('name', e.target.value)} />
+                      <Input label="Tagline" value={f.tagline} onChange={e => upd('tagline', e.target.value)} />
+                      <Input label="Daily limit (BDT)" type="number" value={f.dailyLimit} onChange={e => upd('dailyLimit', Number(e.target.value))} />
+                      <Input label="Monthly limit (BDT)" type="number" value={f.monthlyLimit} onChange={e => upd('monthlyLimit', Number(e.target.value))} />
+                      <Input label="Loan limit (BDT)" type="number" value={f.loanLimit} onChange={e => upd('loanLimit', Number(e.target.value))} />
+                      <Input label="Fee discount %" type="number" value={f.feeDiscountPct} onChange={e => upd('feeDiscountPct', Number(e.target.value))} />
+                    </div>
+                    <Input label="Requirement" className="mt-3" value={f.requirement} onChange={e => upd('requirement', e.target.value)} />
+                    <Btn className="mt-3" onClick={() => { updateLevelDef(l.level, f); toast({ kind: 'success', title: 'Level ' + l.level + ' updated' }) }}>Save Level {l.level}</Btn>
+                  </Card>
+                )
+              })}
+            </section>
+            <section>
+              <h3 className="font-extrabold mb-3">Set a user's level directly</h3>
+              {db.users.filter(u => u.role === 'user').map(u => (
+                <Card key={u.id} className="p-3.5 mb-2 flex items-center gap-3">
+                  <Avatar name={u.name} size={36} />
+                  <div className="flex-1 min-w-[120px]"><p className="font-bold text-sm">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · KYC {u.kyc}</p></div>
+                  <select value={u.level} onChange={e => { setUserLevel(u.id, Number(e.target.value)); toast({ kind: 'success', title: u.name + ' → Level ' + e.target.value }) }} className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-bold">
+                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>Level {n} · {db.levels.find(x => x.level === n)?.name}</option>)}
+                  </select>
+                </Card>
               ))}
             </section>
           </div>
@@ -258,6 +313,9 @@ export default function Admin() {
             <div className="grid grid-cols-2 gap-3">
               <Select label="Category" value={newsForm.category} onChange={(e: any) => setNewsForm((n: any) => ({ ...n, category: e.target.value }))}>{['Bitcoin', 'Ethereum', 'Market Analysis', 'Blockchain', 'Trading'].map(c => <option key={c}>{c}</option>)}</Select>
               <Input label="Source" value={newsForm.source} onChange={e => setNewsForm((n: any) => ({ ...n, source: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Crypto logo shown on the card" value={newsForm.coin ?? 'NOVA'} onChange={(e: any) => setNewsForm((n: any) => ({ ...n, coin: e.target.value }))}>{['BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP', 'NOVA'].map(c => <option key={c} value={c}>{c === 'NOVA' ? 'NovaWallet logo' : c + ' logo'}</option>)}</Select>
             </div>
             <Input label="Excerpt" value={newsForm.excerpt} onChange={e => setNewsForm((n: any) => ({ ...n, excerpt: e.target.value }))} />
             <Input label="Body (paragraphs split by blank line)" value={newsForm.body} onChange={e => setNewsForm((n: any) => ({ ...n, body: e.target.value }))} />

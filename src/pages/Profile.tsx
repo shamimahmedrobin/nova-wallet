@@ -6,7 +6,7 @@ import { Avatar, Badge, Btn, Card, Input, Modal, statusTone, useConfirm } from '
 import { fmtBDT } from '../lib/utils'
 
 export default function Profile() {
-  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, toast, theme, toggleTheme } = useApp()
+  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, toast, theme, toggleTheme, requestUpgrade } = useApp()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [modal, setModal] = useState<string | null>(null)
@@ -50,6 +50,25 @@ export default function Profile() {
         </div>
       </Card>
 
+      {/* Account levels */}
+      <Card className="p-5 mb-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${db.levels.find(l => l.level === user.level)?.gradient ?? 'from-violet-600 to-indigo-700'} text-white flex flex-col items-center justify-center leading-none`}>
+            <span className="text-[9px] font-bold uppercase">Level</span><span className="text-xl font-extrabold">{user.level}</span>
+          </div>
+          <div className="flex-1 min-w-[140px]">
+            <p className="font-extrabold">Level {user.level} · {db.levels.find(l => l.level === user.level)?.name}</p>
+            <p className="text-xs text-slate-500">{db.levels.find(l => l.level === user.level)?.tagline} · Daily limit {fmtBDT(db.levels.find(l => l.level === user.level)?.dailyLimit ?? 0)} · Loan up to {fmtBDT(db.levels.find(l => l.level === user.level)?.loanLimit ?? 0)}</p>
+          </div>
+          {user.level < 4
+            ? <Btn onClick={() => setModal('levels')}>Upgrade ⬆</Btn>
+            : <Badge tone="violet">Max level 👑</Badge>}
+        </div>
+        {db.levelRequests.filter(r => r.userId === user.id && r.status === 'pending').map(r => (
+          <p key={r.id} className="mt-3 text-sm font-semibold text-amber-600">⏳ Upgrade to Level {r.toLevel} requested — pending admin review.</p>
+        ))}
+      </Card>
+
       <Card className="p-2 mb-4">
         <button onClick={toggleTheme} className="w-full flex items-center gap-3 p-3.5 font-semibold text-[15px]">
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} Theme — {theme === 'dark' ? 'Dark' : 'Light'}
@@ -74,6 +93,30 @@ export default function Profile() {
         className="w-full mt-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 font-bold py-4 flex items-center justify-center gap-2"><LogOut size={18} /> Logout</button>
       {confirm.el}
 
+      <Modal open={modal === 'levels'} onClose={() => setModal(null)} title="Account levels">
+        <div className="space-y-3">
+          {db.levels.map(l => {
+            const isCurrent = l.level === user.level
+            const isNext = l.level === user.level + 1
+            const pending = db.levelRequests.some(r => r.userId === user.id && r.status === 'pending')
+            return (
+              <div key={l.level} className={`rounded-3xl border-2 p-4 ${isCurrent ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
+                <div className="flex items-center gap-3">
+                  <span className={`w-10 h-10 rounded-xl bg-gradient-to-br ${l.gradient} text-white flex items-center justify-center font-extrabold`}>{l.level}</span>
+                  <div className="flex-1"><p className="font-extrabold">Level {l.level} · {l.name} {isCurrent && <Badge tone="violet">Current</Badge>}</p><p className="text-xs text-slate-500">{l.tagline}</p></div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 text-xs mt-3 text-slate-600 dark:text-slate-300">
+                  <span>Daily limit: <b>{fmtBDT(l.dailyLimit)}</b></span><span>Monthly: <b>{fmtBDT(l.monthlyLimit)}</b></span>
+                  <span>Loan limit: <b>{fmtBDT(l.loanLimit)}</b></span><span>Fee discount: <b>{l.feeDiscountPct}%</b></span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">Requirement: {l.requirement}</p>
+                {isNext && <Btn className="w-full mt-3" disabled={pending} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'Upgrade requested', body: 'An admin will review your request.' }) } }}>{pending ? 'Request pending…' : 'Request upgrade to Level ' + l.level}</Btn>}
+              </div>
+            )
+          })}
+          <p className="text-[11px] text-slate-400 text-center">Upgrades are reviewed by an admin — never automatic.</p>
+        </div>
+      </Modal>
       <Modal open={modal === 'edit'} onClose={() => setModal(null)} title="Edit profile">
         <div className="space-y-4">
           <Input label="Full name" value={edit.name} onChange={e => setEdit(s => ({ ...s, name: e.target.value }))} />

@@ -77,6 +77,20 @@ export const PinField = ({ pin, setPin }: { pin: string; setPin: (v: string) => 
   <Input label="Transaction PIN" type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={pin}
     onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} />
 )
+export const COIN_LOGOS: Record<string, { glyph: string; bg: string }> = {
+  BTC: { glyph: '₿', bg: '#f7931a' }, ETH: { glyph: 'Ξ', bg: '#627eea' },
+  USDT: { glyph: '₮', bg: '#26a17b' }, BNB: { glyph: '◆', bg: '#f0b90b' },
+  SOL: { glyph: '◎', bg: '#9945ff' }, XRP: { glyph: '✕', bg: '#25a4e9' },
+  NOVA: { glyph: 'N', bg: '#7c3aed' },
+}
+export function NewsLogo({ coin, category, size = 64 }: { coin?: string; category?: string; size?: number }) {
+  const key = coin ?? ({ Bitcoin: 'BTC', Ethereum: 'ETH' } as any)[category ?? ''] ?? 'NOVA'
+  const logo = COIN_LOGOS[key] ?? COIN_LOGOS.NOVA
+  return (
+    <div className="shrink-0 rounded-full flex items-center justify-center text-white font-extrabold shadow-lg ring-4 ring-white/40 dark:ring-white/10"
+      style={{ width: size, height: size, background: `linear-gradient(135deg, ${logo.bg}, ${logo.bg}bb)`, fontSize: size * 0.44 }}>{logo.glyph}</div>
+  )
+}
 export const Avatar = ({ name, size = 40 }: { name: string; size?: number }) => (
   <div className={`shrink-0 rounded-full bg-gradient-to-br ${gradientFor(name)} text-white flex items-center justify-center font-bold`} style={{ width: size, height: size, fontSize: size * 0.36 }}>{initials(name)}</div>
 )

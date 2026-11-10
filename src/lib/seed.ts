@@ -1,4 +1,4 @@
-import type { DB, User } from './types'
+import type { DB, LevelDef, User } from './types'
 import { hashSecret } from './utils'
 
 const d = (daysAgo: number, h = 10) => {
@@ -11,20 +11,26 @@ function mkUser(p: Partial<User> & Pick<User, 'name' | 'username' | 'email'>): U
     pinHash: hashSecret(p.pinHash ?? '1234'), role: p.role ?? 'user',
     status: p.status ?? 'active', kyc: p.kyc ?? 'verified',
     referralCode: p.referralCode ?? ('NOVA-' + p.username.toUpperCase().slice(0, 5)),
-    referredBy: p.referredBy ?? null, twoFA: p.twoFA ?? false, language: 'en',
+    referredBy: p.referredBy ?? null, twoFA: p.twoFA ?? false, level: p.level ?? 1, language: 'en',
     createdAt: p.createdAt ?? d(90), lastLogin: d(0, 8),
     name: p.name, username: p.username, email: p.email,
     sessions: [{ id: 's1', device: 'Android · Chrome', at: d(0, 8), current: true }],
   }
 }
 
+export const DEFAULT_LEVELS: LevelDef[] = [
+  { level: 1, name: 'Basic', tagline: 'Start your wallet journey', dailyLimit: 25000, monthlyLimit: 200000, loanLimit: 10000, feeDiscountPct: 0, requirement: 'Default for every new account', gradient: 'from-slate-500 to-slate-700' },
+  { level: 2, name: 'Silver', tagline: 'For verified everyday users', dailyLimit: 50000, monthlyLimit: 500000, loanLimit: 30000, feeDiscountPct: 5, requirement: 'KYC verified', gradient: 'from-slate-400 to-slate-600' },
+  { level: 3, name: 'Gold', tagline: 'Higher limits, lower fees', dailyLimit: 100000, monthlyLimit: 1000000, loanLimit: 60000, feeDiscountPct: 10, requirement: 'KYC verified + 20 completed transactions', gradient: 'from-amber-500 to-yellow-600' },
+  { level: 4, name: 'Platinum', tagline: 'Maximum limits, priority support', dailyLimit: 250000, monthlyLimit: 2500000, loanLimit: 100000, feeDiscountPct: 20, requirement: 'KYC verified + 50 transactions + admin review', gradient: 'from-violet-600 to-indigo-700' },
+]
 export function seedDB(): DB {
-  const admin = mkUser({ id: 'USR-ADMIN1', name: 'Nova Admin', username: 'admin', email: 'admin@novawallet.app', phone: '01900000001', passwordHash: 'admin123', pinHash: '9999', role: 'admin' })
-  const shamim = mkUser({ id: 'USR-SHAMIM', name: 'Shamim Ahmed Robin', username: 'shamim', email: 'shamim@novawallet.app', phone: '01712345678', referralCode: 'NOVA-SHAMIM' })
-  const arif = mkUser({ name: 'Arif Hossain', username: 'arif', email: 'arif@gmail.com', phone: '01811112222', referredBy: shamim.id })
-  const nusrat = mkUser({ name: 'Nusrat Jahan', username: 'nusrat', email: 'nusrat@gmail.com', phone: '01633334444', referredBy: shamim.id })
+  const admin = mkUser({ id: 'USR-ADMIN1', name: 'Nova Admin', username: 'admin', email: 'admin@novawallet.app', phone: '01900000001', passwordHash: 'admin123', pinHash: '9999', role: 'admin', level: 4 })
+  const shamim = mkUser({ id: 'USR-SHAMIM', name: 'Shamim Ahmed Robin', username: 'shamim', email: 'shamim@novawallet.app', phone: '01712345678', referralCode: 'NOVA-SHAMIM', level: 2 })
+  const arif = mkUser({ name: 'Arif Hossain', username: 'arif', email: 'arif@gmail.com', phone: '01811112222', referredBy: shamim.id, level: 2 })
+  const nusrat = mkUser({ name: 'Nusrat Jahan', username: 'nusrat', email: 'nusrat@gmail.com', phone: '01633334444', referredBy: shamim.id, level: 3 })
   const tanvir = mkUser({ name: 'Tanvir Islam', username: 'tanvir', email: 'tanvir@gmail.com', phone: '01555556666', referredBy: shamim.id, kyc: 'pending' })
-  const priya = mkUser({ name: 'Priya Das', username: 'priya', email: 'priya@gmail.com', phone: '01777778888', referredBy: arif.id })
+  const priya = mkUser({ name: 'Priya Das', username: 'priya', email: 'priya@gmail.com', phone: '01777778888', referredBy: arif.id, level: 2 })
   const karim = mkUser({ name: 'Karim Ullah', username: 'karim', email: 'karim@gmail.com', phone: '01999990000', status: 'suspended', kyc: 'unverified' })
   const users = [admin, shamim, arif, nusrat, tanvir, priya, karim]
 
@@ -78,11 +84,11 @@ export function seedDB(): DB {
       { id: 'LOAN-302', userId: priya.id, amount: 50000, months: 6, ratePct: 12, emi: 8627, totalPayable: 51764, paid: 0, status: 'pending', createdAt: d(0, 12) },
     ],
     news: [
-      { id: 'n1', title: 'Bitcoin Holds Above Key Support as ETF Inflows Return', category: 'Bitcoin', excerpt: 'BTC steadied this week as spot ETF inflows turned positive again and exchange reserves kept falling.', body: 'Bitcoin traded in a tight range this week as institutional demand through spot ETFs returned. Analysts point to falling exchange balances as a sign that long-term holders are not selling into strength.\n\nOn-chain data shows the number of addresses holding at least 0.1 BTC at a record high. Traders are watching the next resistance zone closely; a daily close above it would open the door to a fresh leg up.\n\nAs always, market prices shown in NovaWallet come from public market data and are indicative — the executable price at the moment of a trade is confirmed before you buy or sell.', source: 'Nova Market Desk', date: d(0), featured: true, gradient: 'from-orange-500 to-amber-600' },
-      { id: 'n2', title: 'Ethereum Upgrade Promises Cheaper Layer-2 Fees', category: 'Ethereum', excerpt: 'The next Ethereum upgrade focuses on blob capacity, which should push L2 transaction costs even lower.', body: 'Ethereum developers confirmed the next network upgrade will increase blob throughput, cutting data costs for layer-2 rollups.\n\nCheaper L2 fees matter for everyday users in markets like Bangladesh, where small transaction sizes make fees proportionally painful.\n\nStaking yields remain stable, and ETH supply has been roughly flat since the merge.', source: 'Nova Market Desk', date: d(1), featured: false, gradient: 'from-indigo-500 to-violet-600' },
-      { id: 'n3', title: 'Stablecoins in Remittance: Why USDT Volumes Keep Growing in South Asia', category: 'Market Analysis', excerpt: 'Low cost and speed are driving stablecoin use for cross-border transfers across the region.', body: 'Stablecoin transfer volumes in South Asia have grown steadily as freelancers and remote workers look for faster settlement than traditional banking rails.\n\nUSDT remains the dominant pair against BDT in peer markets. Users should remember that stablecoins carry issuer and regulatory risk, and prices can deviate briefly from one dollar during stress.', source: 'Nova Research', date: d(2), featured: false, gradient: 'from-emerald-500 to-teal-600' },
-      { id: 'n4', title: 'What Is a Double-Entry Ledger — and Why Your Wallet Needs One', category: 'Blockchain', excerpt: 'Every taka in NovaWallet is backed by balanced ledger entries. Here is how that protects you.', body: 'In a double-entry system, every movement of money creates equal debit and credit entries. Balances are never edited directly; they are the sum of audited entries.\n\nThat means any discrepancy can be traced to an exact transaction, timestamp and actor — the same standard banks use.\n\nNovaWallet records an immutable ledger entry for every deposit, withdrawal, transfer, trade and loan event.', source: 'Nova Academy', date: d(3), featured: false, gradient: 'from-violet-500 to-purple-700' },
-      { id: 'n5', title: 'Solana DeFi Activity Reaches New Highs', category: 'Blockchain', excerpt: 'DEX volumes and active addresses on Solana climbed again this month.', body: 'Solana decentralised exchange volumes hit fresh highs as memecoin activity cooled and real payment use cases grew.\n\nNetwork fees remain a fraction of a cent, keeping Solana popular for high-frequency applications.', source: 'Nova Market Desk', date: d(4), featured: false, gradient: 'from-fuchsia-500 to-pink-600' },
+      { id: 'n1', title: 'Bitcoin Holds Above Key Support as ETF Inflows Return', category: 'Bitcoin', excerpt: 'BTC steadied this week as spot ETF inflows turned positive again and exchange reserves kept falling.', body: 'Bitcoin traded in a tight range this week as institutional demand through spot ETFs returned. Analysts point to falling exchange balances as a sign that long-term holders are not selling into strength.\n\nOn-chain data shows the number of addresses holding at least 0.1 BTC at a record high. Traders are watching the next resistance zone closely; a daily close above it would open the door to a fresh leg up.\n\nAs always, market prices shown in NovaWallet come from public market data and are indicative — the executable price at the moment of a trade is confirmed before you buy or sell.', source: 'Nova Market Desk', date: d(0), featured: true, coin: 'BTC', gradient: 'from-orange-500 to-amber-600' },
+      { id: 'n2', title: 'Ethereum Upgrade Promises Cheaper Layer-2 Fees', category: 'Ethereum', excerpt: 'The next Ethereum upgrade focuses on blob capacity, which should push L2 transaction costs even lower.', body: 'Ethereum developers confirmed the next network upgrade will increase blob throughput, cutting data costs for layer-2 rollups.\n\nCheaper L2 fees matter for everyday users in markets like Bangladesh, where small transaction sizes make fees proportionally painful.\n\nStaking yields remain stable, and ETH supply has been roughly flat since the merge.', source: 'Nova Market Desk', date: d(1), featured: false, coin: 'ETH', gradient: 'from-indigo-500 to-violet-600' },
+      { id: 'n3', title: 'Stablecoins in Remittance: Why USDT Volumes Keep Growing in South Asia', category: 'Market Analysis', excerpt: 'Low cost and speed are driving stablecoin use for cross-border transfers across the region.', body: 'Stablecoin transfer volumes in South Asia have grown steadily as freelancers and remote workers look for faster settlement than traditional banking rails.\n\nUSDT remains the dominant pair against BDT in peer markets. Users should remember that stablecoins carry issuer and regulatory risk, and prices can deviate briefly from one dollar during stress.', source: 'Nova Research', date: d(2), featured: false, coin: 'USDT', gradient: 'from-emerald-500 to-teal-600' },
+      { id: 'n4', title: 'What Is a Double-Entry Ledger — and Why Your Wallet Needs One', category: 'Blockchain', excerpt: 'Every taka in NovaWallet is backed by balanced ledger entries. Here is how that protects you.', body: 'In a double-entry system, every movement of money creates equal debit and credit entries. Balances are never edited directly; they are the sum of audited entries.\n\nThat means any discrepancy can be traced to an exact transaction, timestamp and actor — the same standard banks use.\n\nNovaWallet records an immutable ledger entry for every deposit, withdrawal, transfer, trade and loan event.', source: 'Nova Academy', date: d(3), featured: false, coin: 'NOVA', gradient: 'from-violet-500 to-purple-700' },
+      { id: 'n5', title: 'Solana DeFi Activity Reaches New Highs', category: 'Blockchain', excerpt: 'DEX volumes and active addresses on Solana climbed again this month.', body: 'Solana decentralised exchange volumes hit fresh highs as memecoin activity cooled and real payment use cases grew.\n\nNetwork fees remain a fraction of a cent, keeping Solana popular for high-frequency applications.', source: 'Nova Market Desk', date: d(4), featured: false, coin: 'SOL', gradient: 'from-fuchsia-500 to-pink-600' },
     ],
     banners: [
       { id: 'b1', title: 'Earn 5% on every referral', subtitle: 'Invite friends, earn commission on their fees — forever.', gradient: 'from-violet-600 via-purple-600 to-indigo-600', active: true },
@@ -100,6 +106,10 @@ export function seedDB(): DB {
       { id: 'a2', actor: 'system', action: 'loan.disburse', detail: 'LOAN-301 ৳30,000 disbursed to shamim', createdAt: d(20) },
     ],
     tickets: [],
+    levels: DEFAULT_LEVELS,
+    levelRequests: [
+      { id: 'LVR-101', userId: tanvir.id, fromLevel: 1, toLevel: 2, status: 'pending', createdAt: d(0, 12) },
+    ],
     watchlist: { [shamim.id]: ['BTC', 'ETH', 'SOL'] },
     referralEarnings: [
       { id: 're1', userId: shamim.id, fromUser: 'Arif Hossain', amount: 125, createdAt: d(7) },
