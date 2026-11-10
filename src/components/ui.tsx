@@ -67,6 +67,16 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
     </div>
   )
 }
+/** Uniform modal interior pieces — every modal in the app uses these so they all look the same. */
+export const ModalDesc = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4">{children}</p>
+)
+export const ModalRow = ({ children, active = false }: { children: React.ReactNode; active?: boolean }) => (
+  <div className={`rounded-2xl border-2 px-4 py-3.5 ${active ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>{children}</div>
+)
+export const ModalActions = ({ children }: { children: React.ReactNode }) => (
+  <div className="flex flex-col gap-2 mt-5">{children}</div>
+)
 export function Confirm({ open, onClose, onConfirm, title, body, confirmLabel = 'Confirm' }: any) {
   return (
     <Modal open={open} onClose={onClose} title={title}>

@@ -31,7 +31,7 @@ Other seeded users (arif, nusrat, tanvir, priya, karim) use password `123456` / 
   24h change, market cap, 7-day sparkline charts, watchlist, search — buy/sell executes against your BDT wallet at the confirmed price
 - **Referral** — unique code + link, referred/active counts, earnings history, leaderboard, admin-configurable commission, self-referral blocked
 - **Loans** — eligibility (KYC) checker, EMI / interest / total-payable calculator, admin-reviewed applications, disbursement, repayments, outstanding tracking
-- **Transactions** — search by ID, category / status / date filters, detail view, PDF receipt (print), CSV export
+- **Transactions** — search by ID, category / status / date filters, detail view, PDF receipt (print)
 - **News** — featured + category filters, search, detail pages with source attribution, admin-managed publishing
 - **Account Levels (1–4)** — Basic / Silver / Gold / Platinum with admin-managed limits, loan caps and fee discounts; users request the next level with the **Upgrade** button (Profile + Home balance card), admins approve/reject and can set levels directly in the Admin **Levels** tab
 - **Profile** — edit profile, change password & PIN, 2FA toggle, KYC submission, linked methods, notification prefs, EN/বাংলা toggle, sessions, support tickets, Terms & Privacy

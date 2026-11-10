@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Bell, Download, FileText, Search } from 'lucide-react'
+import { Bell, FileText, Search, X } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Badge, Btn, Card, Empty, Modal, NewsLogo, statusTone } from '../components/ui'
-import { downloadFile, fmtBDT, fmtDate, fmtDateTime } from '../lib/utils'
+import { fmtBDT, fmtDate, fmtDateTime } from '../lib/utils'
 import { PageHead } from './Services'
 import type { Tx } from '../lib/types'
 
@@ -20,10 +20,6 @@ export function Transactions() {
     .filter(t => !q || t.id.toLowerCase().includes(q.toLowerCase()) || t.title.toLowerCase().includes(q.toLowerCase()))
     .filter(t => !from || t.createdAt >= from)
     .filter(t => !to || t.createdAt <= to + 'T23:59'), [db.txs, user, q, cat, status, from, to])
-  const exportCsv = () => {
-    const csv = 'ID,Date,Category,Title,Amount,Fee,Currency,Status\n' + mine.map(t => [t.id, t.createdAt, t.category, '"' + t.title.replace(/"/g, '""') + '"', t.amount, t.fee, t.currency, t.status].join(',')).join('\n')
-    downloadFile('novawallet-transactions.csv', csv, 'text/csv')
-  }
   const printReceipt = (t: Tx) => {
     const w = window.open('', '_blank'); if (!w) return
     w.document.write(`<html><head><title>Receipt ${t.id}</title><style>body{font-family:sans-serif;padding:40px;color:#111}h1{color:#6d28d9}table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px solid #eee}</style></head><body><h1>NovaWallet — Transaction Receipt</h1><table>
@@ -36,27 +32,49 @@ export function Transactions() {
   }
   return (
     <div>
-      <PageHead title="Transactions" sub="Full history with filters, receipts and CSV export." />
+      <PageHead title="Transactions" sub="Full history with filters and PDF receipts." />
       <div className="relative mb-3">
         <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by transaction ID or title…" className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-10 pr-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-violet-500" />
       </div>
-      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3">
+      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3 -mx-4 px-4">
         {CATS.map(c => <button key={c} onClick={() => setCat(c)} className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold capitalize ${cat === c ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}>{catLabel(c)}</button>)}
       </div>
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <select value={status} onChange={e => setStatus(e.target.value)} className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm"><option value="all">All status</option>{['pending', 'processing', 'completed', 'approved', 'rejected'].map(s => <option key={s}>{s}</option>)}</select>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
-      </div>
-      <Btn variant="ghost" className="mb-4" onClick={exportCsv}><Download size={16} /> Export CSV ({mine.length})</Btn>
+      <Card className="p-4 mb-4 space-y-3">
+        <label className="block">
+          <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Status</span>
+          <select value={status} onChange={e => setStatus(e.target.value)} className="w-full min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500"><option value="all">All status</option>{['pending', 'processing', 'completed', 'approved', 'rejected'].map(s2 => <option key={s2}>{s2}</option>)}</select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block min-w-0">
+            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">From</span>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500" />
+          </label>
+          <label className="block min-w-0">
+            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">To</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500" />
+          </label>
+        </div>
+        {(cat !== 'all' || status !== 'all' || from || to || q) && (
+          <button onClick={() => { setCat('all'); setStatus('all'); setFrom(''); setTo(''); setQ('') }} className="inline-flex items-center gap-1 text-xs font-bold text-rose-500"><X size={13} /> Clear all filters</button>
+        )}
+      </Card>
+      <p className="text-xs font-semibold text-slate-400 mb-3">{mine.length} transaction{mine.length === 1 ? '' : 's'} found</p>
       {mine.length === 0 ? <Card><Empty title="No transactions match" body="Try clearing the filters." /></Card> : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {mine.map(t => (
             <button key={t.id} onClick={() => setSel(t)} className="w-full text-left">
-              <Card className="p-4 flex items-center gap-3 hover:border-violet-300 transition">
-                <div className="flex-1 min-w-0"><p className="font-bold truncate">{t.title}</p><p className="text-xs text-slate-400">{t.id} · {fmtDateTime(t.createdAt)} · <span className="capitalize">{catLabel(t.category)}</span></p></div>
-                <div className="text-right"><p className="font-extrabold">{fmtBDT(t.amount)}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge></div>
+              <Card className="p-4 hover:border-violet-300 transition">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold truncate">{t.title}</p>
+                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                      <span>{fmtDateTime(t.createdAt)}</span>·<Badge tone="slate">{catLabel(t.category)}</Badge>
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-mono mt-1 truncate">{t.id}</p>
+                  </div>
+                  <div className="text-right shrink-0"><p className="font-extrabold">{fmtBDT(t.amount)}</p><div className="mt-1"><Badge tone={statusTone(t.status)}>{t.status}</Badge></div></div>
+                </div>
               </Card>
             </button>
           ))}
