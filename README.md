@@ -34,7 +34,7 @@ Other seeded users (arif, nusrat, tanvir, priya, karim) use password `123456` / 
 - **Transactions** — search by ID, category / status / date filters, detail view, PDF receipt (print)
 - **News** — featured + category filters, search, detail pages with source attribution, admin-managed publishing
 - **Account Levels (1–4)** — Basic / Silver / Gold / Platinum with admin-managed limits, loan caps and fee discounts; users request the next level with the **Upgrade** button (Profile + Home balance card), admins approve/reject and can set levels directly in the Admin **Levels** tab
-- **Profile** — edit profile, change password & PIN, 2FA toggle, KYC submission, linked methods, notification prefs, 7-language interface (English, Español, Português, Français, हिन्दी, Русский, বাংলা) with full translations, sessions, support tickets, Terms & Privacy
+- **Profile** — edit profile, change password & PIN, 2FA toggle, KYC submission, linked methods, notification prefs, 7-language interface (English, Español, Português, Français, हिन्दी, Русский, বাংলা) with full translations, display currency selector (all ISO 4217 currencies, USD/EUR/BDT pinned, auto-detected from device timezone/locale, live-rate conversion), sessions, support tickets, Terms & Privacy
 - **Notifications** — deposits, withdrawals, transfers, referral rewards, loan updates, security & market alerts, unread counter
 - **Admin Panel** (`/admin`) — live stats & volume chart, deposit/withdrawal approvals, user management
   (suspend / activate / freeze / audited balance adjustment), KYC review, loan approvals, referral oversight,

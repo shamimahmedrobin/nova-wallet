@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Bell, FileText, Search, X } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Badge, Btn, Card, Empty, Modal, NewsLogo, statusTone } from '../components/ui'
-import { fmtBDT, fmtDate, fmtDateTime } from '../lib/utils'
+import { fmtDate, fmtDateTime } from '../lib/utils'
 import { PageHead } from './Services'
 import type { Tx } from '../lib/types'
 
@@ -11,7 +11,7 @@ const CATS = ['all', 'add_money', 'cash_out', 'send', 'receive', 'referral', 'lo
 const catLabel = (c: string) => c.replace(/_/g, ' ')
 
 export function Transactions() {
-  const { user, db, t } = useApp()
+  const { user, db, t, fmtMoney } = useApp()
   const [q, setQ] = useState(''); const [cat, setCat] = useState('all'); const [status, setStatus] = useState('all')
   const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [sel, setSel] = useState<Tx | null>(null)
   const mine = useMemo(() => db.txs.filter(t => t.userId === user?.id)
@@ -73,7 +73,7 @@ export function Transactions() {
                     </p>
                     <p className="text-[11px] text-slate-400 font-mono mt-1 truncate">{t.id}</p>
                   </div>
-                  <div className="text-right shrink-0"><p className="font-extrabold">{fmtBDT(t.amount)}</p><div className="mt-1"><Badge tone={statusTone(t.status)}>{t.status}</Badge></div></div>
+                  <div className="text-right shrink-0"><p className="font-extrabold">{fmtMoney(t.amount)}</p><div className="mt-1"><Badge tone={statusTone(t.status)}>{t.status}</Badge></div></div>
                 </div>
               </Card>
             </button>
@@ -84,7 +84,7 @@ export function Transactions() {
         {sel && (
           <div className="space-y-4">
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-2 text-sm">
-              {[['Transaction ID', sel.id], ['Title', sel.title], ['Category', catLabel(sel.category)], ['Amount', fmtBDT(sel.amount)], ['Fee', fmtBDT(sel.fee, 2)], ['Currency', sel.currency], ['Status', sel.status], ['Method', sel.method ?? '—'], ['Counterparty', sel.counterparty ?? '—'], ['Note', sel.note ?? '—'], ['Date', fmtDateTime(sel.createdAt)]].map(([k, v]) => (
+              {[['Transaction ID', sel.id], ['Title', sel.title], ['Category', catLabel(sel.category)], ['Amount', fmtMoney(sel.amount)], ['Fee', fmtMoney(sel.fee)], ['Currency', sel.currency], ['Status', sel.status], ['Method', sel.method ?? '—'], ['Counterparty', sel.counterparty ?? '—'], ['Note', sel.note ?? '—'], ['Date', fmtDateTime(sel.createdAt)]].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><span className="text-slate-500 capitalize">{k}</span><span className="font-bold text-right capitalize">{v}</span></div>
               ))}
             </div>

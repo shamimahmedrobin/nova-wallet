@@ -2,6 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { DB, Loan, NewsItem, Tx, User } from './types'
 import { DEFAULT_LEVELS, seedDB } from './seed'
 import { translate } from './i18n'
+import { detectCurrency, FALLBACK_RATES } from './currencies'
+import { fmtBDT } from './utils'
 import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
 
 const KEY = 'novawallet.db.v2'
@@ -27,6 +29,7 @@ export interface Toast { id: string; title: string; body?: string; kind: 'succes
 interface Ctx {
   db: DB; user: User | null; theme: 'light' | 'dark'; toggleTheme: () => void
   lang: string; setLanguage: (code: string) => void; t: (key: string) => string
+  currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string
   toasts: Toast[]; toast: (t: Omit<Toast, 'id'>) => void; dismissToast: (id: string) => void
   login: (idOrEmail: string, password: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
@@ -69,6 +72,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
   const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
+  const [currencyPref, setCurrencyPref] = useState<string | null>(() => localStorage.getItem('nova.currency'))
+  const [rates, setRates] = useState<Record<string, number>>(FALLBACK_RATES)
+  const detected = useMemo(() => detectCurrency(), [])
+  useEffect(() => {
+    let alive = true
+    fetch('https://open.er-api.com/v6/latest/USD').then(r => r.json()).then(j => { if (alive && j && j.rates) setRates(j.rates) }).catch(() => { /* keep fallback rates */ })
+    return () => { alive = false }
+  }, [])
   const [toasts, setToasts] = useState<Toast[]>([])
   const dbRef = useRef(db); dbRef.current = db
 
@@ -88,6 +99,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const user = useMemo(() => db.users.find(u => u.id === userId) ?? null, [db, userId])
   const lang = user?.language || langPref
   const t = useCallback((key: string) => translate(lang, key), [lang])
+  const currency = user?.currency || currencyPref || detected.code
+  const currencyIsAuto = !user?.currency && !currencyPref
+  const setCurrency = useCallback((code: string | null) => {
+    setCurrencyPref(code); try { code ? localStorage.setItem('nova.currency', code) : localStorage.removeItem('nova.currency') } catch { /* ignore */ }
+    setDb(d => userId ? { ...d, users: d.users.map(u => u.id === userId ? { ...u, currency: code ?? undefined } : u) } : d)
+  }, [userId])
+  const fmtMoney = useCallback((bdt: number) => {
+    if (currency === 'BDT') return fmtBDT(bdt)
+    const rate = rates[currency]
+    if (!rate) return fmtBDT(bdt)
+    const value = (bdt / dbRef.current.settings.bdtPerUsd) * rate
+    try {
+      return new Intl.NumberFormat(lang === 'en' ? 'en-US' : lang, { style: 'currency', currency }).format(value)
+    } catch { return currency + ' ' + value.toLocaleString('en-US', { maximumFractionDigits: 2 }) }
+  }, [currency, rates, lang])
   const setLanguage = useCallback((code: string) => {
     setLangPref(code); try { localStorage.setItem('nova.lang', code) } catch { /* ignore */ }
     setDb(d => userId ? { ...d, users: d.users.map(u => u.id === userId ? { ...u, language: code } : u) } : d)
@@ -370,7 +396,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
-    lang, setLanguage, t,
+    lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

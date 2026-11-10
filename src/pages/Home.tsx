@@ -17,7 +17,7 @@ const ACTIONS_RAW = [
   { to: '/app/market?mode=sell', labelKey: 'act_sell', icon: ShoppingCart, g: 'from-fuchsia-500 to-purple-700' },
 ]
 export default function Home() {
-  const { user, db, walletOf, t } = useApp()
+  const { user, db, walletOf, t, fmtMoney, currency } = useApp()
   const navigate = useNavigate()
   const { coins, loading, isLive } = useMarket()
   const [hide, setHide] = useState(false)
@@ -36,7 +36,7 @@ export default function Home() {
   const myTxs = db.txs.filter(t => t.userId === user.id).slice(0, 5)
   const myRefs = db.users.filter(u => u.referredBy === user.id)
   const refEarned = db.referralEarnings.filter(r => r.userId === user.id).reduce((s, r) => s + r.amount, 0)
-  const money = (n: number) => hide ? '••••••' : fmtBDT(n)
+  const money = (n: number) => hide ? '••••••' : fmtMoney(n)
   const ACTIONS = ACTIONS_RAW.map(a => ({ ...a, label: t(a.labelKey) }))
 
   return (
@@ -51,7 +51,9 @@ export default function Home() {
             <button onClick={() => setHide(h => !h)} className="p-2 rounded-full bg-white/15">{hide ? <EyeOff size={16} /> : <Eye size={16} />}</button>
           </div>
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{money(total)}</p>
-          <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSD(total / db.settings.bdtPerUsd)} USD</p>
+          {currency === 'BDT'
+            ? <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSD(total / db.settings.bdtPerUsd)} USD</p>
+            : <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtBDT(total)} BDT</p>}
           <div className="grid grid-cols-3 gap-3 mt-5">
             {[{ l: t('available'), v: w.available, lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
               <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5">
@@ -119,7 +121,7 @@ export default function Home() {
       <div className="grid sm:grid-cols-2 gap-4">
         <Card className="p-5">
           <div className="flex justify-between items-center mb-2"><h3 className="font-extrabold">{t('referral_earnings')}</h3><Link to="/app/referral" className="text-violet-600"><ChevronRight /></Link></div>
-          <p className="text-3xl font-extrabold text-violet-600">{fmtBDT(refEarned)}</p>
+          <p className="text-3xl font-extrabold text-violet-600">{fmtMoney(refEarned)}</p>
           <p className="text-sm text-slate-500 mt-1">{myRefs.length} {t('friends_joined')} · {db.settings.referralPct}% {t('commission_rate')}</p>
         </Card>
         <Card className="p-5">
@@ -137,7 +139,7 @@ export default function Home() {
         {myTxs.length === 0 ? <p className="text-sm text-slate-500 py-4 text-center">{t('no_transactions_yet')}</p> : myTxs.map(t => (
           <div key={t.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
             <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate">{t.title}</p><p className="text-[11px] text-slate-400">{t.id} · {new Date(t.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p></div>
-            <div className="text-right"><p className="font-bold text-sm">{fmtBDT(t.amount)}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge></div>
+            <div className="text-right"><p className="font-bold text-sm">{fmtMoney(t.amount)}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge></div>
           </div>
         ))}
       </Card>

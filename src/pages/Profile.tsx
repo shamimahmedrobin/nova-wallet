@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, ChevronRight, FileText, Globe, HelpCircle, KeyRound, LogOut, Moon, ShieldCheck, Smartphone, Sun, UserRound } from 'lucide-react'
+import { Bell, ChevronRight, Coins, FileText, Globe, HelpCircle, KeyRound, LogOut, Moon, ShieldCheck, Smartphone, Sun, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
 import { fmtBDT } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
+import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
 
 export default function Profile() {
-  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage } = useApp()
+  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [modal, setModal] = useState<string | null>(null)
@@ -16,12 +17,13 @@ export default function Profile() {
   const [pin, setPin] = useState({ old: '', next: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [notifPrefs, setNotifPrefs] = useState({ tx: true, market: true, promo: false })
+  const [curQ, setCurQ] = useState('')
   if (!user) return null
   const w = walletOf(user.id)
   const rows: [string, string, any][] = [
     ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['p_pin', 'pin', <KeyRound size={18} />],
     ['p_2fa', '2fa', <Smartphone size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <FileText size={18} />],
-    ['p_notif', 'notif', <Bell size={18} />], ['p_language', 'lang', <Globe size={18} />], ['p_support', 'support', <HelpCircle size={18} />],
+    ['p_notif', 'notif', <Bell size={18} />], ['p_language', 'lang', <Globe size={18} />], ['p_currency', 'currency', <Coins size={18} />], ['p_support', 'support', <HelpCircle size={18} />],
     ['p_sessions', 'sessions', <Smartphone size={18} />], ['p_terms', 'terms', <FileText size={18} />],
   ]
   return (
@@ -34,7 +36,7 @@ export default function Profile() {
         <div className="flex gap-2 justify-center mt-3">
           <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? '✅ ' + t('verified') : t('non_kyc')}</Badge>
           <Badge tone={user.status === 'active' ? 'green' : 'red'}>{user.status}</Badge>
-          <Badge tone="violet">{fmtBDT(w.available + w.locked)} {t('wallet')}</Badge>
+          <Badge tone="violet">{fmtMoney(w.available + w.locked)} {t('wallet')}</Badge>
         </div>
       </Card>
 
@@ -71,6 +73,7 @@ export default function Profile() {
             {id === '2fa' && <Badge tone={user.twoFA ? 'green' : 'slate'}>{user.twoFA ? t('on') : t('off')}</Badge>}
             {id === 'kyc' && <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? t('verified') : t('non_kyc')}</Badge>}
             {id === 'lang' && <span className="ml-auto text-sm text-slate-400">{LANGUAGES.find(l => l.code === lang)?.native ?? 'English'}</span>}
+            {id === 'currency' && <span className="ml-auto text-sm text-slate-400">{currency}{currencyIsAuto ? ' · Auto' : ''}</span>}
             <ChevronRight size={17} className="ml-auto text-slate-300" />
           </button>
         ))}
@@ -188,6 +191,29 @@ export default function Profile() {
               {lang === l.code && <Badge tone="violet">{t('current')}</Badge>}
             </button>
           ))}
+        </div>
+        <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
+      </Modal>
+      <Modal open={modal === 'currency'} onClose={() => setModal(null)} title={t('p_currency')}>
+        <ModalDesc>{t('currency_choose')}</ModalDesc>
+        <div className="space-y-2.5 max-h-[52vh] overflow-y-auto pr-0.5">
+          <button onClick={() => { setCurrency(null); toast({ kind: 'success', title: t('currency_auto') + ': ' + detectedCurrency }) }}
+            className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-3.5 text-left ${currencyIsAuto ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>
+            <span className="flex-1"><span className="block font-bold">{t('currency_auto')}</span><span className="text-xs text-slate-500">{t('currency_detected')}: {detectedCurrency} · {currencyName(detectedCurrency)}</span></span>
+            {currencyIsAuto && <Badge tone="violet">{t('current')}</Badge>}
+          </button>
+          <Input placeholder={t('search_currency')} value={curQ} onChange={e => setCurQ(e.target.value)} />
+          {[...CURRENCIES.filter(c => PINNED.includes(c.code)), ...CURRENCIES.filter(c => !PINNED.includes(c.code))]
+            .filter(c => (c.code + ' ' + c.name).toLowerCase().includes(curQ.trim().toLowerCase()))
+            .map(c => (
+              <button key={c.code} onClick={() => { setCurrency(c.code); toast({ kind: 'success', title: t('p_currency') + ': ' + c.code }) }}
+                className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left ${!currencyIsAuto && currency === c.code ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>
+                <span className="font-extrabold w-12 shrink-0">{c.code}</span>
+                <span className="flex-1 text-sm font-semibold text-slate-600 dark:text-slate-300">{c.name}</span>
+                {PINNED.includes(c.code) && <span className="text-amber-500 text-xs">★</span>}
+                {!currencyIsAuto && currency === c.code && <Badge tone="violet">{t('current')}</Badge>}
+              </button>
+            ))}
         </div>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
