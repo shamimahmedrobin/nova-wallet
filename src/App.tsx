@@ -48,7 +48,7 @@ function Root() {
 function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { user } = useApp()
   if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/home'} replace />
-  return <Auth initialMode={mode} />
+  return <Auth key={mode} initialMode={mode} />
 }
 export default function App() {
   return (

@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Moon, ScanFace, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, Moon, ScanFace, Send, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
 import { fileToScaledDataUrl, fmtBDT, fmtDateTime } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
 import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
 
+// Support contact channels (placeholder handles — replace with the real ones any time)
+const SUPPORT_CHANNELS = [
+  { label: 'WhatsApp', href: 'https://wa.me/8801712345678', icon: MessageCircle, cls: 'bg-emerald-500' },
+  { label: 'Telegram', href: 'https://t.me/novawallet', icon: Send, cls: 'bg-sky-500' },
+  { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
+]
 export default function Profile() {
   const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
@@ -119,6 +125,13 @@ export default function Profile() {
           </div>
         </div>
         <Btn className="w-full mt-4 py-3.5" onClick={() => setModal('support')}>{t('help_create_ticket')}</Btn>
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          {SUPPORT_CHANNELS.map(c => (
+            <a key={c.label} href={c.href} target="_blank" rel="noreferrer" className="flex flex-col items-center gap-1.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 py-3 font-bold text-xs text-slate-600 dark:text-slate-300">
+              <span className={`w-9 h-9 rounded-full ${c.cls} text-white flex items-center justify-center`}><c.icon size={17} /></span>{c.label}
+            </a>
+          ))}
+        </div>
         {db.tickets.filter(x => x.userId === user.id && x.status === 'open').length > 0 && <p className="text-center text-xs font-semibold text-amber-600 mt-2.5">⏳ {db.tickets.filter(x => x.userId === user.id && x.status === 'open').length} open ticket(s)</p>}
       </Card>
 
@@ -299,7 +312,14 @@ export default function Profile() {
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'support'} onClose={() => setModal(null)} title={t('p_support')}>
-        <ModalDesc>Send a message to our support team. Open tickets: {db.tickets.filter(t => t.userId === user.id && t.status === 'open').length} · support@novawallet.app</ModalDesc>
+        <ModalDesc>Send a message to our support team, or reach us instantly on any channel below. Open tickets: {db.tickets.filter(t => t.userId === user.id && t.status === 'open').length}</ModalDesc>
+        <div className="space-y-2.5 mb-4">
+          {SUPPORT_CHANNELS.map(c => (
+            <a key={c.label} href={c.href} target="_blank" rel="noreferrer" className="block">
+              <ModalRow><span className="flex items-center gap-3"><span className={`w-9 h-9 rounded-full ${c.cls} text-white flex items-center justify-center`}><c.icon size={17} /></span><span className="font-bold text-sm">{c.label}</span><ChevronRight size={16} className="ml-auto text-slate-300" /></span></ModalRow>
+            </a>
+          ))}
+        </div>
         <div className="space-y-4">
           <Input label="Subject" value={ticket.subject} onChange={e => setTicket(t => ({ ...t, subject: e.target.value }))} />
           <Input label="Message" value={ticket.message} onChange={e => setTicket(t => ({ ...t, message: e.target.value }))} />
