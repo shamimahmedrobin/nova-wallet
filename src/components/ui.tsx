@@ -55,9 +55,9 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
   }, [open ])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="anim-pop relative w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-white dark:bg-slate-900 p-5 shadow-2xl">
+      <div className="anim-pop relative w-full sm:max-w-md max-h-[88vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h3>
           <button onClick={onClose} className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500"><X size={18} /></button>
