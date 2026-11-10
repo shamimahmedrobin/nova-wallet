@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, ChevronRight, Coins, FileText, Globe, HelpCircle, KeyRound, LogOut, Moon, ShieldCheck, Smartphone, Sun, UserRound } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Moon, ScanFace, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
-import { fmtBDT } from '../lib/utils'
+import { fileToScaledDataUrl, fmtBDT, fmtDateTime } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
 import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
 
@@ -18,6 +18,36 @@ export default function Profile() {
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [notifPrefs, setNotifPrefs] = useState({ tx: true, market: true, promo: false })
   const [curQ, setCurQ] = useState('')
+  const [kycStep, setKycStep] = useState(1)
+  const [kycDocType, setKycDocType] = useState('nid')
+  const [kycDocNumber, setKycDocNumber] = useState('')
+  const [kycDocPhoto, setKycDocPhoto] = useState('')
+  const [kycFacePhoto, setKycFacePhoto] = useState('')
+  const [camOn, setCamOn] = useState(false)
+  const [camErr, setCamErr] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const stopCam = () => { streamRef.current?.getTracks().forEach(tr => tr.stop()); streamRef.current = null; setCamOn(false) }
+  const startCam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      streamRef.current = stream; setCamOn(true); setCamErr(false)
+      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream }, 60)
+    } catch { setCamErr(true) }
+  }
+  const captureFace = () => {
+    const v = videoRef.current; if (!v) return
+    const canvas = document.createElement('canvas')
+    const scale = Math.min(1, 360 / v.videoWidth)
+    canvas.width = Math.round(v.videoWidth * scale); canvas.height = Math.round(v.videoHeight * scale)
+    const ctx = canvas.getContext('2d')!; ctx.translate(canvas.width, 0); ctx.scale(-1, 1); ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+    setKycFacePhoto(canvas.toDataURL('image/jpeg', 0.75)); stopCam()
+  }
+  useEffect(() => {
+    if (modal === 'kyc') { setKycStep(1); setKycDocType(user?.kycDocType ?? 'nid'); setKycDocNumber(user?.kycDocNumber ?? ''); setKycDocPhoto(user?.kycDocPhoto ?? ''); setKycFacePhoto(user?.kycFacePhoto ?? ''); setCamErr(false) }
+    if (modal !== 'kyc') stopCam()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal])
   if (!user) return null
   const w = walletOf(user.id)
   const rows: [string, string, any][] = [
@@ -73,10 +103,23 @@ export default function Profile() {
             {id === '2fa' && <Badge tone={user.twoFA ? 'green' : 'slate'}>{user.twoFA ? t('on') : t('off')}</Badge>}
             {id === 'kyc' && <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? t('verified') : t('non_kyc')}</Badge>}
             {id === 'lang' && <span className="ml-auto text-sm text-slate-400">{LANGUAGES.find(l => l.code === lang)?.native ?? 'English'}</span>}
-            {id === 'currency' && <span className="ml-auto text-sm text-slate-400">{currency}{currencyIsAuto ? ' · Auto' : ''}</span>}
+            {id === 'currency' && <span className="ml-auto text-lg font-extrabold text-violet-600">{currency}{currencyIsAuto ? <span className="text-[10px] font-bold text-slate-400 align-middle"> · AUTO</span> : ''}</span>}
             <ChevronRight size={17} className="ml-auto text-slate-300" />
           </button>
         ))}
+      </Card>
+
+      <Card className="p-5 mt-4">
+        <div className="flex items-center gap-3">
+          <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shrink-0"><HelpCircle size={20} /></span>
+          <div className="flex-1 min-w-0">
+            <p className="font-extrabold">{t('p_support')}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{t('help_card_desc')}</p>
+            <p className="text-xs font-bold text-violet-600 mt-1">support@novawallet.app</p>
+          </div>
+        </div>
+        <Btn className="w-full mt-4 py-3.5" onClick={() => setModal('support')}>{t('help_create_ticket')}</Btn>
+        {db.tickets.filter(x => x.userId === user.id && x.status === 'open').length > 0 && <p className="text-center text-xs font-semibold text-amber-600 mt-2.5">⏳ {db.tickets.filter(x => x.userId === user.id && x.status === 'open').length} open ticket(s)</p>}
       </Card>
 
       {user.role === 'admin' && <Btn className="w-full mt-4" onClick={() => navigate('/admin')}>{t('open_admin')}</Btn>}
@@ -102,7 +145,13 @@ export default function Profile() {
                   <span>Loan limit: <b>{fmtBDT(l.loanLimit)}</b></span><span>Fee discount: <b>{l.feeDiscountPct}%</b></span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-2">Requirement: {l.requirement}</p>
-                {isNext && <Btn className="w-full mt-3" disabled={pending} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'Upgrade requested', body: 'An admin will review your request.' }) } }}>{pending ? 'Request pending…' : 'Request upgrade to Level ' + l.level}</Btn>}
+                {isNext && l.level === 2 && user.kyc === 'unverified' && (
+                  <div className="mt-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 p-3.5">
+                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{t('kyc_need_level2')}</p>
+                    <Btn variant="outline" className="w-full mt-2.5" onClick={() => setModal('kyc')}>{t('kyc_do_now')}</Btn>
+                  </div>
+                )}
+                {isNext && !(l.level === 2 && user.kyc === 'unverified') && <Btn className="w-full mt-3" disabled={pending} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'Upgrade requested', body: 'An admin will review your request.' }) } }}>{pending ? 'Request pending…' : 'Request upgrade to Level ' + l.level}</Btn>}
               </div>
             )
           })}
@@ -134,12 +183,94 @@ export default function Profile() {
         </div>
       </Modal>
       <Modal open={modal === 'kyc'} onClose={() => setModal(null)} title={t('p_kyc')}>
-        <ModalDesc>Submit your NID / passport for admin review. Verified KYC unlocks loans and higher limits.</ModalDesc>
-        <div className="space-y-4">
-          <ModalRow><span className="text-sm font-semibold">{t('status')}</span><span className="float-right"><Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? t('verified') : t('non_kyc')}</Badge></span>{user.kyc === 'pending' && <p className="text-xs text-amber-600 font-semibold mt-1.5">Your documents are under admin review.</p>}</ModalRow>
-          <Input label="NID / Passport number" placeholder="e.g. 1234567890" />
-        </div>
-        <ModalActions><Btn className="w-full py-3.5" disabled={user.kyc !== 'unverified'} onClick={() => { submitKyc(); setModal(null); toast({ kind: 'success', title: 'KYC submitted', body: 'An admin will review your documents.' }) }}>{user.kyc === 'verified' ? 'Already verified' : user.kyc === 'pending' ? 'Under review…' : 'Submit for verification'}</Btn></ModalActions>
+        {user.kyc === 'verified' ? (
+          <>
+            <ModalDesc>{t('kyc_pending_note')}</ModalDesc>
+            <ModalRow><span className="text-sm font-semibold">{t('status')}</span><span className="float-right"><Badge tone="green">{t('verified')}</Badge></span>
+              {user.kycDocNumber && <p className="text-xs text-slate-500 mt-1.5">{user.kycDocType === 'passport' ? t('kyc_passport') : user.kycDocType === 'driving' ? t('kyc_driving') : t('kyc_nid')} · {user.kycDocNumber}</p>}</ModalRow>
+            <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
+          </>
+        ) : user.kyc === 'pending' ? (
+          <>
+            <ModalDesc>{t('kyc_pending_note')}</ModalDesc>
+            <ModalRow><span className="text-sm font-semibold">{t('status')}</span><span className="float-right"><Badge tone="amber">Pending</Badge></span>
+              {user.kycDocNumber && <p className="text-xs text-slate-500 mt-1.5">{user.kycDocType === 'passport' ? t('kyc_passport') : user.kycDocType === 'driving' ? t('kyc_driving') : t('kyc_nid')} · {user.kycDocNumber}{user.kycSubmittedAt ? ' · ' + fmtDateTime(user.kycSubmittedAt) : ''}</p>}
+              {(user.kycDocPhoto || user.kycFacePhoto) && <span className="flex gap-2 mt-2">{user.kycDocPhoto && <img src={user.kycDocPhoto} alt="document" className="h-16 w-24 object-cover rounded-xl" />}{user.kycFacePhoto && <img src={user.kycFacePhoto} alt="face" className="h-16 w-16 object-cover rounded-xl" />}</span>}</ModalRow>
+            <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 mb-4">
+              {[1, 2, 3].map(n => <span key={n} className={`flex-1 h-1.5 rounded-full ${kycStep >= n ? 'bg-violet-600' : 'bg-slate-200 dark:bg-slate-700'}`} />)}
+            </div>
+            <p className="text-xs font-bold text-slate-400 mb-3">{t('kyc_step')} {kycStep} / 3 · {kycStep === 1 ? t('kyc_doc_type') : kycStep === 2 ? t('kyc_face_scan') : t('kyc_submit_approval')}</p>
+            {kycStep === 1 && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-2">
+                  {([['nid', t('kyc_nid'), CreditCard], ['passport', t('kyc_passport'), Globe], ['driving', t('kyc_driving'), Car]] as const).map(([code, label, Icon]) => (
+                    <button key={code} onClick={() => setKycDocType(code)} className={`rounded-2xl border-2 px-2 py-3.5 flex flex-col items-center gap-1.5 text-center ${kycDocType === code ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>
+                      <Icon size={20} className="text-violet-600" /><span className="text-[11px] font-bold leading-tight">{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <Input label={t('kyc_doc_number')} placeholder="e.g. 1234567890" value={kycDocNumber} onChange={e => setKycDocNumber(e.target.value)} />
+                <div>
+                  <p className="text-sm font-semibold mb-1.5">{t('kyc_doc_photo')}</p>
+                  {kycDocPhoto ? (
+                    <div className="relative"><img src={kycDocPhoto} alt="document" className="w-full h-40 object-cover rounded-2xl" />
+                      <button onClick={() => setKycDocPhoto('')} className="absolute bottom-2 right-2 px-3 py-1.5 rounded-full bg-slate-900/80 text-white text-xs font-bold">{t('kyc_retake')}</button></div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 py-6 cursor-pointer font-bold text-sm text-violet-600">
+                      <Upload size={18} /> {t('kyc_upload_photo')}
+                      <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setKycDocPhoto(await fileToScaledDataUrl(f)) }} />
+                    </label>
+                  )}
+                </div>
+                <Btn className="w-full py-3.5" disabled={kycDocNumber.trim().length < 5 || !kycDocPhoto} onClick={() => setKycStep(2)}>{t('kyc_next')}</Btn>
+              </div>
+            )}
+            {kycStep === 2 && (
+              <div className="space-y-4">
+                <ModalDesc>{t('kyc_face_desc')}</ModalDesc>
+                {kycFacePhoto ? (
+                  <div className="relative"><img src={kycFacePhoto} alt="face" className="w-full h-56 object-cover rounded-2xl" />
+                    <button onClick={() => setKycFacePhoto('')} className="absolute bottom-2 right-2 px-3 py-1.5 rounded-full bg-slate-900/80 text-white text-xs font-bold">{t('kyc_retake')}</button></div>
+                ) : camOn ? (
+                  <div className="space-y-3">
+                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-56 object-cover rounded-2xl bg-slate-900 -scale-x-100" />
+                    <Btn className="w-full py-3.5" onClick={captureFace}><Camera size={17} /> {t('kyc_capture')}</Btn>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <button onClick={startCam} className="w-full rounded-2xl bg-gradient-to-br from-violet-600 to-cyan-500 text-white py-6 font-extrabold flex items-center justify-center gap-2"><ScanFace size={22} /> {t('kyc_open_camera')}</button>
+                    {camErr && <p className="text-xs font-semibold text-amber-600">{t('camera_fallback')}</p>}
+                    <label className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 py-4 cursor-pointer font-bold text-sm text-violet-600">
+                      <Upload size={17} /> {t('kyc_upload_photo')}
+                      <input type="file" accept="image/*" capture="user" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setKycFacePhoto(await fileToScaledDataUrl(f, 480)) }} />
+                    </label>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Btn variant="ghost" className="flex-1 py-3.5" onClick={() => { stopCam(); setKycStep(1) }}>{t('kyc_back')}</Btn>
+                  <Btn className="flex-1 py-3.5" disabled={!kycFacePhoto} onClick={() => setKycStep(3)}>{t('kyc_next')}</Btn>
+                </div>
+              </div>
+            )}
+            {kycStep === 3 && (
+              <div className="space-y-4">
+                <ModalRow>
+                  <span className="flex justify-between text-sm"><span className="text-slate-500">{t('kyc_doc_type')}</span><b>{kycDocType === 'passport' ? t('kyc_passport') : kycDocType === 'driving' ? t('kyc_driving') : t('kyc_nid')}</b></span>
+                  <span className="flex justify-between text-sm mt-1.5"><span className="text-slate-500">{t('kyc_doc_number')}</span><b className="font-mono">{kycDocNumber}</b></span>
+                  <span className="flex gap-2 mt-3"><img src={kycDocPhoto} alt="document" className="h-16 w-24 object-cover rounded-xl" /><img src={kycFacePhoto} alt="face" className="h-16 w-16 object-cover rounded-xl" /></span>
+                </ModalRow>
+                <div className="flex gap-2">
+                  <Btn variant="ghost" className="flex-1 py-3.5" onClick={() => setKycStep(2)}>{t('kyc_back')}</Btn>
+                  <Btn className="flex-1 py-3.5" onClick={() => { submitKyc({ docType: kycDocType, docNumber: kycDocNumber.trim(), docPhoto: kycDocPhoto, facePhoto: kycFacePhoto }); setModal(null); toast({ kind: 'success', title: 'KYC submitted', body: 'Your documents are now pending admin approval.' }) }}>{t('kyc_submit_approval')}</Btn>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </Modal>
       <Modal open={modal === 'methods'} onClose={() => setModal(null)} title={t('p_methods')}>
         <ModalDesc>These are used as defaults for Add Money and Cash Out.</ModalDesc>
@@ -195,6 +326,10 @@ export default function Profile() {
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'currency'} onClose={() => setModal(null)} title={t('p_currency')}>
+        <div className="rounded-3xl bg-gradient-to-br from-violet-700 via-purple-700 to-indigo-800 text-white p-5 mb-4 text-center">
+          <p className="text-4xl font-extrabold tracking-wide">{currency}</p>
+          <p className="text-white/75 text-sm font-semibold mt-1">{currencyName(currency)}{currencyIsAuto ? ' · ' + t('currency_auto') : ''}</p>
+        </div>
         <ModalDesc>{t('currency_choose')}</ModalDesc>
         <div className="space-y-2.5 max-h-[52vh] overflow-y-auto pr-0.5">
           <button onClick={() => { setCurrency(null); toast({ kind: 'success', title: t('currency_auto') + ': ' + detectedCurrency }) }}

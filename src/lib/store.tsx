@@ -45,7 +45,7 @@ interface Ctx {
   applyLoan: (amount: number, months: number) => void
   decideLoan: (id: string, ok: boolean) => void
   repayLoan: (loan: Loan, amount: number) => string | null
-  submitKyc: () => void; decideKyc: (userId: string, ok: boolean) => void
+  submitKyc: (p: { docType: string; docNumber: string; docPhoto?: string; facePhoto?: string }) => void; decideKyc: (userId: string, ok: boolean) => void
   setUserStatus: (userId: string, status: User['status']) => void
   adjustBalance: (userId: string, amount: number, reason: string) => void
   updateProfile: (p: Partial<User>) => void
@@ -313,7 +313,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
     return null
   }
-  const submitKyc = () => { if (user) mutate(d => { d.users.find(u => u.id === user.id)!.kyc = 'pending' }) }
+  const submitKyc: Ctx['submitKyc'] = (p) => {
+    if (!user) return
+    mutate(d => {
+      const u = d.users.find(x => x.id === user.id)! 
+      u.kyc = 'pending'; u.kycDocType = p.docType; u.kycDocNumber = p.docNumber
+      if (p.docPhoto) u.kycDocPhoto = p.docPhoto
+      if (p.facePhoto) u.kycFacePhoto = p.facePhoto
+      u.kycSubmittedAt = nowISO()
+      notify(d, user.id, 'KYC submitted', 'Your documents and face scan were submitted for admin approval.', 'security')
+    })
+  }
   const decideKyc: Ctx['decideKyc'] = (userId2, ok) => mutate(d => {
     const u = d.users.find(x => x.id === userId2); if (!u) return
     u.kyc = ok ? 'verified' : 'unverified'
@@ -365,6 +375,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const requestUpgrade: Ctx['requestUpgrade'] = (toLevel) => {
     if (!user) return 'Not signed in'
+    if (toLevel === 2 && user.kyc === 'unverified') return 'KYC required: submit your ID first (Profile → KYC verification).'
     if (toLevel !== user.level + 1) return 'You can only request the next level.'
     if (toLevel > 4) return 'You are already at the highest level.'
     if (dbRef.current.levelRequests.some(r => r.userId === user.id && r.status === 'pending')) return 'You already have a pending upgrade request.'

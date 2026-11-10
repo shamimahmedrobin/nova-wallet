@@ -52,3 +52,21 @@ export const gradientFor = (seed: string) => {
   return AVATAR_GRADIENTS[h % AVATAR_GRADIENTS.length]
 }
 export const initials = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+
+/** Read an image file and downscale it to a compact JPEG data URL (for KYC photos stored locally). */
+export function fileToScaledDataUrl(file: File, maxW = 720): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/jpeg', 0.72))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}

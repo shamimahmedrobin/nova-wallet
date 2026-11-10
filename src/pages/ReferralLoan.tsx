@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Copy, Share2, Trophy } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Select } from '../components/ui'
@@ -73,6 +74,7 @@ export function Referral() {
 
 export function LoanPage() {
   const { user, db, applyLoan, repayLoan, toast, t } = useApp()
+  const navigate = useNavigate()
   const [amount, setAmount] = useState('30000'); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
   if (!user) return null
   const s = db.settings
@@ -81,9 +83,9 @@ export function LoanPage() {
   const myLoans = db.loans.filter(l => l.userId === user.id)
   const active = myLoans.find(l => l.status === 'active')
   const outstanding = active ? active.totalPayable - active.paid : 0
-  const eligible = user.kyc === 'verified' && user.status === 'active'
+  const eligible = user.kyc !== 'unverified' && user.status === 'active'
   const submit = () => {
-    if (!eligible) return toast({ kind: 'error', title: 'Complete KYC verification first' })
+    if (!eligible) return toast({ kind: 'error', title: t('kyc_need_loan') })
     if (amt < s.minLoan || amt > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtBDT(s.minLoan)} and ${fmtBDT(s.maxLoan)}` })
     applyLoan(amt, mo); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review it. Loans are never auto-approved.' })
   }
@@ -93,7 +95,7 @@ export function LoanPage() {
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtBDT(s.loanLimit)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Outstanding</p><p className="font-extrabold mt-1 text-rose-500">{fmtBDT(outstanding)}</p></Card>
-        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Eligibility</p><p className="font-extrabold mt-1">{eligible ? '✅ Eligible' : '⚠️ KYC needed'}</p></Card>
+        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Eligibility</p><p className="font-extrabold mt-1">{eligible ? '✅ Eligible' : '⚠️ ' + t('p_kyc')}</p></Card>
       </div>
       {active && (
         <Card className="p-5 mb-4 border-l-4 !border-l-violet-500">
@@ -104,6 +106,12 @@ export function LoanPage() {
             <Input type="number" placeholder="Repayment amount" value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} />
             <Btn onClick={() => { const err = repayLoan(active, Number(repayAmt[active.id])); if (err) toast({ kind: 'error', title: err }); else toast({ kind: 'success', title: 'Repayment recorded' }) }}>Repay</Btn>
           </div>
+        </Card>
+      )}
+      {user.kyc === 'unverified' && (
+        <Card className="p-4 mb-4 border-l-4 !border-l-amber-500">
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">{t('kyc_need_loan')}</p>
+          <Btn variant="outline" className="w-full mt-3" onClick={() => navigate('/app/profile')}>{t('kyc_do_now')}</Btn>
         </Card>
       )}
       <Card className="p-5 space-y-4">

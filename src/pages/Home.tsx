@@ -50,10 +50,10 @@ export default function Home() {
             <p className="text-xs font-semibold uppercase tracking-widest text-white/70 flex items-center gap-1.5"><Wallet size={13} /> {t('total_balance')}</p>
             <button onClick={() => setHide(h => !h)} className="p-2 rounded-full bg-white/15">{hide ? <EyeOff size={16} /> : <Eye size={16} />}</button>
           </div>
-          <p className="mt-1 text-4xl font-extrabold tracking-tight">{money(total)}</p>
-          {currency === 'BDT'
-            ? <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSD(total / db.settings.bdtPerUsd)} USD</p>
-            : <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtBDT(total)} BDT</p>}
+          <p className="mt-1 text-4xl font-extrabold tracking-tight">{money(total)} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
+          {currency === 'USD'
+            ? <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtBDT(total)} BDT</p>
+            : <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSD(total / db.settings.bdtPerUsd)} USD</p>}
           <div className="grid grid-cols-3 gap-3 mt-5">
             {[{ l: t('available'), v: w.available, lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
               <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5">

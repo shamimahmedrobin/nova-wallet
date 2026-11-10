@@ -139,6 +139,15 @@ export default function Admin() {
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {fmtBDT((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
                       <Badge tone={statusTone(u.kyc)}>KYC {u.kyc}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
                     </div>
+                    {u.kycDocType && (
+                      <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3">
+                        <p className="text-xs font-bold text-slate-500">📄 {u.kycDocType === 'passport' ? 'Passport' : u.kycDocType === 'driving' ? 'Driving Licence' : 'National ID'} · <span className="font-mono">{u.kycDocNumber}</span>{u.kycSubmittedAt ? ' · submitted ' + fmtDateTime(u.kycSubmittedAt) : ''}</p>
+                        <div className="flex gap-2 mt-2">
+                          {u.kycDocPhoto && <a href={u.kycDocPhoto} target="_blank" rel="noreferrer"><img src={u.kycDocPhoto} alt="KYC document" className="h-16 w-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
+                          {u.kycFacePhoto && <a href={u.kycFacePhoto} target="_blank" rel="noreferrer"><img src={u.kycFacePhoto} alt="KYC face scan" className="h-16 w-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
+                        </div>
+                      </div>
+                    )}
                     {u.role === 'user' && (
                       <div className="flex flex-wrap gap-2 mt-3">
                         {u.kyc === 'pending' && <><Btn variant="success" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, false)}>Reject KYC</Btn></>}

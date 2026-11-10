@@ -10,7 +10,7 @@ export interface User {
   id: string; name: string; username: string; email: string; phone: string
   passwordHash: string; pinHash: string; role: Role; status: UserStatus; kyc: KycStatus
   referralCode: string; referredBy: string | null; twoFA: boolean; level: number
-  language: string; currency?: string; createdAt: string; lastLogin: string
+  language: string; currency?: string; kycDocType?: string; kycDocNumber?: string; kycDocPhoto?: string; kycFacePhoto?: string; kycSubmittedAt?: string; createdAt: string; lastLogin: string
   sessions: { id: string; device: string; at: string; current: boolean }[]
 }
 export interface Wallet { userId: string; available: number; locked: number; holdings: Record<string, number> }
