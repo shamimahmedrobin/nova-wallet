@@ -3,10 +3,10 @@ import { Bell, Home, Moon, Newspaper, ShieldCheck, Sun, User as UserIcon, Wallet
 import { useApp } from '../lib/store'
 
 const NAV = [
-  { to: '/app', label: 'Home', icon: Home, end: true },
-  { to: '/app/transactions', label: 'Transactions', icon: ArrowLeftRight },
-  { to: '/app/news', label: 'News', icon: Newspaper },
-  { to: '/app/profile', label: 'Profile', icon: UserIcon },
+  { to: '/app', key: 'nav_home', icon: Home, end: true },
+  { to: '/app/transactions', key: 'nav_transactions', icon: ArrowLeftRight },
+  { to: '/app/news', key: 'nav_news', icon: Newspaper },
+  { to: '/app/profile', key: 'nav_profile', icon: UserIcon },
 ]
 export function Logo({ size = 34 }: { size?: number }) {
   return (
@@ -19,7 +19,7 @@ export function Logo({ size = 34 }: { size?: number }) {
   )
 }
 export default function Layout() {
-  const { user, db, theme, toggleTheme } = useApp()
+  const { user, db, theme, toggleTheme, t } = useApp()
   const navigate = useNavigate()
   const unread = db.notifications.filter(n => n.userId === user?.id && !n.read).length
   return (
@@ -30,17 +30,17 @@ export default function Layout() {
         <nav className="mt-8 space-y-1.5 flex-1">
           {NAV.map(n => (
             <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${isActive ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-              <n.icon size={19} /> {n.label}
+              <n.icon size={19} /> {t(n.key)}
             </NavLink>
           ))}
           {user?.role === 'admin' && (
             <NavLink to="/admin" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10">
-              <ShieldCheck size={19} /> Admin Panel
+              <ShieldCheck size={19} /> {t('admin_panel')}
             </NavLink>
           )}
         </nav>
         <button onClick={toggleTheme} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold bg-slate-100 dark:bg-slate-800">
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {theme === 'dark' ? t('light_mode') : t('dark_mode')}
         </button>
       </aside>
 
@@ -48,7 +48,7 @@ export default function Layout() {
         <header className="sticky top-0 z-30 backdrop-blur-xl bg-white/80 dark:bg-slate-950/80 border-b border-slate-200/60 dark:border-slate-800/60">
           <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
             <div className="lg:hidden"><Logo size={30} /></div>
-            <div className="hidden lg:block text-sm text-slate-500">Welcome back, <span className="font-bold text-slate-800 dark:text-slate-100">{user?.name.split(' ')[0]}</span></div>
+            <div className="hidden lg:block text-sm text-slate-500">{t('welcome_back')}, <span className="font-bold text-slate-800 dark:text-slate-100">{user?.name.split(' ')[0]}</span></div>
             <div className="flex items-center gap-2">
               <button onClick={toggleTheme} className="lg:hidden p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
               <button onClick={() => navigate('/app/notifications')} className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">
@@ -61,7 +61,7 @@ export default function Layout() {
 
         <main className="max-w-3xl mx-auto px-4 pt-5 pb-28 lg:pb-10">
           {db.settings.maintenance && user?.role !== 'admin' && (
-            <div className="mb-4 rounded-2xl bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 px-4 py-3 text-sm font-semibold">⚠️ Maintenance mode is on. Some services may be unavailable.</div>
+            <div className="mb-4 rounded-2xl bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 px-4 py-3 text-sm font-semibold">⚠️ {t('maintenance_on')}</div>
           )}
           <Outlet />
         </main>
@@ -72,7 +72,7 @@ export default function Layout() {
         <div className="grid grid-cols-4">
           {NAV.map(n => (
             <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold ${isActive ? 'text-violet-600 dark:text-violet-400' : 'text-slate-400'}`}>
-              <n.icon size={22} /> {n.label}
+              <n.icon size={22} /> {t(n.key)}
             </NavLink>
           ))}
         </div>

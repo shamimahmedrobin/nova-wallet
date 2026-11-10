@@ -9,7 +9,7 @@ import { fmtBDT, fmtUSD } from '../lib/utils'
 import { PageHead } from './Services'
 
 export default function Market() {
-  const { user, db, walletOf, buyCrypto, sellCrypto, toggleWatch, toast } = useApp()
+  const { user, db, walletOf, buyCrypto, sellCrypto, toggleWatch, toast, t } = useApp()
   const { coins, loading, isLive } = useMarket()
   const [params] = useSearchParams()
   const [q, setQ] = useState(''); const [onlyWatch, setOnlyWatch] = useState(false)
@@ -38,11 +38,11 @@ export default function Market() {
   const sellPreview = selected && mode === 'sell' && Number(amount) ? Number(amount) * selected.priceUsd * db.settings.bdtPerUsd : 0
   return (
     <div>
-      <PageHead title="Crypto Market" sub={isLive ? 'Live prices from CoinGecko · Market price ≠ guaranteed executable price' : 'Cached snapshot — live feed unreachable right now'} />
+      <PageHead title={t('market_title')} sub={isLive ? t('live_prices') : t('cached_prices')} />
       <div className="flex gap-2 mb-4">
         <div className="relative flex-1">
           <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search coins…" className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-10 pr-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-violet-500" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('search_coins')} className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-10 pr-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-violet-500" />
         </div>
         <button onClick={() => setOnlyWatch(v => !v)} className={`px-4 rounded-2xl font-bold text-sm flex items-center gap-1.5 ${onlyWatch ? 'bg-amber-500 text-white' : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700'}`}><Star size={16} /> Watchlist</button>
       </div>
@@ -81,7 +81,7 @@ export default function Market() {
           })}
         </div>
       )}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected ? `${mode === 'buy' ? 'Buy' : 'Sell'} ${selected.name}` : ''}>
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected ? `${mode === 'buy' ? t('buy') : t('sell')} ${selected.name}` : ''}>
         {selected && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">

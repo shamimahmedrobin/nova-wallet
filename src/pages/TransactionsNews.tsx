@@ -11,7 +11,7 @@ const CATS = ['all', 'add_money', 'cash_out', 'send', 'receive', 'referral', 'lo
 const catLabel = (c: string) => c.replace(/_/g, ' ')
 
 export function Transactions() {
-  const { user, db } = useApp()
+  const { user, db, t } = useApp()
   const [q, setQ] = useState(''); const [cat, setCat] = useState('all'); const [status, setStatus] = useState('all')
   const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [sel, setSel] = useState<Tx | null>(null)
   const mine = useMemo(() => db.txs.filter(t => t.userId === user?.id)
@@ -32,26 +32,26 @@ export function Transactions() {
   }
   return (
     <div>
-      <PageHead title="Transactions" sub="Full history with filters and PDF receipts." />
+      <PageHead title={t('tx_title')} sub={t('tx_sub')} />
       <div className="relative mb-3">
         <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by transaction ID or title…" className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-10 pr-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-violet-500" />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('search_tx')} className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-10 pr-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-violet-500" />
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3 -mx-4 px-4">
         {CATS.map(c => <button key={c} onClick={() => setCat(c)} className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold capitalize ${cat === c ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}>{catLabel(c)}</button>)}
       </div>
       <Card className="p-4 mb-4 space-y-3">
         <label className="block">
-          <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Status</span>
-          <select value={status} onChange={e => setStatus(e.target.value)} className="w-full min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500"><option value="all">All status</option>{['pending', 'processing', 'completed', 'approved', 'rejected'].map(s2 => <option key={s2}>{s2}</option>)}</select>
+          <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">{t('status')}</span>
+          <select value={status} onChange={e => setStatus(e.target.value)} className="w-full min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500"><option value="all">{t('all_status')}</option>{['pending', 'processing', 'completed', 'approved', 'rejected'].map(s2 => <option key={s2}>{s2}</option>)}</select>
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block min-w-0">
-            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">From</span>
+            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">{t('from')}</span>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500" />
           </label>
           <label className="block min-w-0">
-            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">To</span>
+            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">{t('to')}</span>
             <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500" />
           </label>
         </div>
@@ -59,8 +59,8 @@ export function Transactions() {
           <button onClick={() => { setCat('all'); setStatus('all'); setFrom(''); setTo(''); setQ('') }} className="inline-flex items-center gap-1 text-xs font-bold text-rose-500"><X size={13} /> Clear all filters</button>
         )}
       </Card>
-      <p className="text-xs font-semibold text-slate-400 mb-3">{mine.length} transaction{mine.length === 1 ? '' : 's'} found</p>
-      {mine.length === 0 ? <Card><Empty title="No transactions match" body="Try clearing the filters." /></Card> : (
+      <p className="text-xs font-semibold text-slate-400 mb-3">{mine.length} {t('nav_transactions').toLowerCase()} {t('found')}</p>
+      {mine.length === 0 ? <Card><Empty title={t('no_tx_match')} body={t('clear_filters')} /></Card> : (
         <div className="space-y-2.5">
           {mine.map(t => (
             <button key={t.id} onClick={() => setSel(t)} className="w-full text-left">
@@ -98,16 +98,16 @@ export function Transactions() {
 
 const NEWS_CATS = ['All', 'Bitcoin', 'Ethereum', 'Market Analysis', 'Blockchain', 'Trading']
 export function NewsList() {
-  const { db } = useApp()
+  const { db, t } = useApp()
   const [q, setQ] = useState(''); const [cat, setCat] = useState('All')
   const list = db.news.filter(n => (cat === 'All' || n.category === cat) && (n.title + n.excerpt).toLowerCase().includes(q.toLowerCase()))
   const featured = list.find(n => n.featured)
   return (
     <div>
-      <PageHead title="Crypto News" sub="Latest updates, analysis and education from the Nova desk." />
+      <PageHead title={t('news_title')} sub={t('news_sub')} />
       <div className="relative mb-3">
         <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search news…" className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-10 pr-4 py-3 outline-none focus:ring-2 focus:ring-violet-500" />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('search_news')} className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-10 pr-4 py-3 outline-none focus:ring-2 focus:ring-violet-500" />
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
         {NEWS_CATS.map(c => <button key={c} onClick={() => setCat(c)} className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold ${cat === c ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}>{c}</button>)}
@@ -157,11 +157,11 @@ export function NewsDetail() {
   )
 }
 export function Notifications() {
-  const { user, db, markAllRead, markRead } = useApp()
+  const { user, db, markAllRead, markRead, t } = useApp()
   const mine = db.notifications.filter(n => n.userId === user?.id)
   return (
     <div>
-      <div className="flex items-start justify-between"><PageHead title="Notifications" sub="Deposits, transfers, loans, security & market alerts." />
+      <div className="flex items-start justify-between"><PageHead title={t('notif_title')} sub={t('notif_sub')} />
         <Btn variant="ghost" onClick={markAllRead}>Mark all read</Btn></div>
       {mine.length === 0 ? <Card><Empty title="No notifications" body="You're all caught up." /></Card> : (
         <div className="space-y-2">

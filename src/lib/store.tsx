@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { DB, Loan, NewsItem, Tx, User } from './types'
 import { DEFAULT_LEVELS, seedDB } from './seed'
+import { translate } from './i18n'
 import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
 
 const KEY = 'novawallet.db.v2'
@@ -25,6 +26,7 @@ function load(): DB {
 export interface Toast { id: string; title: string; body?: string; kind: 'success' | 'error' | 'info' }
 interface Ctx {
   db: DB; user: User | null; theme: 'light' | 'dark'; toggleTheme: () => void
+  lang: string; setLanguage: (code: string) => void; t: (key: string) => string
   toasts: Toast[]; toast: (t: Omit<Toast, 'id'>) => void; dismissToast: (id: string) => void
   login: (idOrEmail: string, password: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
@@ -66,6 +68,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(load)
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
+  const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
   const [toasts, setToasts] = useState<Toast[]>([])
   const dbRef = useRef(db); dbRef.current = db
 
@@ -83,6 +86,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const dismissToast = useCallback((id: string) => setToasts(x => x.filter(y => y.id !== id)), [])
 
   const user = useMemo(() => db.users.find(u => u.id === userId) ?? null, [db, userId])
+  const lang = user?.language || langPref
+  const t = useCallback((key: string) => translate(lang, key), [lang])
+  const setLanguage = useCallback((code: string) => {
+    setLangPref(code); try { localStorage.setItem('nova.lang', code) } catch { /* ignore */ }
+    setDb(d => userId ? { ...d, users: d.users.map(u => u.id === userId ? { ...u, language: code } : u) } : d)
+  }, [userId])
   const walletOf = useCallback((id: string) => dbRef.current.wallets.find(w => w.userId === id)!, [])
 
   const notify = (draft: DB, userId2: string, title: string, body: string, kind: string) => {
@@ -125,7 +134,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: uid('USR'), name: p.name, username: p.username, email: p.email, phone: p.phone,
       passwordHash: hashSecret(p.password), pinHash: hashSecret(p.pin), role: 'user', status: 'active',
       kyc: 'unverified', level: 1, referralCode: 'NOVA-' + p.username.toUpperCase().slice(0, 6), referredBy: referrer?.id ?? null,
-      twoFA: false, language: 'en', createdAt: nowISO(), lastLogin: nowISO(),
+      twoFA: false, language: langPref, createdAt: nowISO(), lastLogin: nowISO(),
       sessions: [{ id: rid(), device: 'Web · Browser', at: nowISO(), current: true }],
     }
     mutate(d => {
@@ -361,6 +370,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
+    lang, setLanguage, t,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

@@ -6,7 +6,7 @@ import { emiCalc, fmtBDT, fmtDateTime } from '../lib/utils'
 import { PageHead } from './Services'
 
 export function Referral() {
-  const { user, db, toast } = useApp()
+  const { user, db, toast, t } = useApp()
   if (!user) return null
   const link = `${location.origin}${location.pathname}#/register?ref=${user.referralCode}`
   const refs = db.users.filter(u => u.referredBy === user.id)
@@ -21,7 +21,7 @@ export function Referral() {
   const copy = (t: string, l: string) => { navigator.clipboard?.writeText(t); toast({ kind: 'success', title: l + ' copied' }) }
   return (
     <div>
-      <PageHead title="Referral Program" sub={`Earn ${db.settings.referralPct}% commission when your friends transact.`} />
+      <PageHead title={t('ref_title')} sub={`${db.settings.referralPct}% ${t('commission_rate')}`} />
       <div className="rounded-[28px] bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 text-white p-6 shadow-xl shadow-orange-500/25">
         <p className="text-xs uppercase tracking-widest font-bold text-white/75">Total referral earnings</p>
         <p className="text-4xl font-extrabold mt-1">{fmtBDT(totalEarned)}</p>
@@ -72,7 +72,7 @@ export function Referral() {
 }
 
 export function LoanPage() {
-  const { user, db, applyLoan, repayLoan, toast } = useApp()
+  const { user, db, applyLoan, repayLoan, toast, t } = useApp()
   const [amount, setAmount] = useState('30000'); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
   if (!user) return null
   const s = db.settings
@@ -89,7 +89,7 @@ export function LoanPage() {
   }
   return (
     <div>
-      <PageHead title="Digital Loan" sub="Admin-reviewed applications. Transparent interest, no hidden charges." />
+      <PageHead title={t('loan_title')} sub={t('loan_sub')} />
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtBDT(s.loanLimit)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Outstanding</p><p className="font-extrabold mt-1 text-rose-500">{fmtBDT(outstanding)}</p></Card>

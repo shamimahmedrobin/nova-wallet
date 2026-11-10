@@ -6,18 +6,18 @@ import { COIN_META, useMarket } from '../lib/market'
 import { fmtBDT, fmtUSD } from '../lib/utils'
 import { Badge, Card, SkeletonRows, statusTone } from '../components/ui'
 
-const ACTIONS = [
-  { to: '/app/add', label: 'Add Money', icon: ArrowDownToLine, g: 'from-emerald-500 to-teal-600' },
-  { to: '/app/cashout', label: 'Cash Out', icon: ArrowUpFromLine, g: 'from-rose-500 to-pink-600' },
-  { to: '/app/send', label: 'Send Money', icon: Send, g: 'from-violet-500 to-purple-600' },
-  { to: '/app/receive', label: 'Receive', icon: QrCode, g: 'from-cyan-500 to-blue-600' },
-  { to: '/app/referral', label: 'Referral', icon: Gift, g: 'from-amber-500 to-orange-600' },
-  { to: '/app/loan', label: 'Loan', icon: HandCoins, g: 'from-indigo-500 to-blue-700' },
-  { to: '/app/market', label: 'Buy Crypto', icon: Bitcoin, g: 'from-orange-500 to-amber-600' },
-  { to: '/app/market?mode=sell', label: 'Sell Crypto', icon: ShoppingCart, g: 'from-fuchsia-500 to-purple-700' },
+const ACTIONS_RAW = [
+  { to: '/app/add', labelKey: 'act_add', icon: ArrowDownToLine, g: 'from-emerald-500 to-teal-600' },
+  { to: '/app/cashout', labelKey: 'act_cashout', icon: ArrowUpFromLine, g: 'from-rose-500 to-pink-600' },
+  { to: '/app/send', labelKey: 'act_send', icon: Send, g: 'from-violet-500 to-purple-600' },
+  { to: '/app/receive', labelKey: 'act_receive', icon: QrCode, g: 'from-cyan-500 to-blue-600' },
+  { to: '/app/referral', labelKey: 'act_referral', icon: Gift, g: 'from-amber-500 to-orange-600' },
+  { to: '/app/loan', labelKey: 'act_loan', icon: HandCoins, g: 'from-indigo-500 to-blue-700' },
+  { to: '/app/market', labelKey: 'act_buy', icon: Bitcoin, g: 'from-orange-500 to-amber-600' },
+  { to: '/app/market?mode=sell', labelKey: 'act_sell', icon: ShoppingCart, g: 'from-fuchsia-500 to-purple-700' },
 ]
 export default function Home() {
-  const { user, db, walletOf } = useApp()
+  const { user, db, walletOf, t } = useApp()
   const navigate = useNavigate()
   const { coins, loading, isLive } = useMarket()
   const [hide, setHide] = useState(false)
@@ -37,6 +37,7 @@ export default function Home() {
   const myRefs = db.users.filter(u => u.referredBy === user.id)
   const refEarned = db.referralEarnings.filter(r => r.userId === user.id).reduce((s, r) => s + r.amount, 0)
   const money = (n: number) => hide ? '••••••' : fmtBDT(n)
+  const ACTIONS = ACTIONS_RAW.map(a => ({ ...a, label: t(a.labelKey) }))
 
   return (
     <div className="space-y-5 anim-fade-up">
@@ -46,24 +47,24 @@ export default function Home() {
         <div className="absolute -left-8 -bottom-14 w-44 h-44 rounded-full bg-fuchsia-500/20 blur-2xl" />
         <div className="relative">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/70 flex items-center gap-1.5"><Wallet size={13} /> Total balance</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/70 flex items-center gap-1.5"><Wallet size={13} /> {t('total_balance')}</p>
             <button onClick={() => setHide(h => !h)} className="p-2 rounded-full bg-white/15">{hide ? <EyeOff size={16} /> : <Eye size={16} />}</button>
           </div>
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{money(total)}</p>
           <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSD(total / db.settings.bdtPerUsd)} USD</p>
           <div className="grid grid-cols-3 gap-3 mt-5">
-            {[['Available', w.available], ['Locked', w.locked], ['In crypto', Math.round(cryptoBdt)]].map(([l, v]) => (
-              <div key={l as string} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5">
-                <p className="text-[11px] text-white/70 flex items-center gap-1">{l === 'Locked' && <Lock size={10} />}{l}</p>
-                <p className="font-bold text-[15px]">{money(v as number)}</p>
+            {[{ l: t('available'), v: w.available, lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
+              <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5">
+                <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}</p>
+                <p className="font-bold text-[15px]">{money(x.v)}</p>
               </div>
             ))}
           </div>
           <div className="mt-4 flex items-center justify-between gap-2">
-            <p className="text-[11px] text-white/70 whitespace-nowrap overflow-hidden text-ellipsis">{user.id} · {user.kyc === 'verified' ? '✅ Verified' : '⚪ Non KYC'}</p>
+            <p className="text-[11px] text-white/70 whitespace-nowrap overflow-hidden text-ellipsis">{user.id} · {user.kyc === 'verified' ? '✅ ' + t('verified') : '⚪ ' + t('non_kyc')}</p>
             <span className="flex items-center gap-1.5 shrink-0">
-              <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-extrabold whitespace-nowrap">🏅 Level {user.level}</span>
-              {user.level < 4 && <button onClick={() => navigate('/app/profile')} className="rounded-full bg-white text-violet-700 px-2.5 py-1 text-[11px] font-extrabold shadow whitespace-nowrap">Upgrade ⬆</button>}
+              <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-extrabold whitespace-nowrap">🏅 {t('level')} {user.level}</span>
+              {user.level < 4 && <button onClick={() => navigate('/app/profile')} className="rounded-full bg-white text-violet-700 px-2.5 py-1 text-[11px] font-extrabold shadow whitespace-nowrap">{t('upgrade')} ⬆</button>}
             </span>
           </div>
         </div>
@@ -97,10 +98,10 @@ export default function Home() {
       {/* Market overview */}
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-extrabold text-slate-900 dark:text-white">Crypto Market</h2>
-          <Link to="/app/market" className="text-sm font-bold text-violet-600 flex items-center">View all <ChevronRight size={15} /></Link>
+          <h2 className="font-extrabold text-slate-900 dark:text-white">{t('crypto_market')}</h2>
+          <Link to="/app/market" className="text-sm font-bold text-violet-600 flex items-center">{t('view_all')} <ChevronRight size={15} /></Link>
         </div>
-        <p className="text-[11px] text-slate-400 mb-3">{isLive ? '🟢 Live prices · CoinGecko' : '🟡 Showing cached snapshot — live feed unreachable'}</p>
+        <p className="text-[11px] text-slate-400 mb-3">{isLive ? '🟢 ' + t('live_prices') : '🟡 ' + t('cached_prices')}</p>
         {loading ? <SkeletonRows n={3} /> : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {coins.slice(0, 3).map(c => (
@@ -117,12 +118,12 @@ export default function Home() {
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Card className="p-5">
-          <div className="flex justify-between items-center mb-2"><h3 className="font-extrabold">Referral earnings</h3><Link to="/app/referral" className="text-violet-600"><ChevronRight /></Link></div>
+          <div className="flex justify-between items-center mb-2"><h3 className="font-extrabold">{t('referral_earnings')}</h3><Link to="/app/referral" className="text-violet-600"><ChevronRight /></Link></div>
           <p className="text-3xl font-extrabold text-violet-600">{fmtBDT(refEarned)}</p>
-          <p className="text-sm text-slate-500 mt-1">{myRefs.length} friends joined · {db.settings.referralPct}% commission rate</p>
+          <p className="text-sm text-slate-500 mt-1">{myRefs.length} {t('friends_joined')} · {db.settings.referralPct}% {t('commission_rate')}</p>
         </Card>
         <Card className="p-5">
-          <div className="flex justify-between items-center mb-2"><h3 className="font-extrabold">Latest news</h3><Link to="/app/news" className="text-violet-600"><ChevronRight /></Link></div>
+          <div className="flex justify-between items-center mb-2"><h3 className="font-extrabold">{t('latest_news')}</h3><Link to="/app/news" className="text-violet-600"><ChevronRight /></Link></div>
           {db.news.slice(0, 2).map(n => <Link key={n.id} to={'/app/news/' + n.id} className="block py-1.5"><p className="font-semibold text-sm leading-snug hover:text-violet-600">{n.title}</p><p className="text-[11px] text-slate-400">{n.source}</p></Link>)}
         </Card>
       </div>
@@ -130,10 +131,10 @@ export default function Home() {
       {/* Recent transactions */}
       <Card className="p-5">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-extrabold text-slate-900 dark:text-white">Recent transactions</h2>
-          <Link to="/app/transactions" className="text-sm font-bold text-violet-600 flex items-center">See all <ChevronRight size={15} /></Link>
+          <h2 className="font-extrabold text-slate-900 dark:text-white">{t('recent_transactions')}</h2>
+          <Link to="/app/transactions" className="text-sm font-bold text-violet-600 flex items-center">{t('see_all')} <ChevronRight size={15} /></Link>
         </div>
-        {myTxs.length === 0 ? <p className="text-sm text-slate-500 py-4 text-center">No transactions yet.</p> : myTxs.map(t => (
+        {myTxs.length === 0 ? <p className="text-sm text-slate-500 py-4 text-center">{t('no_transactions_yet')}</p> : myTxs.map(t => (
           <div key={t.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
             <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate">{t.title}</p><p className="text-[11px] text-slate-400">{t.id} · {new Date(t.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p></div>
             <div className="text-right"><p className="font-bold text-sm">{fmtBDT(t.amount)}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge></div>

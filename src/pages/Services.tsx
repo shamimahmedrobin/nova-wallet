@@ -27,7 +27,7 @@ function SuccessModal({ open, onClose, title, rows }: any) {
 }
 
 export function AddMoney() {
-  const { addDeposit, db, user, toast } = useApp()
+  const { addDeposit, db, user, toast, t } = useApp()
   const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [trx, setTrx] = useState(''); const [receipt, setReceipt] = useState('')
   const [done, setDone] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -41,22 +41,22 @@ export function AddMoney() {
   }
   return (
     <div>
-      <PageHead title="Add Money" sub="Manual deposits are credited after admin review." />
+      <PageHead title={t('add_title')} sub={t('add_sub')} />
       <Card className="p-5 space-y-4">
-        <Select label="Payment method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{METHODS.map(m => <option key={m}>{m}</option>)}</Select>
+        <Select label={t('payment_method')} value={method} onChange={(e: any) => setMethod(e.target.value)}>{METHODS.map(m => <option key={m}>{m}</option>)}</Select>
         <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20 p-4 text-sm">
           <p className="font-bold text-violet-700 dark:text-violet-300 mb-1">Payment instructions</p>
           <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{AGENT[method]}</span></p>
           <p className="text-slate-500 mt-1">Then enter the amount and Transaction ID below. Status flow: Pending → Approved (credited) / Rejected.</p>
         </div>
-        <Input label="Amount (BDT)" type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
+        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
         <Input label="Transaction ID" placeholder="e.g. BKX92KD81P" value={trx} onChange={e => setTrx(e.target.value)} />
         <div>
           <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Payment receipt (optional)</span>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => setReceipt(e.target.files?.[0]?.name ?? '')} />
           <Btn variant="outline" onClick={() => fileRef.current?.click()}><Upload size={16} /> {receipt || 'Upload receipt screenshot'}</Btn>
         </div>
-        <Btn className="w-full py-3.5" onClick={submit}>Submit deposit request</Btn>
+        <Btn className="w-full py-3.5" onClick={submit}>{t('submit_deposit')}</Btn>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">My deposit requests</h3>
       {mine.length === 0 ? <Card><Empty title="No deposits yet" /></Card> : (
@@ -74,7 +74,7 @@ export function AddMoney() {
 }
 
 export function CashOut() {
-  const { requestWithdraw, db, user, walletOf, toast } = useApp()
+  const { requestWithdraw, db, user, walletOf, toast, t } = useApp()
   const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? ''); const [pin, setPin] = useState('')
   const [done, setDone] = useState(false)
   const amt = Number(amount) || 0
@@ -91,17 +91,17 @@ export function CashOut() {
   }
   return (
     <div>
-      <PageHead title="Cash Out" sub={`Available balance: ${fmtBDT(w?.available ?? 0)} · Fee ${db.settings.cashoutFeePct}%`} />
+      <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtBDT(w?.available ?? 0)} · Fee ${db.settings.cashoutFeePct}%`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{OUT_METHODS.map(m => <option key={m}>{m}</option>)}</Select>
-        <Input label="Amount (BDT)" type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
+        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
         <Input label="Destination account / number / address" placeholder="01XXXXXXXXX" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtBDT(Math.max(amt - fee, 0))}</span></div>
         </div>
         <PinField pin={pin} setPin={setPin} />
-        <Btn className="w-full py-3.5" onClick={submit}>Confirm cash out</Btn>
+        <Btn className="w-full py-3.5" onClick={submit}>{t('confirm_cashout')}</Btn>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">Withdrawal history</h3>
       {mine.length === 0 ? <Card><Empty title="No withdrawals yet" /></Card> : (
@@ -119,7 +119,7 @@ export function CashOut() {
 }
 
 export function SendMoney() {
-  const { db, user, sendMoney, walletOf, toast } = useApp()
+  const { db, user, sendMoney, walletOf, toast, t } = useApp()
   const navigate = useNavigate()
   const [q, setQ] = useState(''); const [to, setTo] = useState<User | null>(null)
   const [amount, setAmount] = useState(''); const [note, setNote] = useState(''); const [pin, setPin] = useState(''); const [receipt, setReceipt] = useState<any>(null)
@@ -140,9 +140,9 @@ export function SendMoney() {
   }
   return (
     <div>
-      <PageHead title="Send Money" sub={`Instant transfer · Fee ${db.settings.sendFeePct}% · Available ${fmtBDT(w?.available ?? 0)}`} />
+      <PageHead title={t('send_title')} sub={`Fee ${db.settings.sendFeePct}% · ${t('available')} ${fmtBDT(w?.available ?? 0)}`} />
       <Card className="p-5 space-y-4">
-        <Input label="Search recipient (username, email or User ID)" placeholder="e.g. arif, arif@gmail.com, USR-…" value={q} onChange={e => { setQ(e.target.value); setTo(null) }} />
+        <Input label={t('search_recipient')} placeholder="e.g. arif, arif@gmail.com, USR-…" value={q} onChange={e => { setQ(e.target.value); setTo(null) }} />
         {results.length > 0 && !to && (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
             {results.map(u => (
@@ -159,7 +159,7 @@ export function SendMoney() {
             <div><p className="font-bold">{to.name} {to.kyc === 'verified' && '✅'}</p><p className="text-xs text-slate-500">@{to.username} · {to.email} · {to.id}</p></div>
           </div>
         )}
-        <Input label="Amount (BDT)" type="number" placeholder="e.g. 1000" value={amount} onChange={e => setAmount(e.target.value)} />
+        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 1000" value={amount} onChange={e => setAmount(e.target.value)} />
         <Input label="Note (optional)" placeholder="What's it for?" value={note} onChange={e => setNote(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Transfer fee</span><span className="font-bold">{fmtBDT(fee, 2)}</span></div>
@@ -176,14 +176,14 @@ export function SendMoney() {
 }
 
 export function ReceiveMoney() {
-  const { user, db, toast } = useApp()
+  const { user, db, toast, t } = useApp()
   if (!user) return null
   const payload = `novawallet://pay/${user.id}`
   const incoming = db.txs.filter(t => t.userId === user.id && t.category === 'receive')
   const copy = (text: string, label: string) => { navigator.clipboard?.writeText(text); toast({ kind: 'success', title: label + ' copied' }) }
   return (
     <div>
-      <PageHead title="Receive Money" sub="Share your QR or payment ID to get paid instantly." />
+      <PageHead title={t('receive_title')} sub={t('receive_sub')} />
       <Card className="p-6 text-center">
         <div className="inline-block rounded-3xl bg-white p-4 shadow-lg border border-slate-100">
           <QRCodeSVG value={payload} size={190} />
