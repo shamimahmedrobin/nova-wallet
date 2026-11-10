@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { gradientFor, initials } from '../lib/utils'
@@ -54,7 +55,9 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
     return () => { document.body.style.overflow = prev; document.documentElement.style.overflow = '' }
   }, [open ])
   if (!open) return null
-  return (
+  // Portal to <body>: the modal is always positioned against the viewport,
+  // never against a (possibly transformed/animated) page container.
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
       <div className="anim-pop relative w-full sm:max-w-md max-h-[88vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 p-5 shadow-2xl">
@@ -64,8 +67,7 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
         </div>
         {children}
       </div>
-    </div>
-  )
+    </div>, document.body)
 }
 /** Uniform modal interior pieces — every modal in the app uses these so they all look the same. */
 export const ModalDesc = ({ children }: { children: React.ReactNode }) => (
