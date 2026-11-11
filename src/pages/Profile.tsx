@@ -318,14 +318,7 @@ export default function Profile() {
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'support'} onClose={() => { setModal(null); setViewTicket(null) }} title={t('p_support')}>
-        <ModalDesc>Chat with our support team below, or reach us instantly on any channel. We usually reply within 24 hours.</ModalDesc>
-        <div className="space-y-2.5 mb-4">
-          {SUPPORT_CHANNELS.map(c => (
-            <a key={c.label} href={c.href} target="_blank" rel="noreferrer" className="block">
-              <ModalRow><span className="flex items-center gap-3"><span className={`w-9 h-9 rounded-full ${c.cls} text-white flex items-center justify-center`}><c.icon size={17} /></span><span className="font-bold text-sm">{c.label}</span><ChevronRight size={16} className="ml-auto text-slate-300" /></span></ModalRow>
-            </a>
-          ))}
-        </div>
+        <ModalDesc>Chat with our support team — we usually reply within 24 hours.</ModalDesc>
         {(() => {
           const mine = db.tickets.filter(x => x.userId === user.id)
           const active = mine.find(x => x.status !== 'resolved')

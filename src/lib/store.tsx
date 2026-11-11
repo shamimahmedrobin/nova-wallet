@@ -452,9 +452,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const replyTicket: Ctx['replyTicket'] = (ticketId, text) => {
     if (!user || !text.trim()) return
-    const from = user.role === 'admin' ? 'admin' : 'user'
     mutate(d => {
       const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
+      const from = user.id === tk.userId ? 'user' : 'admin'
       tk.messages.push({ id: uid('MSG'), from, text: text.trim(), at: nowISO() })
       tk.updatedAt = nowISO()
       if (from === 'admin' && tk.status === 'pending') tk.status = 'processing'
