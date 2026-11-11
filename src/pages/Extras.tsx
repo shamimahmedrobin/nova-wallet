@@ -32,6 +32,7 @@ export function DirectWithdraw() {
   const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? '')
   const [gate, setGate] = useState(false)
   const [done, setDone] = useState(false)
+  const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null)
   const amt = Number(amount) || 0
   const fee = Math.round(amt * db.settings.cashoutFeePct / 100)
   const w = user ? walletOf(user.id) : null
@@ -42,7 +43,7 @@ export function DirectWithdraw() {
     if (user && user.level < 2) return setGate(true)
     const err = directWithdraw({ method, amount: amt, destination: dest.trim() })
     if (err) return toast({ kind: 'error', title: err })
-    setDone(true); setAmount('')
+    setLastTx({ amount: amt, method }); setDone(true); setAmount('')
     toast({ kind: 'success', title: 'Withdrawal completed', body: 'Money sent instantly — no admin review needed.' })
   }
   if (!user) return null
@@ -70,7 +71,7 @@ export function DirectWithdraw() {
       )}
       <Level2GateModal open={gate} onClose={() => setGate(false)} feature="Direct Withdraw" />
       <SuccessModal open={done} onClose={() => setDone(false)} title="Withdrawal completed ⚡"
-        body="Your money has been sent instantly. A completed record is in your Transactions." />
+        rows={lastTx ? [['Amount', fmtBDT(lastTx.amount)], ['Method', lastTx.method], ['Speed', 'Instant'], ['Status', 'Completed']] : []} />
     </div>
   )
 }

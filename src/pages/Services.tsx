@@ -19,7 +19,7 @@ function SuccessModal({ open, onClose, title, rows }: any) {
     <Modal open={open} onClose={onClose} title={title}>
       <div className="text-center py-2"><CheckCircle2 size={56} className="mx-auto text-emerald-500" /></div>
       <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-2">
-        {rows.map(([k, v]: any) => <div key={k} className="flex justify-between text-sm"><span className="text-slate-500">{k}</span><span className="font-bold text-right">{v}</span></div>)}
+        {(rows ?? []).map(([k, v]: any) => <div key={k} className="flex justify-between text-sm"><span className="text-slate-500">{k}</span><span className="font-bold text-right">{v}</span></div>)}
       </div>
       <Btn className="w-full mt-4" onClick={onClose}>Done</Btn>
     </Modal>
