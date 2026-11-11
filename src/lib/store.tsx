@@ -37,7 +37,7 @@ export interface Toast { id: string; title: string; body?: string; kind: 'succes
 interface Ctx {
   db: DB; user: User | null; theme: 'light' | 'dark'; toggleTheme: () => void
   lang: string; setLanguage: (code: string) => void; t: (key: string) => string
-  currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string; fmtAmount: (bdt: number) => string
+  currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string; fmtAmount: (bdt: number) => string; toBDT: (amount: number) => number
   toasts: Toast[]; toast: (t: Omit<Toast, 'id'>) => void; dismissToast: (id: string) => void
   login: (idOrEmail: string, password: string) => string | null
   twoFaPending: string | null
@@ -136,6 +136,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return new Intl.NumberFormat(lang === 'en' ? 'en-US' : lang, { style: 'currency', currency }).format(value)
     } catch { return currency + ' ' + value.toLocaleString('en-US', { maximumFractionDigits: 2 }) }
   }, [currency, rates, lang])
+  const toBDT = useCallback((amount: number) => {
+    if (currency === 'BDT') return amount
+    const rate = rates[currency]
+    if (!rate) return amount
+    return amount / rate * dbRef.current.settings.bdtPerUsd
+  }, [currency, rates])
   const fmtAmount = useCallback((bdt: number) => {
     if (currency === 'BDT') return Math.round(bdt).toLocaleString('en-US')
     const rate = rates[currency]
@@ -586,7 +592,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
-    twoFaPending, completeTwoFa, cancelTwoFa, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount,
+    twoFaPending, completeTwoFa, cancelTwoFa, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }
