@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeftRight, Award, TrendingDown, TrendingUp } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { withdrawMethods } from '../lib/localPayments'
+import { ADS_PER_DAY, EARN_TASKS, SCRATCH_PER_DAY, SPINS_PER_DAY } from '../lib/earn'
 import { COIN_META, useMarket } from '../lib/market'
 import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select } from '../components/ui'
 import { fmtBDT, fmtDateTime, fmtUSD } from '../lib/utils'
@@ -89,9 +90,19 @@ const PLANS = [
   { days: 180, apy: 16, label: '180 days', note: 'Max return' },
 ]
 export function EarnPage() {
-  const { user, db, walletOf, stake, unstake, toast, t } = useApp()
+  const { user, db, walletOf, stake, unstake, toast, t, earnInfo } = useApp()
   const [amount, setAmount] = useState(''); const [plan, setPlan] = useState(1)
   if (!user) return null
+  const einfo = earnInfo()
+  const todayL = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') })()
+  const rewardOptions = [
+    { to: '/earn/checkin', icon: '📅', title: 'Daily Check-in', sub: 'Up to ৳50 a day', badge: einfo.lastCheckin === todayL ? '✓ Claimed' : 'Claim now' },
+    { to: '/earn/ads', icon: '📺', title: 'View Ads', sub: '৳2–8 per ad', badge: (ADS_PER_DAY - einfo.ads) + ' left today' },
+    { to: '/earn/spin', icon: '🎡', title: 'Spin Wheel', sub: 'Win up to ৳50', badge: (SPINS_PER_DAY - einfo.spins) + ' spins left' },
+    { to: '/earn/scratch', icon: '🎫', title: 'Scratch Card', sub: 'Win up to ৳50', badge: (SCRATCH_PER_DAY - einfo.scratches) + ' cards left' },
+    { to: '/earn/tasks', icon: '✅', title: 'Complete Tasks', sub: 'Simple tasks, real BDT', badge: (EARN_TASKS.length - einfo.tasksDone.length) + ' open' },
+    { to: '/earn/quiz', icon: '🧠', title: 'Daily Quiz', sub: '৳4 per correct answer', badge: einfo.quizDay === todayL ? 'Played today' : 'Play now' },
+  ]
   const w = walletOf(user.id)
   const amt = Number(amount) || 0
   const myStakes = db.stakes.filter(s => s.userId === user.id)
@@ -107,6 +118,20 @@ export function EarnPage() {
   return (
     <div>
       <PageHead title="Earn" sub="Stake BDT and earn daily interest. Unstake anytime (flexible) or at term." />
+      <h3 className="font-extrabold mb-3">Rewards — earn free BDT</h3>
+      <div className="grid grid-cols-2 gap-2.5 mb-6">
+        {rewardOptions.map(o => (
+          <Link key={o.to} to={o.to} className="block">
+            <Card className="p-4 h-full hover:border-violet-400 transition">
+              <span className="text-2xl">{o.icon}</span>
+              <p className="font-extrabold text-sm mt-1.5">{o.title}</p>
+              <p className="text-[11px] text-slate-400">{o.sub}</p>
+              <span className="inline-block mt-2 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600">{o.badge}</span>
+            </Card>
+          </Link>
+        ))}
+      </div>
+      <h3 className="font-extrabold mb-3">Staking</h3>
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Available</p><p className="font-extrabold mt-1">{fmtBDT(w.available)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Staked</p><p className="font-extrabold mt-1 text-violet-600">{fmtBDT(totalStaked)}</p></Card>

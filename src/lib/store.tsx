@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import type { DB, Loan, NewsItem, Tx, User , LoanInfo } from './types'
+import { ADS_PER_DAY, CHECKIN_REWARDS, EARN_TASKS, QUIZ_PER_CORRECT, SCRATCH_PER_DAY, SCRATCH_PRIZES, SPINS_PER_DAY, WHEEL_PRIZES } from './earn'
+import type { DB, Loan, NewsItem, Tx, User , LoanInfo, EarnState } from './types'
 import { DEFAULT_LEVELS, DEFAULT_PAY_METHODS, seedDB } from './seed'
 import { translate } from './i18n'
 import { detectCurrency, FALLBACK_RATES } from './currencies'
@@ -18,6 +19,7 @@ function load(): DB {
       if (!db.levels) db.levels = DEFAULT_LEVELS
       if (!db.levelRequests) db.levelRequests = []
       if (!db.stakes) db.stakes = []
+      if (!db.earnStates) db.earnStates = []
       if (!db.settings.payMethods) db.settings.payMethods = DEFAULT_PAY_METHODS
       db.tickets.forEach(tk => {
         if (!tk.messages) tk.messages = [{ id: tk.id + '-m1', from: 'user', text: tk.message ?? '', at: tk.createdAt }]
@@ -59,6 +61,13 @@ interface Ctx {
   buyCrypto: (symbol: string, bdtAmount: number, priceUsd: number) => string | null
   sellCrypto: (symbol: string, coinAmount: number, priceUsd: number) => string | null
   applyLoan: (amount: number, months: number, info: LoanInfo) => void
+  earnInfo: () => EarnState
+  claimCheckin: () => { err?: string; amount?: number; streak?: number }
+  watchAdReward: () => { err?: string; amount?: number; left?: number }
+  spinReward: () => { err?: string; prize?: number; index?: number; left?: number }
+  scratchDraw: () => { err?: string; prize?: number; left?: number }
+  completeEarnTask: (taskId: string) => { err?: string; amount?: number }
+  submitQuiz: (correct: number) => { err?: string; amount?: number }
   setLoanFee: (loanId: string, amount: number) => void
   submitLoanFee: (loanId: string, method: string, ref: string) => void
   confirmLoanFee: (loanId: string) => void
@@ -425,6 +434,108 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       notify(d, user.id, 'Loan application submitted', 'Your loan application is under admin review. No loan is approved automatically.', 'loan')
     })
   }
+  const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+  const freshEarn = (userId: string): EarnState => ({ userId, day: todayStr(), lastCheckin: '', streak: 0, ads: 0, spins: 0, scratches: 0, tasksDone: [], quizDay: '' })
+  const normEarn = (st: EarnState): EarnState => st.day === todayStr() ? st : { ...st, day: todayStr(), ads: 0, spins: 0, scratches: 0 }
+  const earnStateIn = (d: DB, userId: string): EarnState => {
+    let st = d.earnStates.find(x => x.userId === userId)
+    if (!st) { st = freshEarn(userId); d.earnStates.push(st) }
+    Object.assign(st, normEarn(st))
+    return st
+  }
+  const creditEarn = (d: DB, userId: string, amount: number, title: string) => {
+    const w = d.wallets.find(x => x.userId === userId)!; w.available += amount
+    recordTx(d, { userId, category: 'earn', title, amount, fee: 0, currency: 'BDT', status: 'completed' })
+  }
+  const earnInfo: Ctx['earnInfo'] = () => {
+    if (!user) return freshEarn('')
+    const st = db.earnStates.find(x => x.userId === user.id)
+    return st ? normEarn({ ...st, tasksDone: [...st.tasksDone] }) : freshEarn(user.id)
+  }
+  const claimCheckin: Ctx['claimCheckin'] = () => {
+    if (!user) return { err: 'Not signed in' }
+    let out: { err?: string; amount?: number; streak?: number } = {}
+    mutate(d => {
+      const st = earnStateIn(d, user.id)
+      const today = todayStr()
+      if (st.lastCheckin === today) { out = { err: 'Already claimed today — come back tomorrow.' }; return }
+      const y = new Date(); y.setDate(y.getDate() - 1)
+      const yStr = y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0') + '-' + String(y.getDate()).padStart(2, '0')
+      st.streak = st.lastCheckin === yStr ? st.streak + 1 : 1
+      st.lastCheckin = today
+      const amount = CHECKIN_REWARDS[(st.streak - 1) % CHECKIN_REWARDS.length]
+      creditEarn(d, user.id, amount, 'Daily check-in reward (day ' + st.streak + ')')
+      out = { amount, streak: st.streak }
+    })
+    return out
+  }
+  const watchAdReward: Ctx['watchAdReward'] = () => {
+    if (!user) return { err: 'Not signed in' }
+    let out: { err?: string; amount?: number; left?: number } = {}
+    mutate(d => {
+      const st = earnStateIn(d, user.id)
+      if (st.ads >= ADS_PER_DAY) { out = { err: 'No ads left today — come back tomorrow.' }; return }
+      st.ads++
+      const amount = 2 + Math.floor(Math.random() * 7)
+      creditEarn(d, user.id, amount, 'Watched ad reward')
+      out = { amount, left: ADS_PER_DAY - st.ads }
+    })
+    return out
+  }
+  const spinReward: Ctx['spinReward'] = () => {
+    if (!user) return { err: 'Not signed in' }
+    let out: { err?: string; prize?: number; index?: number; left?: number } = {}
+    mutate(d => {
+      const st = earnStateIn(d, user.id)
+      if (st.spins >= SPINS_PER_DAY) { out = { err: 'No free spins left today — come back tomorrow.' }; return }
+      st.spins++
+      const index = Math.floor(Math.random() * WHEEL_PRIZES.length)
+      const prize = WHEEL_PRIZES[index]
+      if (prize > 0) creditEarn(d, user.id, prize, 'Spin Wheel reward')
+      out = { prize, index, left: SPINS_PER_DAY - st.spins }
+    })
+    return out
+  }
+  const scratchDraw: Ctx['scratchDraw'] = () => {
+    if (!user) return { err: 'Not signed in' }
+    let out: { err?: string; prize?: number; left?: number } = {}
+    mutate(d => {
+      const st = earnStateIn(d, user.id)
+      if (st.scratches >= SCRATCH_PER_DAY) { out = { err: 'No scratch cards left today — come back tomorrow.' }; return }
+      st.scratches++
+      const prize = SCRATCH_PRIZES[Math.floor(Math.random() * SCRATCH_PRIZES.length)]
+      if (prize > 0) creditEarn(d, user.id, prize, 'Scratch card reward')
+      out = { prize, left: SCRATCH_PER_DAY - st.scratches }
+    })
+    return out
+  }
+  const completeEarnTask: Ctx['completeEarnTask'] = (taskId) => {
+    if (!user) return { err: 'Not signed in' }
+    const task = EARN_TASKS.find(x => x.id === taskId)
+    if (!task) return { err: 'Unknown task' }
+    let out: { err?: string; amount?: number } = {}
+    mutate(d => {
+      const st = earnStateIn(d, user.id)
+      if (st.tasksDone.includes(taskId)) { out = { err: 'Task already completed' }; return }
+      st.tasksDone.push(taskId)
+      creditEarn(d, user.id, task.reward, 'Task reward: ' + task.title)
+      out = { amount: task.reward }
+    })
+    return out
+  }
+  const submitQuiz: Ctx['submitQuiz'] = (correct) => {
+    if (!user) return { err: 'Not signed in' }
+    let out: { err?: string; amount?: number } = {}
+    mutate(d => {
+      const st = earnStateIn(d, user.id)
+      if (st.quizDay === todayStr()) { out = { err: 'You already played the quiz today.' }; return }
+      st.quizDay = todayStr()
+      const amount = Math.max(0, Math.min(5, correct)) * QUIZ_PER_CORRECT
+      if (amount > 0) creditEarn(d, user.id, amount, 'Daily quiz reward (' + correct + '/5 correct)')
+      out = { amount }
+    })
+    return out
+  }
   const setLoanFee: Ctx['setLoanFee'] = (loanId, amount) => {
     mutate(d => {
       const loan = d.loans.find(x => x.id === loanId); if (!loan) return
@@ -588,7 +699,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, logout, walletOf,
     addDeposit, decideDeposit, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
-    applyLoan, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance,
+    applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,

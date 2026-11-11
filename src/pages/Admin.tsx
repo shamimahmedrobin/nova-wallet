@@ -177,12 +177,15 @@ export default function Admin() {
                 </div>
                 {l.applicantName && (
                   <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5 flex gap-3.5">
-                    {l.photo && <img src={l.photo} alt={l.applicantName} className="w-16 h-16 rounded-2xl object-cover shrink-0" />}
+                    <div className="flex flex-col gap-2 shrink-0">
+                      {l.photo && <img src={l.photo} alt={l.applicantName} title="Applicant photo" className="w-16 h-16 rounded-2xl object-cover" />}
+                      {l.idPhoto && <img src={l.idPhoto} alt="ID document" title={l.idType ?? 'ID'} className="w-16 h-16 rounded-2xl object-cover" />}
+                    </div>
                     <div className="grid sm:grid-cols-2 gap-x-5 gap-y-1 text-[13px] flex-1 min-w-0">
                       <p><span className="text-slate-400">Name:</span> <b>{l.applicantName}</b></p>
                       <p><span className="text-slate-400">Phone:</span> <b>{l.phone}</b></p>
                       <p><span className="text-slate-400">WhatsApp:</span> <b>{l.whatsapp}</b></p>
-                      <p><span className="text-slate-400">NID:</span> <b>{l.nid}</b></p>
+                      <p><span className="text-slate-400">{l.idType ?? 'NID'}:</span> <b>{l.nid}</b></p>
                       <p><span className="text-slate-400">Guarantor:</span> <b>{l.guarantorName}</b></p>
                       <p><span className="text-slate-400">Guarantor mobile:</span> <b>{l.guarantorPhone}</b></p>
                     </div>

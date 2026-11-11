@@ -77,6 +77,7 @@ export function LoanPage() {
   const [amount, setAmount] = useState('30000'); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
   const [appName, setAppName] = useState(user?.name ?? ''); const [code, setCode] = useState('+880'); const [phoneNum, setPhoneNum] = useState(user?.phone ?? '')
   const [whatsapp, setWhatsapp] = useState(''); const [nid, setNid] = useState(''); const [photo, setPhoto] = useState('')
+  const [idType, setIdType] = useState('National ID'); const [idPhoto, setIdPhoto] = useState('')
   const [gName, setGName] = useState(''); const [gPhone, setGPhone] = useState('')
   const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
   if (!user) return null
@@ -91,13 +92,14 @@ export function LoanPage() {
     if (!appName.trim()) return toast({ kind: 'error', title: 'Enter your full name' })
     if (phoneNum.replace(/\D/g, '').length < 6) return toast({ kind: 'error', title: 'Enter your phone number' })
     if (!whatsapp.trim()) return toast({ kind: 'error', title: 'Enter your WhatsApp number' })
-    if (!nid.trim()) return toast({ kind: 'error', title: 'Enter your National ID number' })
+    if (!nid.trim()) return toast({ kind: 'error', title: 'Enter your ' + idType + ' number' })
+    if (!idPhoto) return toast({ kind: 'error', title: 'Upload a photo of your ' + idType })
     if (!photo) return toast({ kind: 'error', title: 'Upload your photo' })
     if (!gName.trim() || !gPhone.trim()) return toast({ kind: 'error', title: 'Enter guarantor name and mobile number' })
     if (amtBDT < s.minLoan || amtBDT > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtMoney(s.minLoan)} and ${fmtMoney(s.maxLoan)}` })
     const lvlDef = db.levels.find(l => l.level === user.level)
     if (lvlDef && amtBDT > lvlDef.loanLimit) return toast({ kind: 'error', title: `Your Level ${user.level} loan limit is ${fmtMoney(lvlDef.loanLimit)} — upgrade your level for a higher limit.` })
-    applyLoan(amtBDT, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim() }); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review your information. Loans are never auto-approved.' })
+    applyLoan(amtBDT, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim(), idType, idPhoto }); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review your information. Loans are never auto-approved.' })
   }
   return (
     <div>
@@ -189,7 +191,18 @@ export function LoanPage() {
             <div className="flex-1 min-w-0"><Input label="Phone number" value={phoneNum} onChange={e => setPhoneNum(e.target.value)} /></div>
           </div>
           <Input label="WhatsApp number" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
-          <Input label="National ID (NID) number" value={nid} onChange={e => setNid(e.target.value)} />
+          <Select label="ID type" value={idType} onChange={(e: any) => setIdType(e.target.value)}>
+            {['National ID', 'Passport', 'Driving Licence'].map(x => <option key={x} value={x}>{x}</option>)}
+          </Select>
+          <Input label={`${idType} number`} value={nid} onChange={e => setNid(e.target.value)} />
+          <div>
+            <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">{idType} photo</span>
+            <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">
+              {idPhoto ? <img src={idPhoto} alt="ID document" className="w-12 h-12 rounded-xl object-cover" /> : <span className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl">🪪</span>}
+              <span className="text-sm font-bold text-violet-600">{idPhoto ? 'ID photo added — tap to change' : 'Tap to upload your ' + idType + ' photo'}</span>
+              <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setIdPhoto(await fileToScaledDataUrl(f)) }} />
+            </label>
+          </div>
           <div>
             <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Your photo</span>
             <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">

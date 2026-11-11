@@ -34,10 +34,13 @@ export interface Loan {
   emi: number; totalPayable: number; paid: number
   status: 'pending' | 'approved' | 'rejected' | 'active' | 'repaid'; createdAt: string
   applicantName?: string; phone?: string; whatsapp?: string; nid?: string; photo?: string
+  idType?: string; idPhoto?: string
   guarantorName?: string; guarantorPhone?: string
   processingFee?: number; feeStatus?: 'unpaid' | 'submitted' | 'paid'; feeMethod?: string; feeTxRef?: string
 }
-export interface LoanInfo { applicantName: string; phone: string; whatsapp: string; nid: string; photo: string; guarantorName: string; guarantorPhone: string }
+export interface LoanInfo { applicantName: string; phone: string; whatsapp: string; nid: string; photo: string; guarantorName: string; guarantorPhone: string; idType: string; idPhoto: string }
+
+export interface EarnState { userId: string; day: string; lastCheckin: string; streak: number; ads: number; spins: number; scratches: number; tasksDone: string[]; quizDay: string }
 export interface PayMethod { id: string; label: string; detail: string }
 export interface NewsItem {
   id: string; title: string; category: string; excerpt: string; body: string
@@ -69,6 +72,6 @@ export interface DB {
   deposits: DepositReq[]; withdrawals: WithdrawReq[]; loans: Loan[]
   news: NewsItem[]; banners: Banner[]; notifications: Notif[]
   settings: Settings; audit: Audit[]; tickets: SupportTicket[]
-  levels: LevelDef[]; levelRequests: LevelRequest[]; stakes: Stake[]
+  levels: LevelDef[]; levelRequests: LevelRequest[]; stakes: Stake[]; earnStates: EarnState[]
   watchlist: Record<string, string[]>; referralEarnings: { id: string; userId: string; fromUser: string; amount: number; createdAt: string }[]
 }

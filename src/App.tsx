@@ -11,6 +11,7 @@ import Home from './pages/Home'
 import { AddMoney, CashOut, ReceiveMoney, SendMoney } from './pages/Services'
 import { LoanPage, Referral } from './pages/ReferralLoan'
 import { DirectWithdraw, EarnPage, SwapPage, TradePage } from './pages/Extras'
+import { AdsPage, CheckinPage, QuizPage, ScratchPage, SpinPage, TasksPage } from './pages/EarnPages'
 import { NewsDetail, NewsList, Notifications, Transactions } from './pages/TransactionsNews'
 import Profile from './pages/Profile'
 
@@ -69,6 +70,12 @@ export default function App() {
             <Route path="/receive" element={<ReceiveMoney />} />
             <Route path="/withdraw" element={<DirectWithdraw />} />
             <Route path="/earn" element={<EarnPage />} />
+            <Route path="/earn/checkin" element={<CheckinPage />} />
+            <Route path="/earn/ads" element={<AdsPage />} />
+            <Route path="/earn/spin" element={<SpinPage />} />
+            <Route path="/earn/scratch" element={<ScratchPage />} />
+            <Route path="/earn/tasks" element={<TasksPage />} />
+            <Route path="/earn/quiz" element={<QuizPage />} />
             <Route path="/swap" element={<SwapPage />} />
             <Route path="/trade" element={<TradePage />} />
             <Route path="/referral" element={<Referral />} />
