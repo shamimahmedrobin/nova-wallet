@@ -55,7 +55,7 @@ export function CheckinPage() {
 /* ---------------- View Ads ---------------- */
 const DEMO_ADS = [
   { brand: 'Nova Store', text: 'Mega Sale — up to 50% off electronics this week only!', emoji: '🛍️', grad: 'from-rose-500 to-orange-500' },
-  { brand: 'FlyTravel', text: 'Dhaka → Cox\'s Bazar return tickets from ৳4,999. Book now!', emoji: '✈️', grad: 'from-sky-500 to-cyan-400' },
+  { brand: 'FlyTravel', text: 'Dhaka → Cox\'s Bazar return tickets from $41.31. Book now!', emoji: '✈️', grad: 'from-sky-500 to-cyan-400' },
   { brand: 'Crypto Academy', text: 'Learn trading in 7 days — free beginner course inside.', emoji: '🎓', grad: 'from-violet-600 to-indigo-500' },
 ]
 export function AdsPage() {
@@ -258,7 +258,7 @@ export function TasksPage() {
   return (
     <div>
       <BackLink />
-      <PageHead title="Complete Tasks" sub="Finish simple tasks and earn BDT for each one. Tasks can be completed once." />
+      <PageHead title="Complete Tasks" sub="Finish simple tasks and earn USD for each one. Tasks can be completed once." />
       <div className="space-y-2.5">
         {EARN_TASKS.map(task => {
           const done = info.tasksDone.includes(task.id)

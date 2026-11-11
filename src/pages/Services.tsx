@@ -25,19 +25,19 @@ function SuccessModal({ open, onClose, title, rows }: any) {
 }
 
 export function AddMoney() {
-  const { addDeposit, db, user, toast, t, currency } = useApp()
+  const { addDeposit, db, user, toast, t, currency, fmtMoney, toBDT } = useApp()
   const depMethods = depositMethods(currency, db.settings.payMethods)
   const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [trx, setTrx] = useState(''); const [receipt, setReceipt] = useState('')
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useState(false); const [lastAmt, setLastAmt] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const mine = db.deposits.filter(d => d.userId === user?.id)
   const activeMethod = depMethods.find(m => m.label === method) ?? depMethods[0]
+  const amtBDT = Math.round(toBDT(Number(amount) || 0))
   const submit = () => {
-    const amt = Number(amount)
-    if (!amt || amt < 10) return toast({ kind: 'error', title: 'Enter an amount of at least ৳10' })
+    if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Enter an amount of at least ' + fmtMoney(10) })
     if (activeMethod.label !== 'Crypto Deposit' && trx.trim().length < 6) return toast({ kind: 'error', title: 'Enter the payment Transaction ID' })
-    addDeposit({ method: activeMethod.label, amount: amt, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined })
-    setDone(true); setAmount(''); setTrx(''); setReceipt('')
+    addDeposit({ method: activeMethod.label, amount: amtBDT, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined })
+    setLastAmt(amtBDT); setDone(true); setAmount(''); setTrx(''); setReceipt('')
   }
   return (
     <div>
@@ -49,7 +49,8 @@ export function AddMoney() {
           <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{activeMethod.detail}</span></p>
           <p className="text-slate-500 mt-1">Then enter the amount and Transaction ID below. Status flow: Pending → Approved (credited) / Rejected.</p>
         </div>
-        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
+        <Input label={`Amount (${currency})`} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
+        {currency !== 'BDT' && Number(amount) > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} will be credited after approval, at today's rate.</p>}
         <Input label="Transaction ID" placeholder="e.g. BKX92KD81P" value={trx} onChange={e => setTrx(e.target.value)} />
         <div>
           <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Payment receipt (optional)</span>
@@ -62,50 +63,52 @@ export function AddMoney() {
       {mine.length === 0 ? <Card><Empty title="No deposits yet" /></Card> : (
         <div className="space-y-2">{mine.map(d => (
           <Card key={d.id} className="p-4 flex items-center gap-3">
-            <div className="flex-1"><p className="font-bold">{fmtBDT(d.amount)} · {d.method}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId} · {fmtDateTime(d.createdAt)}</p></div>
+            <div className="flex-1"><p className="font-bold">{fmtMoney(d.amount)} · {d.method}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId} · {fmtDateTime(d.createdAt)}</p></div>
             <Badge tone={statusTone(d.status)}>{d.status}</Badge>
           </Card>))}
         </div>
       )}
       <SuccessModal open={done} onClose={() => setDone(false)} title="Request submitted"
-        rows={[['Status', 'Pending review'], ['Method', activeMethod.label], ['Note', 'You will be notified when an admin approves it.']]} />
+        rows={[['Status', 'Pending review'], ['Method', activeMethod.label], ['Amount', fmtMoney(lastAmt)], ['Note', 'You will be notified when an admin approves it.']]} />
     </div>
   )
 }
 
 export function CashOut() {
-  const { requestWithdraw, db, user, walletOf, toast, t, currency } = useApp()
+  const { requestWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
   const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(''); const [pin, setPin] = useState('')
   const [done, setDone] = useState(false)
   const outMethods = withdrawMethods(currency)
   const activeOut = outMethods.includes(method) ? method : outMethods[0]
   const amt = Number(amount) || 0
+  const amtBDT = Math.round(toBDT(amt))
   const disc = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
   const effPct = db.settings.cashoutFeePct * (1 - disc / 100)
-  const fee = Math.round(amt * effPct / 100)
+  const fee = Math.round(amtBDT * effPct / 100)
   const mine = db.withdrawals.filter(d => d.userId === user?.id)
   const w = user ? walletOf(user.id) : null
   const submit = () => {
-    if (!amt || amt < 50) return toast({ kind: 'error', title: 'Minimum cash out is ৳50' })
+    if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum cash out is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
-    const err = requestWithdraw({ method: activeOut, amount: amt, destination: dest.trim(), pin })
+    const err = requestWithdraw({ method: activeOut, amount: amtBDT, destination: dest.trim(), pin })
     if (err) return toast({ kind: 'error', title: err })
     setDone(true); setAmount(''); setPin('')
     toast({ kind: 'success', title: 'Cash out requested', body: 'Amount locked until processed.' })
   }
   return (
     <div>
-      <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtBDT(w?.available ?? 0)} · Fee ${Number(effPct.toFixed(2))}%${disc ? ` (Level ${user?.level} −${disc}%)` : ''} · Daily limit ${fmtBDT(db.levels.find(l => l.level === user?.level)?.dailyLimit ?? 0)}`} />
+      <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtMoney(w?.available ?? 0)} · Fee ${Number(effPct.toFixed(2))}%${disc ? ` (Level ${user?.level} −${disc}%)` : ''} · Daily limit ${fmtMoney(db.levels.find(l => l.level === user?.level)?.dailyLimit ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={activeOut} onChange={(e: any) => setMethod(e.target.value)}>{outMethods.map(m => <option key={m}>{m}</option>)}</Select>
         <div className="relative">
-          <Input label={t('amount_bdt')} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-          <MaxBtn onClick={() => setAmount(String(w?.available ?? 0))} />
+          <Input label={`Amount (${currency})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+          <MaxBtn onClick={() => setAmount(String(Math.round(fromBDT(w?.available ?? 0) * 100) / 100))} />
         </div>
+        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} at today's rate.</p>}
         <Input label="Destination account / number / address" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtBDT(Math.max(amt - fee, 0))}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtMoney(fee)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtMoney(Math.max(amtBDT - fee, 0))}</span></div>
         </div>
         <PinField pin={pin} setPin={setPin} />
         <Btn className="w-full py-3.5" onClick={submit}>{t('confirm_cashout')}</Btn>
@@ -115,7 +118,7 @@ export function CashOut() {
       {mine.length === 0 ? <Card><Empty title="No withdrawals yet" /></Card> : (
         <div className="space-y-2">{mine.map(d => (
           <Card key={d.id} className="p-4 flex items-center gap-3">
-            <div className="flex-1"><p className="font-bold">{fmtBDT(d.amount)} · {d.method}</p><p className="text-xs text-slate-400">{d.id} → {d.destination} · fee {fmtBDT(d.fee)} · {fmtDateTime(d.createdAt)}</p></div>
+            <div className="flex-1"><p className="font-bold">{fmtMoney(d.amount)} · {d.method}</p><p className="text-xs text-slate-400">{d.id} → {d.destination} · fee {fmtMoney(d.fee)} · {fmtDateTime(d.createdAt)}</p></div>
             <Badge tone={statusTone(d.status)}>{d.status}</Badge>
           </Card>))}
         </div>
@@ -127,7 +130,7 @@ export function CashOut() {
 }
 
 export function SendMoney() {
-  const { db, user, sendMoney, walletOf, toast, t } = useApp()
+  const { db, user, sendMoney, walletOf, toast, t, currency, fmtMoney, toBDT } = useApp()
   const navigate = useNavigate()
   const [q, setQ] = useState(''); const [to, setTo] = useState<User | null>(null)
   const [amount, setAmount] = useState(''); const [note, setNote] = useState(''); const [pin, setPin] = useState(''); const [receipt, setReceipt] = useState<any>(null)
@@ -137,20 +140,21 @@ export function SendMoney() {
     return db.users.filter(u => u.id !== user?.id && u.role === 'user' && (u.username.includes(s) || u.email.includes(s) || u.id.toLowerCase().includes(s) || u.name.toLowerCase().includes(s))).slice(0, 5)
   }, [q, db.users, user])
   const amt = Number(amount) || 0
+  const amtBDT = Math.round(toBDT(amt))
   const discS = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
   const effPctS = db.settings.sendFeePct * (1 - discS / 100)
-  const fee = Math.round(amt * effPctS / 100 * 100) / 100
+  const fee = Math.round(amtBDT * effPctS / 100 * 100) / 100
   const w = user ? walletOf(user.id) : null
   const submit = () => {
     if (!to) return toast({ kind: 'error', title: 'Select a recipient first' })
-    if (!amt || amt < 10) return toast({ kind: 'error', title: 'Minimum send amount is ৳10' })
-    const r = sendMoney({ toUserId: to.id, amount: amt, note: note || undefined, pin })
+    if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Minimum send amount is ' + fmtMoney(10) })
+    const r = sendMoney({ toUserId: to.id, amount: amtBDT, note: note || undefined, pin })
     if (typeof r === 'string') return toast({ kind: 'error', title: r })
     setReceipt(r); setPin('')
   }
   return (
     <div>
-      <PageHead title={t('send_title')} sub={`Fee ${Number(effPctS.toFixed(2))}%${discS ? ` (Level ${user?.level} −${discS}%)` : ''} · ${t('available')} ${fmtBDT(w?.available ?? 0)}`} />
+      <PageHead title={t('send_title')} sub={`Fee ${Number(effPctS.toFixed(2))}%${discS ? ` (Level ${user?.level} −${discS}%)` : ''} · ${t('available')} ${fmtMoney(w?.available ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Input label={t('search_recipient')} placeholder="e.g. arif, arif@gmail.com, USR-…" value={q} onChange={e => { setQ(e.target.value); setTo(null) }} />
         {results.length > 0 && !to && (
@@ -169,11 +173,12 @@ export function SendMoney() {
             <div><p className="font-bold">{to.name} {to.kyc === 'verified' && '✅'}</p><p className="text-xs text-slate-500">@{to.username} · {to.email} · {to.id}</p></div>
           </div>
         )}
-        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 1000" value={amount} onChange={e => setAmount(e.target.value)} />
+        <Input label={`Amount (${currency})`} type="number" placeholder="e.g. 1000" value={amount} onChange={e => setAmount(e.target.value)} />
+        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} at today's rate.</p>}
         <Input label="Note (optional)" placeholder="What's it for?" value={note} onChange={e => setNote(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500">Transfer fee</span><span className="font-bold">{fmtBDT(fee, 2)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Total debit</span><span className="font-bold">{fmtBDT(amt + fee, 2)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Transfer fee</span><span className="font-bold">{fmtMoney(fee)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Total debit</span><span className="font-bold">{fmtMoney(amtBDT + fee)}</span></div>
         </div>
         <PinField pin={pin} setPin={setPin} />
         <Btn className="w-full py-3.5" disabled={!to} onClick={submit}>Review & send</Btn>
@@ -181,7 +186,7 @@ export function SendMoney() {
         <p className="text-[11px] text-center text-slate-400">Transfers above your available balance are always blocked server-side in production.</p>
       </Card>
       <SuccessModal open={!!receipt} onClose={() => { setReceipt(null); navigate('/transactions') }} title="Transfer successful 🎉"
-        rows={receipt ? [['Transaction ID', receipt.id], ['To', receipt.counterparty], ['Amount', fmtBDT(receipt.amount)], ['Fee', fmtBDT(receipt.fee, 2)], ['Status', 'Completed']] : []} />
+        rows={receipt ? [['Transaction ID', receipt.id], ['To', receipt.counterparty], ['Amount', fmtMoney(receipt.amount)], ['Fee', fmtMoney(receipt.fee)], ['Status', 'Completed']] : []} />
     </div>
   )
 }

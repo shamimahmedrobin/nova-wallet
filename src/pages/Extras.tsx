@@ -29,41 +29,43 @@ export function Level2GateModal({ open, onClose, feature }: { open: boolean; onC
 
 
 export function DirectWithdraw() {
-  const { directWithdraw, db, user, walletOf, toast, t, currency } = useApp()
+  const { directWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
   const outMethods = withdrawMethods(currency)
   const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState('')
   const [gate, setGate] = useState(false)
   const [done, setDone] = useState(false)
   const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null)
   const amt = Number(amount) || 0
+  const amtBDT = Math.round(toBDT(amt))
   const disc = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
-  const fee = Math.round(amt * db.settings.cashoutFeePct * (1 - disc / 100) / 100)
+  const fee = Math.round(amtBDT * db.settings.cashoutFeePct * (1 - disc / 100) / 100)
   const w = user ? walletOf(user.id) : null
   const mine = db.txs.filter(x => x.userId === user?.id && x.category === 'direct_withdraw')
   const activeOut = outMethods.includes(method) ? method : outMethods[0]
   const submit = () => {
-    if (!amt || amt < 50) return toast({ kind: 'error', title: 'Minimum direct withdraw is ৳50' })
+    if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum direct withdraw is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
     if (user && user.level < 2) return setGate(true)
-    const err = directWithdraw({ method: activeOut, amount: amt, destination: dest.trim() })
+    const err = directWithdraw({ method: activeOut, amount: amtBDT, destination: dest.trim() })
     if (err) return toast({ kind: 'error', title: err })
-    setLastTx({ amount: amt, method: activeOut }); setDone(true); setAmount('')
+    setLastTx({ amount: amtBDT, method: activeOut }); setDone(true); setAmount('')
     toast({ kind: 'success', title: 'Withdrawal completed', body: 'Money sent instantly — no admin review needed.' })
   }
   if (!user) return null
   return (
     <div>
-      <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')}: ${fmtBDT(w?.available ?? 0)}`} />
+      <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')}: ${fmtMoney(w?.available ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={activeOut} onChange={(e: any) => setMethod(e.target.value)}>{outMethods.map(m => <option key={m}>{m}</option>)}</Select>
         <div className="relative">
-          <Input label={t('amount_bdt')} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-          <MaxBtn onClick={() => setAmount(String(w?.available ?? 0))} />
+          <Input label={`Amount (${currency})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+          <MaxBtn onClick={() => setAmount(String(Math.round(fromBDT(w?.available ?? 0) * 100) / 100))} />
         </div>
+        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} at today's rate.</p>}
         <Input label="Destination account / number / address" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtBDT(Math.max(amt - fee, 0))}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtMoney(fee)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtMoney(Math.max(amtBDT - fee, 0))}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Speed</span><span className="font-bold text-emerald-600">⚡ Instant</span></div>
           <div className="flex justify-between"><span className="text-slate-500">PIN / password</span><span className="font-bold text-emerald-600">Not required</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Account level</span><span className="font-bold">Level 2+</span></div>
@@ -73,12 +75,12 @@ export function DirectWithdraw() {
       <h3 className="font-extrabold mt-6 mb-3">Direct withdrawal history</h3>
       {mine.length === 0 ? <Card><Empty title="No direct withdrawals yet" /></Card> : (
         <div className="space-y-2">{mine.map(x => (
-          <Card key={x.id} className="p-4 flex items-center gap-3"><div className="flex-1"><p className="font-bold">{x.title}</p><p className="text-xs text-slate-400">{x.id} · {fmtDateTime(x.createdAt)}</p></div><div className="text-right"><p className="font-bold">{fmtBDT(x.amount)}</p><Badge tone="green">completed</Badge></div></Card>
+          <Card key={x.id} className="p-4 flex items-center gap-3"><div className="flex-1"><p className="font-bold">{x.title}</p><p className="text-xs text-slate-400">{x.id} · {fmtDateTime(x.createdAt)}</p></div><div className="text-right"><p className="font-bold">{fmtMoney(x.amount)}</p><Badge tone="green">completed</Badge></div></Card>
         ))}</div>
       )}
       <Level2GateModal open={gate} onClose={() => setGate(false)} feature="Direct Withdraw" />
       <SuccessModal open={done} onClose={() => setDone(false)} title="Withdrawal completed ⚡"
-        rows={lastTx ? [['Amount', fmtBDT(lastTx.amount)], ['Method', lastTx.method], ['Speed', 'Instant'], ['Status', 'Completed']] : []} />
+        rows={lastTx ? [['Amount', fmtMoney(lastTx.amount)], ['Method', lastTx.method], ['Speed', 'Instant'], ['Status', 'Completed']] : []} />
     </div>
   )
 }
@@ -90,7 +92,7 @@ const PLANS = [
   { days: 180, apy: 16, label: '180 days', note: 'Max return' },
 ]
 export function EarnPage() {
-  const { user, db, walletOf, stake, unstake, toast, t, earnInfo } = useApp()
+  const { user, db, walletOf, stake, unstake, toast, earnInfo } = useApp()
   const [amount, setAmount] = useState(''); const [plan, setPlan] = useState(1)
   if (!user) return null
   const einfo = earnInfo()
@@ -106,20 +108,21 @@ export function EarnPage() {
   ]
   const w = walletOf(user.id)
   const amt = Number(amount) || 0
+  const amtBDT = Math.round(amt * db.settings.bdtPerUsd)
   const myStakes = db.stakes.filter(s => s.userId === user.id)
   const accrued = (s: typeof myStakes[number]) => Math.round(s.amount * s.apy / 100 * Math.max(0, (Date.now() - new Date(s.startAt).getTime()) / 86_400_000) / 365)
   const totalStaked = myStakes.filter(s => s.status === 'active').reduce((a, s) => a + s.amount, 0)
   const totalEarned = myStakes.filter(s => s.status === 'active').reduce((a, s) => a + accrued(s), 0)
   const submit = () => {
-    if (!amt || amt < 100) return toast({ kind: 'error', title: 'Minimum stake is ৳100' })
-    const err = stake(amt, PLANS[plan].apy, PLANS[plan].days)
+    if (!amt || amt < 1) return toast({ kind: 'error', title: 'Minimum stake is $1.00' })
+    const err = stake(amtBDT, PLANS[plan].apy, PLANS[plan].days)
     if (err) return toast({ kind: 'error', title: err })
     setAmount(''); toast({ kind: 'success', title: 'Staked successfully', body: 'Your money is now earning ' + PLANS[plan].apy + '% APY.' })
   }
   return (
     <div>
-      <PageHead title="Earn" sub="Stake BDT and earn daily interest. Unstake anytime (flexible) or at term." />
-      <h3 className="font-extrabold mb-3">Rewards — earn free BDT</h3>
+      <PageHead title="Earn" sub="Stake USD and earn daily interest. Unstake anytime (flexible) or at term." />
+      <h3 className="font-extrabold mb-3">Rewards — earn free USD</h3>
       <div className="grid grid-cols-2 gap-2.5 mb-6">
         {rewardOptions.map(o => (
           <Link key={o.to} to={o.to} className="block">
@@ -134,9 +137,9 @@ export function EarnPage() {
       </div>
       <h3 className="font-extrabold mb-3">Staking</h3>
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Available</p><p className="font-extrabold mt-1">{fmtBDT(w.available)}</p></Card>
-        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Staked</p><p className="font-extrabold mt-1 text-violet-600">{fmtBDT(totalStaked)}</p></Card>
-        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Earned</p><p className="font-extrabold mt-1 text-emerald-500">{fmtBDT(totalEarned)}</p></Card>
+        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Available</p><p className="font-extrabold mt-1">{usd(w.available)}</p></Card>
+        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Staked</p><p className="font-extrabold mt-1 text-violet-600">{usd(totalStaked)}</p></Card>
+        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Earned</p><p className="font-extrabold mt-1 text-emerald-500">{usd(totalEarned)}</p></Card>
       </div>
       <Card className="p-5 space-y-4">
         <h3 className="font-extrabold">Choose a plan</h3>
@@ -148,8 +151,8 @@ export function EarnPage() {
             </button>
           ))}
         </div>
-        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
-        {amt > 0 && <p className="text-xs text-slate-500">Projected yearly earning: <b className="text-emerald-600">{fmtBDT(Math.round(amt * PLANS[plan].apy / 100))}</b></p>}
+        <Input label="Amount (USD)" type="number" placeholder="e.g. 100" value={amount} onChange={e => setAmount(e.target.value)} />
+        {amt > 0 && <p className="text-xs text-slate-500">≈ {fmtBDT(amtBDT)} will be staked at today's rate. Projected yearly earning: <b className="text-emerald-600">{fmtUSD(amt * PLANS[plan].apy / 100)}</b></p>}
         <Btn className="w-full py-3.5" onClick={submit}>Stake now</Btn>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">My stakes</h3>
@@ -157,8 +160,8 @@ export function EarnPage() {
         <div className="space-y-2">{myStakes.map(s => (
           <Card key={s.id} className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex-1"><p className="font-bold">{fmtBDT(s.amount)} · {s.apy}% APY</p>
-                <p className="text-xs text-slate-400">{s.termDays === 0 ? 'Flexible' : s.termDays + ' days'} · started {fmtDateTime(s.startAt)} · earned so far <b className="text-emerald-500">{fmtBDT(accrued(s))}</b></p></div>
+              <div className="flex-1"><p className="font-bold">{usd(s.amount)} · {s.apy}% APY</p>
+                <p className="text-xs text-slate-400">{s.termDays === 0 ? 'Flexible' : s.termDays + ' days'} · started {fmtDateTime(s.startAt)} · earned so far <b className="text-emerald-500">{usd(accrued(s))}</b></p></div>
               {s.status === 'active'
                 ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const e = unstake(s.id); if (e) toast({ kind: 'error', title: e }); else toast({ kind: 'success', title: 'Unstaked', body: 'Principal + interest returned to your available balance.' }) }}>Unstake</Btn>
                 : <Badge tone="slate">closed</Badge>}
