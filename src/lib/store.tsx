@@ -408,15 +408,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
     return created!
   }
-  const buyCrypto: Ctx['buyCrypto'] = (symbol, bdtAmount, priceUsd) => {
+  const buyCrypto: Ctx['buyCrypto'] = (symbol, amount, priceUsd) => {
     if (!user) return 'Not signed in'
     const w = walletOf(user.id)
-    if (bdtAmount > w.available) return 'Insufficient BDT balance.'
-    const coins = bdtAmount / dbRef.current.settings.bdtPerUsd / priceUsd
+    const rate = dbRef.current.settings.bdtPerUsd
+    // Buying USDT itself converts the BDT balance into USDT (the on-ramp);
+    // every other coin is bought with the USDT holding.
+    if (symbol === 'USDT') {
+      if (amount > w.available) return 'Insufficient BDT balance.'
+      const coins = amount / rate
+      mutate(d => {
+        const dw = d.wallets.find(x => x.userId === user.id)!
+        dw.available -= amount; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + coins
+        recordTx(d, { userId: user.id, category: 'crypto_buy', title: 'Bought USDT', amount, fee: 0, currency: 'USDT', status: 'completed', note: coins.toFixed(2) + ' USDT @ 1.00 USDT' })
+      })
+      return null
+    }
+    if (amount > (w.holdings.USDT ?? 0)) return 'Insufficient USDT balance. Buy USDT first.'
+    const coins = amount / priceUsd
     mutate(d => {
       const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.available -= bdtAmount; dw.holdings[symbol] = (dw.holdings[symbol] ?? 0) + coins
-      recordTx(d, { userId: user.id, category: 'crypto_buy', title: 'Bought ' + symbol, amount: bdtAmount, fee: 0, currency: symbol, status: 'completed', note: coins.toFixed(6) + ' ' + symbol + ' @ $' + priceUsd })
+      dw.holdings.USDT = (dw.holdings.USDT ?? 0) - amount; dw.holdings[symbol] = (dw.holdings[symbol] ?? 0) + coins
+      recordTx(d, { userId: user.id, category: 'crypto_buy', title: 'Bought ' + symbol, amount: Math.round(amount * rate), fee: 0, currency: symbol, status: 'completed', note: coins.toFixed(6) + ' ' + symbol + ' @ ' + priceUsd + ' USDT' })
     })
     return null
   }
@@ -424,11 +437,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return 'Not signed in'
     const w = walletOf(user.id)
     if (coinAmount > (w.holdings[symbol] ?? 0)) return 'Insufficient ' + symbol + ' balance.'
-    const bdt = coinAmount * priceUsd * dbRef.current.settings.bdtPerUsd
+    const rate = dbRef.current.settings.bdtPerUsd
+    // Selling USDT converts it back into the BDT balance; every other coin
+    // is sold for USDT, which lands in the USDT holding.
+    if (symbol === 'USDT') {
+      const bdt = coinAmount * rate
+      mutate(d => {
+        const dw = d.wallets.find(x => x.userId === user.id)!
+        dw.holdings.USDT = (dw.holdings.USDT ?? 0) - coinAmount; dw.available += bdt
+        recordTx(d, { userId: user.id, category: 'crypto_sell', title: 'Sold USDT', amount: Math.round(bdt), fee: 0, currency: 'USDT', status: 'completed', note: coinAmount + ' USDT @ 1.00 USDT' })
+      })
+      return null
+    }
+    const usdt = coinAmount * priceUsd
     mutate(d => {
       const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.holdings[symbol] -= coinAmount; dw.available += bdt
-      recordTx(d, { userId: user.id, category: 'crypto_sell', title: 'Sold ' + symbol, amount: Math.round(bdt), fee: 0, currency: symbol, status: 'completed', note: coinAmount + ' ' + symbol + ' @ $' + priceUsd })
+      dw.holdings[symbol] -= coinAmount; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + usdt
+      recordTx(d, { userId: user.id, category: 'crypto_sell', title: 'Sold ' + symbol, amount: Math.round(usdt * rate), fee: 0, currency: symbol, status: 'completed', note: coinAmount + ' ' + symbol + ' @ ' + priceUsd + ' USDT' })
     })
     return null
   }

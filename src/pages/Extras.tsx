@@ -61,7 +61,7 @@ export function DirectWithdraw() {
           <Input label={`Amount (${currency})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
           <MaxBtn onClick={() => setAmount(String(Math.round(fromBDT(w?.available ?? 0) * 100) / 100))} />
         </div>
-        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} at today's rate.</p>}
+        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} at today's rate.</p>}
         <Input label="Destination account / number / address" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtMoney(fee)}</span></div>
@@ -152,7 +152,7 @@ export function EarnPage() {
           ))}
         </div>
         <Input label="Amount (USDT)" type="number" placeholder="e.g. 100" value={amount} onChange={e => setAmount(e.target.value)} />
-        {amt > 0 && <p className="text-xs text-slate-500">≈ {fmtBDT(amtBDT)} will be staked at today's rate. Projected yearly earning: <b className="text-emerald-600">{fmtUSDT(amt * PLANS[plan].apy / 100)}</b></p>}
+        {amt > 0 && <p className="text-xs text-slate-500">Projected yearly earning: <b className="text-emerald-600">{fmtUSDT(amt * PLANS[plan].apy / 100)}</b></p>}
         <Btn className="w-full py-3.5" onClick={submit}>Stake now</Btn>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">My stakes</h3>
@@ -256,7 +256,7 @@ export function TradePage() {
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div><p className="font-extrabold text-lg">{coin.name} <span className="text-slate-400 text-sm">{coin.symbol}/USDT</span></p>
                 <p className="text-3xl font-extrabold mt-1">{fmtUSDT(coin.priceUsd, coin.priceUsd < 10 ? 2 : 0)}</p>
-                <p className="text-sm text-slate-400">{fmtBDT(Math.round(coin.priceUsd * db.settings.bdtPerUsd))} · You hold <b className="text-slate-600 dark:text-slate-200">{(w.holdings[coin.symbol] ?? 0).toFixed(6)} {coin.symbol}</b></p></div>
+                <p className="text-sm text-slate-400">{fmtUSDT(coin.priceUsd, coin.priceUsd < 10 ? 2 : 0)} · You hold <b className="text-slate-600 dark:text-slate-200">{(w.holdings[coin.symbol] ?? 0).toFixed(6)} {coin.symbol}</b></p></div>
               <span className={`flex items-center gap-1 font-extrabold ${up ? 'text-emerald-500' : 'text-rose-500'}`}>{up ? <TrendingUp size={17} /> : <TrendingDown size={17} />}{up ? '+' : ''}{coin.change24h.toFixed(2)}%</span>
             </div>
             <div className="h-36 mt-4">
@@ -276,12 +276,14 @@ export function TradePage() {
               ))}
             </div>
             <div className="relative">
-              <Input label={side === 'buy' ? t('amount_bdt') : `Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
-              <MaxBtn onClick={() => setAmount(String(side === 'buy' ? w.available : (w.holdings[coin.symbol] ?? 0)))} />
+              <Input label={side === 'buy' ? (coin.symbol === 'USDT' ? t('amount_bdt') : 'Amount (USDT)') : `Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+              <MaxBtn onClick={() => setAmount(String(side === 'buy' ? (coin.symbol === 'USDT' ? w.available : (w.holdings.USDT ?? 0)) : (w.holdings[coin.symbol] ?? 0)))} />
             </div>
             {amt > 0 && <p className="text-xs text-slate-500">{side === 'buy'
-              ? <>You receive ≈ <b>{(amt / db.settings.bdtPerUsd / coin.priceUsd).toFixed(6)} {coin.symbol}</b></>
-              : <>You receive ≈ <b>{fmtBDT(Math.round(amt * coin.priceUsd * db.settings.bdtPerUsd))}</b></>}</p>}
+              ? <>You receive ≈ <b>{(coin.symbol === 'USDT' ? amt / db.settings.bdtPerUsd : amt / coin.priceUsd).toFixed(coin.symbol === 'USDT' ? 2 : 6)} {coin.symbol}</b></>
+              : coin.symbol === 'USDT'
+                ? <>You receive ≈ <b>{fmtBDT(Math.round(amt * db.settings.bdtPerUsd))}</b></>
+                : <>You receive ≈ <b>{fmtUSDT(amt * coin.priceUsd)}</b></>}</p>}
             <Btn className={`w-full py-3.5 ${side === 'sell' ? '!bg-rose-500' : '!bg-emerald-500'}`} onClick={submit}>{side === 'buy' ? t('buy') : t('sell')} {coin.symbol}</Btn>
           </Card>
         </>

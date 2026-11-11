@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, Moon, ScanFace, Send, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
-import { fileToScaledDataUrl, fmtBDT, fmtDateTime } from '../lib/utils'
+import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
 import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
 
@@ -97,7 +97,7 @@ export default function Profile() {
           </div>
           <div className="flex-1 min-w-[140px]">
             <p className="font-extrabold">{t('level')} {user.level}</p>
-            <p className="text-xs text-slate-500">{db.levels.find(l => l.level === user.level)?.tagline} · Daily limit {fmtBDT(db.levels.find(l => l.level === user.level)?.dailyLimit ?? 0)} · Loan up to {fmtBDT(db.levels.find(l => l.level === user.level)?.loanLimit ?? 0)}</p>
+            <p className="text-xs text-slate-500">{db.levels.find(l => l.level === user.level)?.tagline} · Daily limit {fmtUSDT((db.levels.find(l => l.level === user.level)?.dailyLimit ?? 0) / db.settings.bdtPerUsd)} · Loan up to {fmtUSDT((db.levels.find(l => l.level === user.level)?.loanLimit ?? 0) / db.settings.bdtPerUsd)}</p>
           </div>
           {user.level < 4
             ? <Btn onClick={() => setModal('levels')}>{t('upgrade')} ⬆</Btn>
@@ -167,8 +167,8 @@ export default function Profile() {
                   <div className="flex-1"><p className="font-extrabold">{t('level')} {l.level} {isCurrent && <Badge tone="violet">{t('current')}</Badge>}</p><p className="text-xs text-slate-500">{l.tagline}</p></div>
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 text-xs mt-3 text-slate-600 dark:text-slate-300">
-                  <span>Daily limit: <b>{fmtBDT(l.dailyLimit)}</b></span><span>Monthly: <b>{fmtBDT(l.monthlyLimit)}</b></span>
-                  <span>Loan limit: <b>{fmtBDT(l.loanLimit)}</b></span><span>Fee discount: <b>{l.feeDiscountPct}%</b></span>
+                  <span>Daily limit: <b>{fmtUSDT(l.dailyLimit / db.settings.bdtPerUsd)}</b></span><span>Monthly: <b>{fmtUSDT(l.monthlyLimit / db.settings.bdtPerUsd)}</b></span>
+                  <span>Loan limit: <b>{fmtUSDT(l.loanLimit / db.settings.bdtPerUsd)}</b></span><span>Fee discount: <b>{l.feeDiscountPct}%</b></span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-2">Requirement: {l.requirement}</p>
                 {isNext && l.level === 2 && user.kyc === 'unverified' && (

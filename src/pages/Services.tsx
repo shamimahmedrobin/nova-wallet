@@ -4,7 +4,7 @@ import { CheckCircle2, Copy, Download, Share2, Upload } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../lib/store'
 import { Badge, Btn, Card, Empty, Input, Modal, PinField, Select, statusTone , MaxBtn } from '../components/ui'
-import { fmtBDT, fmtDateTime } from '../lib/utils'
+import { fmtDateTime, fmtUSDT } from '../lib/utils'
 import type { User } from '../lib/types'
 
 import { depositMethods, withdrawMethods } from '../lib/localPayments'
@@ -50,7 +50,7 @@ export function AddMoney() {
           <p className="text-slate-500 mt-1">Then enter the amount and Transaction ID below. Status flow: Pending → Approved (credited) / Rejected.</p>
         </div>
         <Input label={`Amount (${currency})`} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
-        {currency !== 'BDT' && Number(amount) > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} will be credited after approval, at today's rate.</p>}
+        {currency !== 'BDT' && Number(amount) > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} will be credited after approval, at today's rate.</p>}
         <Input label="Transaction ID" placeholder="e.g. BKX92KD81P" value={trx} onChange={e => setTrx(e.target.value)} />
         <div>
           <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Payment receipt (optional)</span>
@@ -104,7 +104,7 @@ export function CashOut() {
           <Input label={`Amount (${currency})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
           <MaxBtn onClick={() => setAmount(String(Math.round(fromBDT(w?.available ?? 0) * 100) / 100))} />
         </div>
-        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} at today's rate.</p>}
+        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} at today's rate.</p>}
         <Input label="Destination account / number / address" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtMoney(fee)}</span></div>
@@ -174,7 +174,7 @@ export function SendMoney() {
           </div>
         )}
         <Input label={`Amount (${currency})`} type="number" placeholder="e.g. 1000" value={amount} onChange={e => setAmount(e.target.value)} />
-        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} at today's rate.</p>}
+        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} at today's rate.</p>}
         <Input label="Note (optional)" placeholder="What's it for?" value={note} onChange={e => setNote(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Transfer fee</span><span className="font-bold">{fmtMoney(fee)}</span></div>
@@ -224,7 +224,7 @@ export function ReceiveMoney() {
         <div className="space-y-2">{incoming.map(t => (
           <Card key={t.id} className="p-4 flex items-center gap-3">
             <div className="flex-1"><p className="font-bold">{t.title}</p><p className="text-xs text-slate-400">{t.id} · {fmtDateTime(t.createdAt)}</p></div>
-            <p className="font-extrabold text-emerald-600">+{fmtBDT(t.amount)}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge>
+            <p className="font-extrabold text-emerald-600">+{fmtUSDT(t.amount / db.settings.bdtPerUsd)}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge>
           </Card>))}
         </div>
       )}

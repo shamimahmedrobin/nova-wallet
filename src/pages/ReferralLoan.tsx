@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Copy, HandCoins, Share2, Trophy } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, ModalDesc, ModalRow, Select } from '../components/ui'
-import { emiCalc, fmtBDT, fmtDateTime , fileToScaledDataUrl } from '../lib/utils'
+import { emiCalc, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
 import { depositMethods } from '../lib/localPayments'
 import { PageHead } from './Services'
 
@@ -175,7 +175,7 @@ export function LoanPage() {
       <Card className="p-5 space-y-4">
         <h3 className="font-extrabold">Apply for a loan</h3>
         <Input label={`Amount in ${currency} (min ${fmtMoney(s.minLoan)} – max ${fmtMoney(s.maxLoan)})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtBDT(amtBDT)} — loans are processed in BDT at today's rate.</p>}
+        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} at today's rate.</p>}
         <Select label="Duration" value={months} onChange={(e: any) => setMonths(e.target.value)}>
           {[3, 6, 12, 18, 24].map(m => <option key={m} value={m}>{m} months</option>)}
         </Select>
