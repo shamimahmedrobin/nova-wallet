@@ -1,17 +1,36 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeftRight, TrendingDown, TrendingUp } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeftRight, Award, TrendingDown, TrendingUp } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket } from '../lib/market'
-import { Badge, Btn, Card, Empty, Input, PinField, Select } from '../components/ui'
+import { Badge, Btn, Card, Empty, Input, Modal, Select } from '../components/ui'
 import { fmtBDT, fmtDateTime, fmtUSD } from '../lib/utils'
 import { PageHead, SuccessModal } from './Services'
+
+export function Level2GateModal({ open, onClose, feature }: { open: boolean; onClose: () => void; feature: string }) {
+  const navigate = useNavigate()
+  return (
+    <Modal open={open} onClose={onClose} title="Level 2 required">
+      <div className="text-center">
+        <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-violet-600/30 mb-3"><Award size={30} /></div>
+        <p className="font-extrabold text-lg">Upgrade to Level 2</p>
+        <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">{feature} is available on <b className="text-slate-700 dark:text-slate-200">Level 2</b> accounts and above. Your account is currently <b className="text-slate-700 dark:text-slate-200">Level 1</b>. Submit your KYC and request an upgrade — it only takes a minute.</p>
+      </div>
+      <div className="flex gap-2.5 mt-5">
+        <Btn variant="outline" className="flex-1 py-3.5" onClick={onClose}>Cancel</Btn>
+        <Btn className="flex-1 py-3.5" onClick={() => { onClose(); navigate('/profile', { state: { openLevels: true } }) }}>Upgrade ⬆</Btn>
+      </div>
+    </Modal>
+  )
+}
 
 const OUT_METHODS = ['bKash', 'Nagad', 'Rocket', 'Bank Account', 'Crypto Wallet']
 
 export function DirectWithdraw() {
   const { directWithdraw, db, user, walletOf, toast, t } = useApp()
-  const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? ''); const [pin, setPin] = useState('')
+  const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? '')
+  const [gate, setGate] = useState(false)
   const [done, setDone] = useState(false)
   const amt = Number(amount) || 0
   const fee = Math.round(amt * db.settings.cashoutFeePct / 100)
@@ -20,15 +39,16 @@ export function DirectWithdraw() {
   const submit = () => {
     if (!amt || amt < 50) return toast({ kind: 'error', title: 'Minimum direct withdraw is ৳50' })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
-    const err = directWithdraw({ method, amount: amt, destination: dest.trim(), pin })
+    if (user && user.level < 2) return setGate(true)
+    const err = directWithdraw({ method, amount: amt, destination: dest.trim() })
     if (err) return toast({ kind: 'error', title: err })
-    setDone(true); setAmount(''); setPin('')
+    setDone(true); setAmount('')
     toast({ kind: 'success', title: 'Withdrawal completed', body: 'Money sent instantly — no admin review needed.' })
   }
   if (!user) return null
   return (
     <div>
-      <PageHead title="Direct Withdraw" sub={`Instant withdrawal — no admin review · ${t('available')}: ${fmtBDT(w?.available ?? 0)}`} />
+      <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')}: ${fmtBDT(w?.available ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{OUT_METHODS.map(m => <option key={m}>{m}</option>)}</Select>
         <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
@@ -37,8 +57,9 @@ export function DirectWithdraw() {
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtBDT(Math.max(amt - fee, 0))}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Speed</span><span className="font-bold text-emerald-600">⚡ Instant</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">PIN / password</span><span className="font-bold text-emerald-600">Not required</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Account level</span><span className="font-bold">Level 2+</span></div>
         </div>
-        <PinField pin={pin} setPin={setPin} />
         <Btn className="w-full py-3.5" onClick={submit}>Withdraw now</Btn>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">Direct withdrawal history</h3>
@@ -47,6 +68,7 @@ export function DirectWithdraw() {
           <Card key={x.id} className="p-4 flex items-center gap-3"><div className="flex-1"><p className="font-bold">{x.title}</p><p className="text-xs text-slate-400">{x.id} · {fmtDateTime(x.createdAt)}</p></div><div className="text-right"><p className="font-bold">{fmtBDT(x.amount)}</p><Badge tone="green">completed</Badge></div></Card>
         ))}</div>
       )}
+      <Level2GateModal open={gate} onClose={() => setGate(false)} feature="Direct Withdraw" />
       <SuccessModal open={done} onClose={() => setDone(false)} title="Withdrawal completed ⚡"
         body="Your money has been sent instantly. A completed record is in your Transactions." />
     </div>

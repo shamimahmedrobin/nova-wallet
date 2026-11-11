@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Copy, Download, Share2, Upload } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../lib/store'
@@ -102,6 +102,7 @@ export function CashOut() {
         </div>
         <PinField pin={pin} setPin={setPin} />
         <Btn className="w-full py-3.5" onClick={submit}>{t('confirm_cashout')}</Btn>
+        <p className="text-center text-xs text-slate-500">{t('pin_forgot_prefix')} <Link to="/withdraw" className="font-bold text-violet-600 underline underline-offset-2">{t('act_withdraw')}</Link></p>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">Withdrawal history</h3>
       {mine.length === 0 ? <Card><Empty title="No withdrawals yet" /></Card> : (
@@ -167,6 +168,7 @@ export function SendMoney() {
         </div>
         <PinField pin={pin} setPin={setPin} />
         <Btn className="w-full py-3.5" disabled={!to} onClick={submit}>Review & send</Btn>
+        <p className="text-center text-xs text-slate-500">{t('pin_forgot_prefix')} <Link to="/withdraw" className="font-bold text-violet-600 underline underline-offset-2">{t('act_withdraw')}</Link></p>
         <p className="text-[11px] text-center text-slate-400">Transfers above your available balance are always blocked server-side in production.</p>
       </Card>
       <SuccessModal open={!!receipt} onClose={() => { setReceipt(null); navigate('/transactions') }} title="Transfer successful 🎉"

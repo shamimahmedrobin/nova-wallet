@@ -45,7 +45,7 @@ interface Ctx {
   addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string }) => void
   decideDeposit: (id: string, ok: boolean) => void
   requestWithdraw: (p: { method: string; amount: number; destination: string; pin: string }) => string | null
-  directWithdraw: (p: { method: string; amount: number; destination: string; pin: string }) => string | null
+  directWithdraw: (p: { method: string; amount: number; destination: string }) => string | null
   stake: (amount: number, apy: number, termDays: number) => string | null
   unstake: (stakeId: string) => string | null
   swap: (fromSym: string, toSym: string, amountFrom: number, prices: Record<string, number>) => string | null
@@ -248,7 +248,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const directWithdraw: Ctx['directWithdraw'] = (p) => {
     if (!user) return 'Not signed in'
-    if (user.pinHash !== hashSecret(p.pin)) return 'Incorrect transaction PIN.'
+    if (user.level < 2) return 'Direct Withdraw needs a Level 2 account. Please upgrade first.'
     const w = walletOf(user.id)
     if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
     if (p.amount > w.available) return 'Insufficient available balance.'

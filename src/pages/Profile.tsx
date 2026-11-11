@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, Moon, ScanFace, Send, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
@@ -16,8 +16,14 @@ const SUPPORT_CHANNELS = [
 export default function Profile() {
   const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
   const confirm = useConfirm()
   const [modal, setModal] = useState<string | null>(null)
+
+  useEffect(() => {
+    if ((location.state as any)?.openLevels) { setModal('levels'); navigate(location.pathname, { replace: true, state: null }) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [edit, setEdit] = useState({ name: user?.name ?? '', phone: user?.phone ?? '' })
   const [pw, setPw] = useState({ old: '', next: '' })
   const [pin, setPin] = useState({ old: '', next: '' })

@@ -5,6 +5,7 @@ import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Select } from '../components/ui'
 import { emiCalc, fmtBDT, fmtDateTime } from '../lib/utils'
 import { PageHead } from './Services'
+import { Level2GateModal } from './Extras'
 
 export function Referral() {
   const { user, db, toast, t } = useApp()
@@ -76,6 +77,7 @@ export function LoanPage() {
   const { user, db, applyLoan, repayLoan, toast, t } = useApp()
   const navigate = useNavigate()
   const [amount, setAmount] = useState('30000'); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
+  const [gate, setGate] = useState(false)
   if (!user) return null
   const s = db.settings
   const amt = Number(amount) || 0; const mo = Number(months) || 12
@@ -85,6 +87,7 @@ export function LoanPage() {
   const outstanding = active ? active.totalPayable - active.paid : 0
   const eligible = user.kyc !== 'unverified' && user.status === 'active'
   const submit = () => {
+    if (user.level < 2) return setGate(true)
     if (!eligible) return toast({ kind: 'error', title: t('kyc_need_loan') })
     if (amt < s.minLoan || amt > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtBDT(s.minLoan)} and ${fmtBDT(s.maxLoan)}` })
     applyLoan(amt, mo); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review it. Loans are never auto-approved.' })
@@ -92,6 +95,7 @@ export function LoanPage() {
   return (
     <div>
       <PageHead title={t('loan_title')} sub={t('loan_sub')} />
+      <Level2GateModal open={gate} onClose={() => setGate(false)} feature="Loans" />
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtBDT(s.loanLimit)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Outstanding</p><p className="font-extrabold mt-1 text-rose-500">{fmtBDT(outstanding)}</p></Card>
