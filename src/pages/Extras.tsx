@@ -4,7 +4,7 @@ import { ArrowLeftRight, Award, TrendingDown, TrendingUp } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket } from '../lib/market'
-import { Badge, Btn, Card, Empty, Input, Modal, Select } from '../components/ui'
+import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select } from '../components/ui'
 import { fmtBDT, fmtDateTime, fmtUSD } from '../lib/utils'
 import { PageHead, SuccessModal } from './Services'
 
@@ -52,7 +52,10 @@ export function DirectWithdraw() {
       <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')}: ${fmtBDT(w?.available ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{OUT_METHODS.map(m => <option key={m}>{m}</option>)}</Select>
-        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
+        <div className="relative">
+          <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
+          <MaxBtn onClick={() => setAmount(String(w?.available ?? 0))} />
+        </div>
         <Input label="Destination account / number / address" placeholder="01XXXXXXXXX" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>
@@ -241,7 +244,10 @@ export function TradePage() {
                 <button key={x} onClick={() => { setSide(x); setAmount('') }} className={`py-2.5 rounded-xl text-sm font-extrabold capitalize ${side === x ? (x === 'buy' ? 'bg-emerald-500 text-white shadow' : 'bg-rose-500 text-white shadow') : 'text-slate-500'}`}>{x === 'buy' ? t('buy') : t('sell')} {coin.symbol}</button>
               ))}
             </div>
-            <Input label={side === 'buy' ? t('amount_bdt') : `Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+            <div className="relative">
+              <Input label={side === 'buy' ? t('amount_bdt') : `Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+              <MaxBtn onClick={() => setAmount(String(side === 'buy' ? w.available : (w.holdings[coin.symbol] ?? 0)))} />
+            </div>
             {amt > 0 && <p className="text-xs text-slate-500">{side === 'buy'
               ? <>You receive ≈ <b>{(amt / db.settings.bdtPerUsd / coin.priceUsd).toFixed(6)} {coin.symbol}</b></>
               : <>You receive ≈ <b>{fmtBDT(Math.round(amt * coin.priceUsd * db.settings.bdtPerUsd))}</b></>}</p>}

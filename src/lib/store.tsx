@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import type { DB, Loan, NewsItem, Tx, User } from './types'
-import { DEFAULT_LEVELS, seedDB } from './seed'
+import type { DB, Loan, NewsItem, Tx, User , LoanInfo } from './types'
+import { DEFAULT_LEVELS, DEFAULT_PAY_METHODS, seedDB } from './seed'
 import { translate } from './i18n'
 import { detectCurrency, FALLBACK_RATES } from './currencies'
 import { fmtBDT } from './utils'
@@ -18,6 +18,7 @@ function load(): DB {
       if (!db.levels) db.levels = DEFAULT_LEVELS
       if (!db.levelRequests) db.levelRequests = []
       if (!db.stakes) db.stakes = []
+      if (!db.settings.payMethods) db.settings.payMethods = DEFAULT_PAY_METHODS
       db.tickets.forEach(tk => {
         if (!tk.messages) tk.messages = [{ id: tk.id + '-m1', from: 'user', text: tk.message ?? '', at: tk.createdAt }]
         if ((tk.status as any) === 'open') tk.status = 'pending'
@@ -53,7 +54,10 @@ interface Ctx {
   sendMoney: (p: { toUserId: string; amount: number; note?: string; pin: string }) => string | Tx
   buyCrypto: (symbol: string, bdtAmount: number, priceUsd: number) => string | null
   sellCrypto: (symbol: string, coinAmount: number, priceUsd: number) => string | null
-  applyLoan: (amount: number, months: number) => void
+  applyLoan: (amount: number, months: number, info: LoanInfo) => void
+  setLoanFee: (loanId: string, amount: number) => void
+  submitLoanFee: (loanId: string, method: string, ref: string) => void
+  confirmLoanFee: (loanId: string) => void
   decideLoan: (id: string, ok: boolean) => void
   repayLoan: (loan: Loan, amount: number) => string | null
   submitKyc: (p: { docType: string; docNumber: string; docPhoto?: string; facePhoto?: string }) => void; decideKyc: (userId: string, ok: boolean) => void
@@ -362,12 +366,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
     return null
   }
-  const applyLoan: Ctx['applyLoan'] = (amount, months) => {
+  const applyLoan: Ctx['applyLoan'] = (amount, months, info) => {
     if (!user) return
     const { emi, total } = emiCalc(amount, dbRef.current.settings.loanRatePct, months)
     mutate(d => {
-      d.loans.unshift({ id: uid('LOAN'), userId: user.id, amount, months, ratePct: d.settings.loanRatePct, emi: Math.round(emi), totalPayable: Math.round(total), paid: 0, status: 'pending', createdAt: nowISO() })
+      d.loans.unshift({ id: uid('LOAN'), userId: user.id, amount, months, ratePct: d.settings.loanRatePct, emi: Math.round(emi), totalPayable: Math.round(total), paid: 0, status: 'pending', createdAt: nowISO(), ...info })
       notify(d, user.id, 'Loan application submitted', 'Your loan application is under admin review. No loan is approved automatically.', 'loan')
+    })
+  }
+  const setLoanFee: Ctx['setLoanFee'] = (loanId, amount) => {
+    mutate(d => {
+      const loan = d.loans.find(x => x.id === loanId); if (!loan) return
+      loan.processingFee = amount; loan.feeStatus = 'unpaid'
+      audit(d, 'admin', 'loan.fee_set', loanId + ' processing fee ' + amount + ' BDT')
+      notify(d, loan.userId, 'Loan processing fee', 'A processing fee of ' + amount + ' BDT was set for your loan ' + loanId + '. Pay it from your Profile to continue.', 'loan')
+    })
+  }
+  const submitLoanFee: Ctx['submitLoanFee'] = (loanId, method, ref) => {
+    if (!user) return
+    mutate(d => {
+      const loan = d.loans.find(x => x.id === loanId && x.userId === user.id); if (!loan) return
+      loan.feeStatus = 'submitted'; loan.feeMethod = method; loan.feeTxRef = ref
+      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Processing fee payment submitted', user.name + ' submitted a fee payment for ' + loanId + ' via ' + method + ' (ref: ' + ref + ').', 'loan'))
+    })
+  }
+  const confirmLoanFee: Ctx['confirmLoanFee'] = (loanId) => {
+    mutate(d => {
+      const loan = d.loans.find(x => x.id === loanId); if (!loan) return
+      loan.feeStatus = 'paid'
+      audit(d, 'admin', 'loan.fee_paid', loanId + ' processing fee confirmed paid')
+      notify(d, loan.userId, 'Processing fee confirmed', 'Your processing fee payment for loan ' + loanId + ' has been confirmed. Thank you.', 'loan')
     })
   }
   const decideLoan: Ctx['decideLoan'] = (id, ok) => {
@@ -509,7 +537,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, logout, walletOf,
     addDeposit, decideDeposit, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
-    applyLoan, decideLoan, repayLoan, submitKyc, decideKyc, setUserStatus, adjustBalance,
+    applyLoan, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,

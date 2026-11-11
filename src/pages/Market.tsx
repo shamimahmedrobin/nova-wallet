@@ -4,7 +4,7 @@ import { Search, Star, TrendingDown, TrendingUp } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket, type Coin } from '../lib/market'
-import { Badge, Btn, Card, Input, Modal, SkeletonRows } from '../components/ui'
+import { Badge, Btn, Card, Input, Modal, SkeletonRows , MaxBtn } from '../components/ui'
 import { fmtBDT, fmtUSD } from '../lib/utils'
 import { PageHead } from './Services'
 
@@ -101,7 +101,10 @@ export default function Market() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-            <Input label={mode === 'buy' ? 'Amount in BDT' : `Amount in ${selected.symbol}`} type="number" placeholder={mode === 'buy' ? 'e.g. 5000' : 'e.g. 0.01'} value={amount} onChange={e => setAmount(e.target.value)} />
+            <div className="relative">
+              <Input label={mode === 'buy' ? 'Amount in BDT' : `Amount in ${selected.symbol}`} type="number" placeholder={mode === 'buy' ? 'e.g. 5000' : 'e.g. 0.01'} value={amount} onChange={e => setAmount(e.target.value)} />
+              <MaxBtn onClick={() => setAmount(String(mode === 'buy' ? (w?.available ?? 0) : (w?.holdings[selected.symbol] ?? 0)))} />
+            </div>
             {Number(amount) > 0 && <p className="text-sm text-slate-500">You {mode === 'buy' ? `receive ≈ ${buyPreview.toFixed(6)} ${selected.symbol}` : `receive ≈ ${fmtBDT(Math.round(sellPreview))}`}. Final executable price is confirmed at execution.</p>}
             <Btn className="w-full py-3.5" variant={mode === 'buy' ? 'primary' : 'danger'} disabled={!Number(amount)} onClick={trade}>{mode === 'buy' ? 'Buy' : 'Sell'} {selected.symbol}</Btn>
           </div>

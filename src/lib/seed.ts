@@ -1,6 +1,14 @@
 import type { DB, LevelDef, User } from './types'
 import { hashSecret } from './utils'
 
+export const DEFAULT_PAY_METHODS = [
+  { id: 'bkash', label: 'bKash', detail: '01712-345678 (Personal)' },
+  { id: 'nagad', label: 'Nagad', detail: '01712-345678 (Personal)' },
+  { id: 'rocket', label: 'Rocket', detail: '01712-3456789 (Personal)' },
+  { id: 'bank', label: 'Bank Transfer', detail: 'BRAC Bank · A/C 1501200000001 · NovaWallet' },
+  { id: 'usdt', label: 'USDT (TRC20)', detail: 'TNovaWalletAddressExample123456789' },
+]
+
 const d = (daysAgo: number, h = 10) => {
   const t = new Date(); t.setDate(t.getDate() - daysAgo); t.setHours(h, 15, 0, 0); return t.toISOString()
 }
@@ -100,7 +108,7 @@ export function seedDB(): DB {
       { id: 'nt2', userId: shamim.id, title: 'Loan EMI reminder', body: 'Your next EMI of ৳2,665 is due in 5 days.', kind: 'loan', read: false, createdAt: d(0, 8) },
       { id: 'nt3', userId: shamim.id, title: 'Price alert: BTC', body: 'Bitcoin moved +2.4% in the last 24 hours.', kind: 'market', read: true, createdAt: d(1) },
     ],
-    settings: { sendFeePct: 0.5, cashoutFeePct: 1.5, referralPct: 5, loanRatePct: 12, minLoan: 1000, maxLoan: 100000, loanLimit: 100000, bdtPerUsd: 121, maintenance: false, platformName: 'NovaWallet' },
+    settings: { sendFeePct: 0.5, cashoutFeePct: 1.5, referralPct: 5, loanRatePct: 12, minLoan: 1000, maxLoan: 100000, loanLimit: 100000, bdtPerUsd: 121, maintenance: false, platformName: 'NovaWallet', payMethods: DEFAULT_PAY_METHODS },
     audit: [
       { id: 'a1', actor: 'admin', action: 'deposit.approve', detail: 'Approved DEP-099 ৳50,000 for shamim', createdAt: d(12) },
       { id: 'a2', actor: 'system', action: 'loan.disburse', detail: 'LOAN-301 ৳30,000 disbursed to shamim', createdAt: d(20) },

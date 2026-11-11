@@ -3,12 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Copy, Download, Share2, Upload } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../lib/store'
-import { Badge, Btn, Card, Empty, Input, Modal, PinField, Select, statusTone } from '../components/ui'
+import { Badge, Btn, Card, Empty, Input, Modal, PinField, Select, statusTone , MaxBtn } from '../components/ui'
 import { fmtBDT, fmtDateTime } from '../lib/utils'
 import type { User } from '../lib/types'
 
 const METHODS = ['bKash', 'Nagad', 'Rocket', 'Bank Transfer', 'Crypto Deposit']
 const OUT_METHODS = ['bKash', 'Nagad', 'Rocket', 'Bank Account', 'Crypto Wallet']
+const METHOD_ID: Record<string, string> = { bKash: 'bkash', Nagad: 'nagad', Rocket: 'rocket', 'Bank Transfer': 'bank', 'Crypto Deposit': 'usdt' }
 const AGENT: Record<string, string> = { bKash: '01712-345678 (Personal)', Nagad: '01712-345678 (Personal)', Rocket: '01712-3456789 (Personal)', 'Bank Transfer': 'BRAC Bank · A/C 1501200000001 · NovaWallet', 'Crypto Deposit': 'USDT (TRC20): TNovaWalletAddressExample123456789' }
 
 function PageHead({ title, sub }: { title: string; sub: string }) {
@@ -46,7 +47,7 @@ export function AddMoney() {
         <Select label={t('payment_method')} value={method} onChange={(e: any) => setMethod(e.target.value)}>{METHODS.map(m => <option key={m}>{m}</option>)}</Select>
         <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20 p-4 text-sm">
           <p className="font-bold text-violet-700 dark:text-violet-300 mb-1">Payment instructions</p>
-          <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{AGENT[method]}</span></p>
+          <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{db.settings.payMethods?.find(p => p.id === METHOD_ID[method])?.detail ?? AGENT[method]}</span></p>
           <p className="text-slate-500 mt-1">Then enter the amount and Transaction ID below. Status flow: Pending → Approved (credited) / Rejected.</p>
         </div>
         <Input label={t('amount_bdt')} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
@@ -94,7 +95,10 @@ export function CashOut() {
       <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtBDT(w?.available ?? 0)} · Fee ${db.settings.cashoutFeePct}%`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{OUT_METHODS.map(m => <option key={m}>{m}</option>)}</Select>
-        <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
+        <div className="relative">
+          <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
+          <MaxBtn onClick={() => setAmount(String(w?.available ?? 0))} />
+        </div>
         <Input label="Destination account / number / address" placeholder="01XXXXXXXXX" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>

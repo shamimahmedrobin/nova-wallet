@@ -33,7 +33,12 @@ export interface Loan {
   id: string; userId: string; amount: number; months: number; ratePct: number
   emi: number; totalPayable: number; paid: number
   status: 'pending' | 'approved' | 'rejected' | 'active' | 'repaid'; createdAt: string
+  applicantName?: string; phone?: string; whatsapp?: string; nid?: string; photo?: string
+  guarantorName?: string; guarantorPhone?: string
+  processingFee?: number; feeStatus?: 'unpaid' | 'submitted' | 'paid'; feeMethod?: string; feeTxRef?: string
 }
+export interface LoanInfo { applicantName: string; phone: string; whatsapp: string; nid: string; photo: string; guarantorName: string; guarantorPhone: string }
+export interface PayMethod { id: string; label: string; detail: string }
 export interface NewsItem {
   id: string; title: string; category: string; excerpt: string; body: string
   source: string; date: string; featured: boolean; gradient: string; coin?: string
@@ -52,6 +57,7 @@ export interface Settings {
   sendFeePct: number; cashoutFeePct: number; referralPct: number
   loanRatePct: number; minLoan: number; maxLoan: number; loanLimit: number
   bdtPerUsd: number; maintenance: boolean; platformName: string
+  payMethods: PayMethod[]
 }
 export interface Audit { id: string; actor: string; action: string; detail: string; createdAt: string }
 export interface ChatMsg { id: string; from: 'user' | 'admin'; text: string; at: string }

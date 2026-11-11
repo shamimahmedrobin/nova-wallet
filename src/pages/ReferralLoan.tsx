@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Copy, Share2, Trophy } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Select } from '../components/ui'
-import { emiCalc, fmtBDT, fmtDateTime } from '../lib/utils'
+import { emiCalc, fmtBDT, fmtDateTime , fileToScaledDataUrl } from '../lib/utils'
 import { PageHead } from './Services'
-import { Level2GateModal } from './Extras'
 
 export function Referral() {
   const { user, db, toast, t } = useApp()
@@ -75,9 +73,10 @@ export function Referral() {
 
 export function LoanPage() {
   const { user, db, applyLoan, repayLoan, toast, t } = useApp()
-  const navigate = useNavigate()
   const [amount, setAmount] = useState('30000'); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
-  const [gate, setGate] = useState(false)
+  const [appName, setAppName] = useState(user?.name ?? ''); const [code, setCode] = useState('+880'); const [phoneNum, setPhoneNum] = useState(user?.phone ?? '')
+  const [whatsapp, setWhatsapp] = useState(''); const [nid, setNid] = useState(''); const [photo, setPhoto] = useState('')
+  const [gName, setGName] = useState(''); const [gPhone, setGPhone] = useState('')
   if (!user) return null
   const s = db.settings
   const amt = Number(amount) || 0; const mo = Number(months) || 12
@@ -85,21 +84,23 @@ export function LoanPage() {
   const myLoans = db.loans.filter(l => l.userId === user.id)
   const active = myLoans.find(l => l.status === 'active')
   const outstanding = active ? active.totalPayable - active.paid : 0
-  const eligible = user.kyc !== 'unverified' && user.status === 'active'
   const submit = () => {
-    if (user.level < 2) return setGate(true)
-    if (!eligible) return toast({ kind: 'error', title: t('kyc_need_loan') })
+    if (!appName.trim()) return toast({ kind: 'error', title: 'Enter your full name' })
+    if (phoneNum.replace(/\D/g, '').length < 6) return toast({ kind: 'error', title: 'Enter your phone number' })
+    if (!whatsapp.trim()) return toast({ kind: 'error', title: 'Enter your WhatsApp number' })
+    if (!nid.trim()) return toast({ kind: 'error', title: 'Enter your National ID number' })
+    if (!photo) return toast({ kind: 'error', title: 'Upload your photo' })
+    if (!gName.trim() || !gPhone.trim()) return toast({ kind: 'error', title: 'Enter guarantor name and mobile number' })
     if (amt < s.minLoan || amt > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtBDT(s.minLoan)} and ${fmtBDT(s.maxLoan)}` })
-    applyLoan(amt, mo); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review it. Loans are never auto-approved.' })
+    applyLoan(amt, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim() }); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review your information. Loans are never auto-approved.' })
   }
   return (
     <div>
       <PageHead title={t('loan_title')} sub={t('loan_sub')} />
-      <Level2GateModal open={gate} onClose={() => setGate(false)} feature="Loans" />
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtBDT(s.loanLimit)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Outstanding</p><p className="font-extrabold mt-1 text-rose-500">{fmtBDT(outstanding)}</p></Card>
-        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Eligibility</p><p className="font-extrabold mt-1">{eligible ? '✅ Eligible' : '⚠️ ' + t('p_kyc')}</p></Card>
+        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Account level</p><p className="font-extrabold mt-1">Level {user.level}</p></Card>
       </div>
       {active && (
         <Card className="p-5 mb-4 border-l-4 !border-l-violet-500">
@@ -112,18 +113,36 @@ export function LoanPage() {
           </div>
         </Card>
       )}
-      {user.kyc === 'unverified' && (
-        <Card className="p-4 mb-4 border-l-4 !border-l-amber-500">
-          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">{t('kyc_need_loan')}</p>
-          <Btn variant="outline" className="w-full mt-3" onClick={() => navigate('/profile')}>{t('kyc_do_now')}</Btn>
-        </Card>
-      )}
       <Card className="p-5 space-y-4">
         <h3 className="font-extrabold">Apply for a loan</h3>
         <Input label={`Amount (min ${fmtBDT(s.minLoan)} – max ${fmtBDT(s.maxLoan)})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
         <Select label="Duration" value={months} onChange={(e: any) => setMonths(e.target.value)}>
           {[3, 6, 12, 18, 24].map(m => <option key={m} value={m}>{m} months</option>)}
         </Select>
+        <div className="rounded-2xl border-2 border-slate-200/70 dark:border-slate-700/60 p-4 space-y-4">
+          <p className="font-extrabold text-sm">Applicant &amp; guarantor information <span className="text-slate-400 font-semibold">(required at any account level)</span></p>
+          <Input label="Full name" value={appName} onChange={e => setAppName(e.target.value)} />
+          <div className="flex gap-2">
+            <div className="w-[118px] shrink-0">
+              <Select label="Code" value={code} onChange={(e: any) => setCode(e.target.value)}>
+                {['+880', '+91', '+92', '+1', '+44', '+971', '+966', '+60'].map(c => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </div>
+            <div className="flex-1 min-w-0"><Input label="Phone number" placeholder="1XXXXXXXXX" value={phoneNum} onChange={e => setPhoneNum(e.target.value)} /></div>
+          </div>
+          <Input label="WhatsApp number" placeholder="01XXXXXXXXX" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
+          <Input label="National ID (NID) number" placeholder="e.g. 1234567890" value={nid} onChange={e => setNid(e.target.value)} />
+          <div>
+            <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Your photo</span>
+            <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">
+              {photo ? <img src={photo} alt="Applicant" className="w-12 h-12 rounded-xl object-cover" /> : <span className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl">📷</span>}
+              <span className="text-sm font-bold text-violet-600">{photo ? 'Photo added — tap to change' : 'Tap to upload your photo'}</span>
+              <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToScaledDataUrl(f)) }} />
+            </label>
+          </div>
+          <Input label="Guarantor — full name" placeholder="Name of your guarantor" value={gName} onChange={e => setGName(e.target.value)} />
+          <Input label="Guarantor — mobile number" placeholder="01XXXXXXXXX" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+        </div>
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Interest rate</span><span className="font-bold">{s.loanRatePct}% / year</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Service charge</span><span className="font-bold">৳0</span></div>

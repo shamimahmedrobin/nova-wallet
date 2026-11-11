@@ -20,7 +20,7 @@ const TABS = [
 ] as const
 
 export default function Admin() {
-  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel } = useApp()
+  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel } = useApp()
   const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
   const [userQ, setUserQ] = useState('')
@@ -28,6 +28,7 @@ export default function Admin() {
   const [newsForm, setNewsForm] = useState<any>(null)
   const [setForm, setSetForm] = useState({ ...db.settings })
   const [levelForms, setLevelForms] = useState<Record<number, any>>({})
+  const [feeInputs, setFeeInputs] = useState<Record<string, string>>({})
 
   const stats = useMemo(() => {
     const plain = db.users.filter(u => u.role === 'user')
@@ -167,14 +168,41 @@ export default function Admin() {
         {tab === 'loans' && (
           <div className="anim-fade-up space-y-2">
             {db.loans.length === 0 ? <Card><Empty title="No loan applications" /></Card> : db.loans.map(l => (
-              <Card key={l.id} className="p-4 flex flex-wrap items-center gap-3">
-                <div className="flex-1 min-w-[190px]"><p className="font-bold">{l.id} · {fmtBDT(l.amount)} — {nameOf(l.userId)}</p><p className="text-xs text-slate-400">{l.months} mo · {l.ratePct}% · EMI {fmtBDT(l.emi)} · Total {fmtBDT(l.totalPayable)} · Paid {fmtBDT(l.paid)} · {fmtDateTime(l.createdAt)}</p>
-                  {l.status === 'active' && l.paid < l.totalPayable * 0.3 && <p className="text-xs text-amber-600 font-bold mt-0.5">Watch: low repayment progress</p>}</div>
-                <Badge tone={statusTone(l.status)}>{l.status}</Badge>
-                {l.status === 'pending' && <><Btn variant="success" className="!py-2" onClick={() => { decideLoan(l.id, true); toast({ kind: 'success', title: 'Loan approved & disbursed' }) }}>Approve & disburse</Btn><Btn variant="danger" className="!py-2" onClick={() => decideLoan(l.id, false)}>Reject</Btn></>}
+              <Card key={l.id} className="p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex-1 min-w-[190px]"><p className="font-bold">{l.id} · {fmtBDT(l.amount)} — {nameOf(l.userId)}</p><p className="text-xs text-slate-400">{l.months} mo · {l.ratePct}% · EMI {fmtBDT(l.emi)} · Total {fmtBDT(l.totalPayable)} · Paid {fmtBDT(l.paid)} · {fmtDateTime(l.createdAt)}</p>
+                    {l.status === 'active' && l.paid < l.totalPayable * 0.3 && <p className="text-xs text-amber-600 font-bold mt-0.5">Watch: low repayment progress</p>}</div>
+                  <Badge tone={statusTone(l.status)}>{l.status}</Badge>
+                  {l.status === 'pending' && <><Btn variant="success" className="!py-2" onClick={() => { decideLoan(l.id, true); toast({ kind: 'success', title: 'Loan approved & disbursed' }) }}>Approve & disburse</Btn><Btn variant="danger" className="!py-2" onClick={() => decideLoan(l.id, false)}>Reject</Btn></>}
+                </div>
+                {l.applicantName && (
+                  <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5 flex gap-3.5">
+                    {l.photo && <img src={l.photo} alt={l.applicantName} className="w-16 h-16 rounded-2xl object-cover shrink-0" />}
+                    <div className="grid sm:grid-cols-2 gap-x-5 gap-y-1 text-[13px] flex-1 min-w-0">
+                      <p><span className="text-slate-400">Name:</span> <b>{l.applicantName}</b></p>
+                      <p><span className="text-slate-400">Phone:</span> <b>{l.phone}</b></p>
+                      <p><span className="text-slate-400">WhatsApp:</span> <b>{l.whatsapp}</b></p>
+                      <p><span className="text-slate-400">NID:</span> <b>{l.nid}</b></p>
+                      <p><span className="text-slate-400">Guarantor:</span> <b>{l.guarantorName}</b></p>
+                      <p><span className="text-slate-400">Guarantor mobile:</span> <b>{l.guarantorPhone}</b></p>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2.5 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 px-3.5 py-3">
+                  <p className="font-extrabold text-sm">Processing fee</p>
+                  {l.processingFee ? <>
+                    <span className="font-bold">{fmtBDT(l.processingFee)}</span>
+                    <Badge tone={l.feeStatus === 'paid' ? 'green' : l.feeStatus === 'submitted' ? 'violet' : 'amber'}>{l.feeStatus === 'paid' ? '✓ Paid' : l.feeStatus === 'submitted' ? 'Submitted — check & confirm' : 'Unpaid'}</Badge>
+                    {l.feeStatus === 'submitted' && <span className="text-xs text-slate-500">via {l.feeMethod} · Ref: <b className="font-mono">{l.feeTxRef}</b></span>}
+                    {l.feeStatus === 'submitted' && <Btn className="!py-1.5 !text-xs !bg-emerald-500" onClick={() => { confirmLoanFee(l.id); toast({ kind: 'success', title: 'Fee marked as paid' }) }}>Confirm fee paid</Btn>}
+                  </> : <>
+                    <div className="w-[150px]"><Input type="number" placeholder="Amount (BDT)" value={feeInputs[l.id] ?? ''} onChange={e => setFeeInputs(f => ({ ...f, [l.id]: e.target.value }))} /></div>
+                    <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const a = Number(feeInputs[l.id]); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter a fee amount' }); setLoanFee(l.id, a); toast({ kind: 'success', title: 'Processing fee set', body: 'It now shows in the customer profile with a Pay button.' }) }}>Set fee</Btn>
+                  </>}
+                </div>
               </Card>
             ))}
-            <Card className="p-5 text-sm text-slate-500">Loan config (limits, rate) lives in Settings. Overdue monitoring: active loans below 30% repaid are flagged above.</Card>
+            <Card className="p-5 text-sm text-slate-500">Loan config (limits, rate) lives in Settings. The payment options customers see for processing fees also live in Settings — one shared list with the main website (Add Money).</Card>
           </div>
         )}
 
@@ -292,6 +320,19 @@ export default function Admin() {
                 <Input label="Loan interest % / year" type="number" value={setForm.loanRatePct} onChange={e => setSetForm(s => ({ ...s, loanRatePct: Number(e.target.value) }))} />
                 <Input label="Min loan (BDT)" type="number" value={setForm.minLoan} onChange={e => setSetForm(s => ({ ...s, minLoan: Number(e.target.value) }))} />
                 <Input label="Max loan / limit (BDT)" type="number" value={setForm.maxLoan} onChange={e => setSetForm(s => ({ ...s, maxLoan: Number(e.target.value), loanLimit: Number(e.target.value) }))} />
+              </div>
+              <div>
+                <p className="font-extrabold text-sm mb-1">Payment options <span className="text-slate-400 font-semibold">(one shared list — shown in Add Money on the website and in loan-fee payments)</span></p>
+                <div className="space-y-2">
+                  {(setForm.payMethods ?? []).map((pm, i) => (
+                    <div key={pm.id} className="flex gap-2 items-start">
+                      <div className="w-[128px] shrink-0"><Input placeholder="Label (bKash)" value={pm.label} onChange={e => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} /></div>
+                      <div className="flex-1 min-w-0"><Input placeholder="Number / crypto address / account details" value={pm.detail} onChange={e => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).map((x, j) => j === i ? { ...x, detail: e.target.value } : x) }))} /></div>
+                      <button onClick={() => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).filter((_, j) => j !== i) }))} className="px-2 py-3 text-rose-500 font-extrabold" aria-label="Remove payment option">✕</button>
+                    </div>
+                  ))}
+                </div>
+                <Btn variant="outline" className="!py-2 !text-xs mt-2" onClick={() => setSetForm(sx => ({ ...sx, payMethods: [...(sx.payMethods ?? []), { id: 'pm' + Date.now(), label: '', detail: '' }] }))}>+ Add payment option</Btn>
               </div>
               <label className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 font-semibold text-sm">Maintenance mode
                 <input type="checkbox" checked={setForm.maintenance} onChange={e => setSetForm(s => ({ ...s, maintenance: e.target.checked }))} className="w-5 h-5 accent-violet-600" /></label>

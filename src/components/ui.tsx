@@ -23,6 +23,10 @@ export const Input = (props: React.InputHTMLAttributes<HTMLInputElement> & { lab
     <input {...props} className={`w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 px-4 py-3 text-[15px] text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition ${props.className ?? ''}`} />
   </label>
 )
+export const MaxBtn = ({ onClick }: { onClick: () => void }) => (
+  <button type="button" onClick={onClick} aria-label="Use maximum amount"
+    className="absolute right-2.5 bottom-[9px] z-10 px-2.5 py-1 rounded-lg bg-transparent text-violet-600 dark:text-violet-400 text-xs font-extrabold tracking-widest hover:bg-violet-600/10 active:scale-95 transition">MAX</button>
+)
 export const Select = ({ label, children, ...props }: any) => (
   <label className="block">
     {label && <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">{label}</span>}
