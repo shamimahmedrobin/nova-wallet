@@ -199,7 +199,10 @@ export function SwapPage() {
       <Card className="p-5 space-y-4">
         <div>
           <Select label="From" value={from} onChange={(e: any) => { setFrom(e.target.value); if (e.target.value === to) setTo(from) }}>{assets.map(a => <option key={a} value={a}>{a} — balance {fmtAmt(a, balanceOf(a))}</option>)}</Select>
-          <Input className="mt-3" type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+          <div className="relative">
+            <Input className="mt-3" type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+            <MaxBtn onClick={() => setAmount(String(from === 'USDT' ? Math.round(balanceOf(from) * 100) / 100 : balanceOf(from)))} />
+          </div>
         </div>
         <div className="flex justify-center">
           <button onClick={() => { setFrom(to); setTo(from) }} className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg active:scale-95 transition" aria-label="Flip pair"><ArrowLeftRight size={19} /></button>
