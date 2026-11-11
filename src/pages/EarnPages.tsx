@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../lib/store'
 import { Btn, Card } from '../components/ui'
 import { PageHead } from './Services'
-import { fmtUSD } from '../lib/utils'
+import { fmtUSDT } from '../lib/utils'
 import { ADS_PER_DAY, CHECKIN_REWARDS, EARN_TASKS, QUIZ, SCRATCH_PER_DAY, SPINS_PER_DAY, WHEEL_PRIZES } from '../lib/earn'
 
 const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
@@ -16,7 +16,7 @@ function BackLink() {
 /* ---------------- Daily Check-in ---------------- */
 export function CheckinPage() {
   const { earnInfo, claimCheckin, toast, db } = useApp()
-  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
+  const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const claimed = info.lastCheckin === todayStr()
   const continuing = info.lastCheckin === yesterdayStr()
@@ -60,7 +60,7 @@ const DEMO_ADS = [
 ]
 export function AdsPage() {
   const { earnInfo, watchAdReward, toast, db } = useApp()
-  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
+  const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const left = ADS_PER_DAY - info.ads
   const [phase, setPhase] = useState<'idle' | 'watching' | 'done'>('idle')
@@ -107,7 +107,7 @@ export function AdsPage() {
 const SEG_COLORS = ['#7c3aed', '#06b6d4', '#f59e0b', '#ec4899', '#10b981', '#64748b', '#8b5cf6', '#f43f5e']
 export function SpinPage() {
   const { earnInfo, spinReward, toast, db } = useApp()
-  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
+  const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const left = SPINS_PER_DAY - info.spins
   const [rot, setRot] = useState(0)
@@ -138,7 +138,7 @@ export function SpinPage() {
           <div className="w-full h-full rounded-full border-8 border-white dark:border-slate-700 shadow-xl relative overflow-hidden" style={{ background: gradient, transform: `rotate(${rot}deg)`, transition: spinning ? 'transform 4.2s cubic-bezier(0.12, 0.8, 0.08, 1)' : 'none' }}>
             {WHEEL_PRIZES.map((p, i) => (
               <div key={i} className="absolute inset-0 flex justify-center" style={{ transform: `rotate(${i * 45 + 22.5}deg)` }}>
-                <span className="mt-4 text-white font-extrabold text-sm drop-shadow">{p === 0 ? '✕' : usd(p)}</span>
+                <span className="mt-4 text-white font-extrabold text-sm drop-shadow">{p === 0 ? '✕' : (p / db.settings.bdtPerUsd).toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -154,7 +154,7 @@ export function SpinPage() {
 /* ---------------- Scratch Card ---------------- */
 export function ScratchPage() {
   const { earnInfo, scratchDraw, toast, db } = useApp()
-  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
+  const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [prize, setPrize] = useState<number | null>(null)
@@ -235,7 +235,7 @@ export function ScratchPage() {
 /* ---------------- Complete Tasks ---------------- */
 export function TasksPage() {
   const { earnInfo, completeEarnTask, toast, db } = useApp()
-  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
+  const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const [phase, setPhase] = useState<Record<string, number>>({})
   const timers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
@@ -258,7 +258,7 @@ export function TasksPage() {
   return (
     <div>
       <BackLink />
-      <PageHead title="Complete Tasks" sub="Finish simple tasks and earn USD for each one. Tasks can be completed once." />
+      <PageHead title="Complete Tasks" sub="Finish simple tasks and earn USDT for each one. Tasks can be completed once." />
       <div className="space-y-2.5">
         {EARN_TASKS.map(task => {
           const done = info.tasksDone.includes(task.id)
@@ -287,7 +287,7 @@ export function TasksPage() {
 /* ---------------- Daily Quiz ---------------- */
 export function QuizPage() {
   const { earnInfo, submitQuiz, toast, db } = useApp()
-  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
+  const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const playedToday = info.quizDay === todayStr()
   const [i, setI] = useState(0)

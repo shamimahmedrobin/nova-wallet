@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Banknote, Bitcoin, ChevronRight, Eye, EyeOff, Gift, HandCoins, Lock, PiggyBank, QrCode, Send, ShoppingCart, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket } from '../lib/market'
-import { fmtBDT, fmtUSD } from '../lib/utils'
+import { fmtBDT, fmtUSDT } from '../lib/utils'
 import { Badge, Card, SkeletonRows, statusTone } from '../components/ui'
 
 const ACTIONS_RAW = [
@@ -56,12 +56,12 @@ export default function Home() {
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '••••••' : fmtAmount(total)} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
           {currency === 'USD'
             ? <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtBDT(total)} BDT</p>
-            : <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSD(total / db.settings.bdtPerUsd)} USD</p>}
+            : <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSDT(total / db.settings.bdtPerUsd)}</p>}
           <div className="grid grid-cols-3 gap-3 mt-5">
             {[{ l: t('available'), v: w.available, lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
               <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5 min-w-0">
                 <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}</p>
-                <p className="font-bold text-[15px] truncate">{hide ? '••••' : fmtUSD(x.v / db.settings.bdtPerUsd)}</p>
+                <p className="font-bold text-[15px] truncate">{hide ? '••••' : fmtUSDT(x.v / db.settings.bdtPerUsd)}</p>
               </div>
             ))}
           </div>
@@ -113,7 +113,7 @@ export default function Home() {
               <button key={c.symbol} onClick={() => navigate('/crypto')} className="w-full flex items-center gap-3 py-3 text-left">
                 <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-extrabold text-sm" style={{ background: COIN_META[c.symbol].color }}>{c.symbol[0]}</span>
                 <span className="flex-1"><span className="block font-bold text-slate-800 dark:text-slate-100">{c.name}</span><span className="text-xs text-slate-400">{c.symbol} · {fmtBDT(Math.round(c.priceUsd * db.settings.bdtPerUsd))}</span></span>
-                <span className="text-right"><span className="block font-bold">{fmtUSD(c.priceUsd, c.priceUsd < 10 ? 2 : 0)}</span>
+                <span className="text-right"><span className="block font-bold">{fmtUSDT(c.priceUsd, c.priceUsd < 10 ? 2 : 0)}</span>
                   <span className={`text-xs font-bold flex items-center justify-end gap-0.5 ${c.change24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{c.change24h >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{c.change24h >= 0 ? '+' : ''}{c.change24h.toFixed(2)}%</span></span>
               </button>
             ))}

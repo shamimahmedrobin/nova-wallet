@@ -362,7 +362,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (fromSym === toSym) return 'Choose two different assets.'
     const w = walletOf(user.id)
     const rate = dbRef.current.settings.bdtPerUsd
-    const priceOf = (sym: string) => sym === 'BDT' ? 1 / rate : (prices[sym] ?? 0)
+    const priceOf = (sym: string) => sym === 'BDT' ? 1 / rate : sym === 'USDT' ? 1 : (prices[sym] ?? 0)
     if (!priceOf(fromSym) || !priceOf(toSym)) return 'Live price unavailable for this pair.'
     if (fromSym === 'BDT' ? amountFrom > w.available : amountFrom > (w.holdings[fromSym] ?? 0)) return 'Insufficient ' + fromSym + ' balance.'
     const usdGross = amountFrom * priceOf(fromSym)
@@ -372,7 +372,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const dw = d.wallets.find(x => x.userId === user.id)!
       if (fromSym === 'BDT') dw.available -= amountFrom; else dw.holdings[fromSym] = (dw.holdings[fromSym] ?? 0) - amountFrom
       if (toSym === 'BDT') dw.available += toAmt; else dw.holdings[toSym] = (dw.holdings[toSym] ?? 0) + toAmt
-      recordTx(d, { userId: user.id, category: 'swap', title: 'Swap ' + fromSym + ' → ' + toSym, amount: Math.round(usdGross * rate), fee: Math.round(feeUsd * rate), currency: 'BDT', status: 'completed', note: amountFrom + ' ' + fromSym + ' → ' + (toSym === 'BDT' ? Math.round(toAmt) : toAmt.toFixed(6)) + ' ' + toSym })
+      recordTx(d, { userId: user.id, category: 'swap', title: 'Swap ' + fromSym + ' → ' + toSym, amount: Math.round(usdGross * rate), fee: Math.round(feeUsd * rate), currency: 'BDT', status: 'completed', note: amountFrom + ' ' + fromSym + ' → ' + (toSym === 'BDT' ? Math.round(toAmt) : toSym === 'USDT' ? toAmt.toFixed(2) : toAmt.toFixed(6)) + ' ' + toSym })
     })
     return null
   }

@@ -7,7 +7,7 @@ import { withdrawMethods } from '../lib/localPayments'
 import { ADS_PER_DAY, EARN_TASKS, SCRATCH_PER_DAY, SPINS_PER_DAY } from '../lib/earn'
 import { COIN_META, useMarket } from '../lib/market'
 import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select } from '../components/ui'
-import { fmtBDT, fmtDateTime, fmtUSD } from '../lib/utils'
+import { fmtBDT, fmtDateTime, fmtUSDT } from '../lib/utils'
 import { PageHead, SuccessModal } from './Services'
 
 export function Level2GateModal({ open, onClose, feature }: { open: boolean; onClose: () => void; feature: string }) {
@@ -96,7 +96,7 @@ export function EarnPage() {
   const [amount, setAmount] = useState(''); const [plan, setPlan] = useState(1)
   if (!user) return null
   const einfo = earnInfo()
-  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
+  const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const todayL = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') })()
   const rewardOptions = [
     { to: '/earn/checkin', icon: '📅', title: 'Daily Check-in', sub: 'Up to ' + usd(50) + ' a day', badge: einfo.lastCheckin === todayL ? '✓ Claimed' : 'Claim now' },
@@ -121,8 +121,8 @@ export function EarnPage() {
   }
   return (
     <div>
-      <PageHead title="Earn" sub="Stake USD and earn daily interest. Unstake anytime (flexible) or at term." />
-      <h3 className="font-extrabold mb-3">Rewards — earn free USD</h3>
+      <PageHead title="Earn" sub="Stake USDT and earn daily interest. Unstake anytime (flexible) or at term." />
+      <h3 className="font-extrabold mb-3">Rewards — earn free USDT</h3>
       <div className="grid grid-cols-2 gap-2.5 mb-6">
         {rewardOptions.map(o => (
           <Link key={o.to} to={o.to} className="block">
@@ -151,8 +151,8 @@ export function EarnPage() {
             </button>
           ))}
         </div>
-        <Input label="Amount (USD)" type="number" placeholder="e.g. 100" value={amount} onChange={e => setAmount(e.target.value)} />
-        {amt > 0 && <p className="text-xs text-slate-500">≈ {fmtBDT(amtBDT)} will be staked at today's rate. Projected yearly earning: <b className="text-emerald-600">{fmtUSD(amt * PLANS[plan].apy / 100)}</b></p>}
+        <Input label="Amount (USDT)" type="number" placeholder="e.g. 100" value={amount} onChange={e => setAmount(e.target.value)} />
+        {amt > 0 && <p className="text-xs text-slate-500">≈ {fmtBDT(amtBDT)} will be staked at today's rate. Projected yearly earning: <b className="text-emerald-600">{fmtUSDT(amt * PLANS[plan].apy / 100)}</b></p>}
         <Btn className="w-full py-3.5" onClick={submit}>Stake now</Btn>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">My stakes</h3>
@@ -174,20 +174,19 @@ export function EarnPage() {
 }
 
 export function SwapPage() {
-  const { user, db, walletOf, swap, toast } = useApp()
+  const { user, walletOf, swap, toast } = useApp()
   const { coins } = useMarket()
-  const [from, setFrom] = useState('BDT'); const [to, setTo] = useState('BTC'); const [amount, setAmount] = useState('')
+  const [from, setFrom] = useState('USDT'); const [to, setTo] = useState('BTC'); const [amount, setAmount] = useState('')
   if (!user) return null
   const w = walletOf(user.id)
   const prices = useMemo(() => Object.fromEntries(coins.map(c => [c.symbol, c.priceUsd])), [coins])
-  const rate = db.settings.bdtPerUsd
-  const priceOf = (sym: string) => sym === 'BDT' ? 1 / rate : (prices[sym] ?? 0)
+  const priceOf = (sym: string) => sym === 'USDT' ? 1 : (prices[sym] ?? 0)
   const amt = Number(amount) || 0
   const usdGross = amt * priceOf(from)
   const receive = priceOf(to) ? (usdGross * 0.995) / priceOf(to) : 0
   const balanceOf = (sym: string) => sym === 'BDT' ? w.available : (w.holdings[sym] ?? 0)
-  const assets = ['BDT', ...Object.keys(COIN_META)]
-  const fmtAmt = (sym: string, v: number) => sym === 'BDT' ? fmtBDT(Math.round(v)) : v.toFixed(6) + ' ' + sym
+  const assets = ['USDT', ...Object.keys(COIN_META).filter(s => s !== 'USDT')]
+  const fmtAmt = (sym: string, v: number) => sym === 'USDT' ? v.toFixed(2) + ' USDT' : v.toFixed(6) + ' ' + sym
   const submit = () => {
     if (!amt) return toast({ kind: 'error', title: 'Enter an amount' })
     const err = swap(from, to, amt, prices)
@@ -196,7 +195,7 @@ export function SwapPage() {
   }
   return (
     <div>
-      <PageHead title="Swap" sub="Instantly exchange BDT and crypto at live prices · 0.5% swap fee." />
+      <PageHead title="Swap" sub="Instantly exchange USDT and crypto at live prices · 0.5% swap fee." />
       <Card className="p-5 space-y-4">
         <div>
           <Select label="From" value={from} onChange={(e: any) => { setFrom(e.target.value); if (e.target.value === to) setTo(from) }}>{assets.map(a => <option key={a} value={a}>{a} — balance {fmtAmt(a, balanceOf(a))}</option>)}</Select>
@@ -214,7 +213,7 @@ export function SwapPage() {
         </div>
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Rate</span><span className="font-bold">1 {from} ≈ {priceOf(to) ? (priceOf(from) / priceOf(to)).toPrecision(4) : '—'} {to}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Swap fee (0.5%)</span><span className="font-bold">{fmtBDT(Math.round(usdGross * 0.005 * rate))}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Swap fee (0.5%)</span><span className="font-bold">{fmtUSDT(usdGross * 0.005)}</span></div>
         </div>
         <Btn className="w-full py-3.5" onClick={submit}>Swap now</Btn>
       </Card>
@@ -255,8 +254,8 @@ export function TradePage() {
         <>
           <Card className="p-5 mb-4">
             <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div><p className="font-extrabold text-lg">{coin.name} <span className="text-slate-400 text-sm">{coin.symbol}/USD</span></p>
-                <p className="text-3xl font-extrabold mt-1">{fmtUSD(coin.priceUsd, coin.priceUsd < 10 ? 2 : 0)}</p>
+              <div><p className="font-extrabold text-lg">{coin.name} <span className="text-slate-400 text-sm">{coin.symbol}/USDT</span></p>
+                <p className="text-3xl font-extrabold mt-1">{fmtUSDT(coin.priceUsd, coin.priceUsd < 10 ? 2 : 0)}</p>
                 <p className="text-sm text-slate-400">{fmtBDT(Math.round(coin.priceUsd * db.settings.bdtPerUsd))} · You hold <b className="text-slate-600 dark:text-slate-200">{(w.holdings[coin.symbol] ?? 0).toFixed(6)} {coin.symbol}</b></p></div>
               <span className={`flex items-center gap-1 font-extrabold ${up ? 'text-emerald-500' : 'text-rose-500'}`}>{up ? <TrendingUp size={17} /> : <TrendingDown size={17} />}{up ? '+' : ''}{coin.change24h.toFixed(2)}%</span>
             </div>
@@ -264,7 +263,7 @@ export function TradePage() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data}>
                   <YAxis hide domain={['dataMin', 'dataMax']} />
-                  <Tooltip formatter={(v: any) => [fmtUSD(Number(v)), 'Price']} labelFormatter={() => ''} />
+                  <Tooltip formatter={(v: any) => [fmtUSDT(Number(v)), 'Price']} labelFormatter={() => ''} />
                   <Area type="monotone" dataKey="v" stroke={up ? '#10b981' : '#f43f5e'} fill={up ? '#10b98133' : '#f43f5e33'} strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>

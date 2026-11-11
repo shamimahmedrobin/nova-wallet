@@ -5,7 +5,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'rec
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket, type Coin } from '../lib/market'
 import { Badge, Btn, Card, Input, Modal, SkeletonRows , MaxBtn } from '../components/ui'
-import { fmtBDT, fmtUSD } from '../lib/utils'
+import { fmtBDT, fmtUSDT } from '../lib/utils'
 import { PageHead } from './Services'
 
 export default function Market() {
@@ -26,7 +26,7 @@ export default function Market() {
     if (mode === 'buy') {
       const err = buyCrypto(selected.symbol, Number(amount), live.priceUsd)
       if (err) return toast({ kind: 'error', title: err })
-      toast({ kind: 'success', title: 'Bought ' + selected.symbol, body: 'Executable price confirmed at trade time: ' + fmtUSD(live.priceUsd) })
+      toast({ kind: 'success', title: 'Bought ' + selected.symbol, body: 'Executable price confirmed at trade time: ' + fmtUSDT(live.priceUsd) })
     } else {
       const err = sellCrypto(selected.symbol, Number(amount), live.priceUsd)
       if (err) return toast({ kind: 'error', title: err })
@@ -60,13 +60,13 @@ export default function Market() {
                     <p className="font-extrabold flex items-center gap-1.5">{c.name}
                       <button onClick={() => toggleWatch(c.symbol)}><Star size={15} className={watch.includes(c.symbol) ? 'fill-amber-400 text-amber-400' : 'text-slate-300'} /></button>
                     </p>
-                    <p className="text-xs text-slate-400">{c.symbol} · MCap {fmtUSD(c.marketCap, 0)}{held > 0 ? ` · You hold ${held}` : ''}</p>
+                    <p className="text-xs text-slate-400">{c.symbol} · MCap {fmtUSDT(c.marketCap, 0)}{held > 0 ? ` · You hold ${held}` : ''}</p>
                   </div>
                   <div className="w-20 h-10 hidden sm:block">
                     <ResponsiveContainer><AreaChart data={data}><Area type="monotone" dataKey="v" stroke={up ? '#10b981' : '#f43f5e'} fill={up ? '#10b98133' : '#f43f5e33'} strokeWidth={2} /></AreaChart></ResponsiveContainer>
                   </div>
                   <div className="text-right">
-                    <p className="font-extrabold">{fmtUSD(c.priceUsd, c.priceUsd < 10 ? 3 : 0)}</p>
+                    <p className="font-extrabold">{fmtUSDT(c.priceUsd, c.priceUsd < 10 ? 3 : 0)}</p>
                     <p className={`text-xs font-bold flex items-center justify-end gap-0.5 ${up ? 'text-emerald-500' : 'text-rose-500'}`}>{up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{up ? '+' : ''}{c.change24h.toFixed(2)}% · 24h</p>
                     <p className="text-[11px] text-slate-400">{fmtBDT(Math.round(c.priceUsd * db.settings.bdtPerUsd))}</p>
                   </div>
@@ -88,7 +88,7 @@ export default function Market() {
               {(['buy', 'sell'] as const).map(m => <button key={m} onClick={() => setMode(m)} className={`py-2 rounded-xl text-sm font-bold capitalize ${mode === m ? (m === 'buy' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white') : 'text-slate-500'}`}>{m}</button>)}
             </div>
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm space-y-1.5">
-              <div className="flex justify-between"><span className="text-slate-500">Market price</span><span className="font-bold">{fmtUSD(selected.priceUsd)} <Badge tone={selected.live ? 'green' : 'amber'}>{selected.live ? 'Live' : 'Cached'}</Badge></span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Market price</span><span className="font-bold">{fmtUSDT(selected.priceUsd)} <Badge tone={selected.live ? 'green' : 'amber'}>{selected.live ? 'Live' : 'Cached'}</Badge></span></div>
               <div className="flex justify-between"><span className="text-slate-500">24h change</span><span className={`font-bold ${selected.change24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{selected.change24h.toFixed(2)}%</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Your balance</span><span className="font-bold">{mode === 'buy' ? fmtBDT(w?.available ?? 0) : `${w?.holdings[selected.symbol] ?? 0} ${selected.symbol}`}</span></div>
             </div>
@@ -96,7 +96,7 @@ export default function Market() {
               <ResponsiveContainer>
                 <AreaChart data={selected.spark.filter((_, i) => i % Math.max(1, Math.floor(selected.spark.length / 30)) === 0).map((v, i) => ({ i, v }))}>
                   <XAxis dataKey="i" hide /><YAxis hide domain={['dataMin', 'dataMax']} />
-                  <Tooltip formatter={(v: any) => fmtUSD(Number(v))} labelFormatter={() => '7d trend'} />
+                  <Tooltip formatter={(v: any) => fmtUSDT(Number(v))} labelFormatter={() => '7d trend'} />
                   <Area type="monotone" dataKey="v" stroke="#8b5cf6" fill="#8b5cf633" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>

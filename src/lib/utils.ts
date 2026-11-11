@@ -18,6 +18,8 @@ export const fmtBDT = (n: number, dec = 0) =>
   '৳' + n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 export const fmtUSD = (n: number, dec = 2) =>
   '$' + n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+export const fmtUSDT = (n: number, dec = 2) =>
+  n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + ' USDT'
 export const fmtCrypto = (n: number, sym: string) =>
   n.toLocaleString('en-US', { maximumFractionDigits: sym === 'BTC' ? 6 : sym === 'ETH' ? 5 : 2 }) + ' ' + sym
 export const fmtDate = (iso: string) =>
