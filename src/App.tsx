@@ -10,6 +10,7 @@ import Auth from './pages/Auth'
 import Home from './pages/Home'
 import { AddMoney, CashOut, ReceiveMoney, SendMoney } from './pages/Services'
 import { LoanPage, Referral } from './pages/ReferralLoan'
+import { DirectWithdraw, EarnPage, SwapPage, TradePage } from './pages/Extras'
 import { NewsDetail, NewsList, Notifications, Transactions } from './pages/TransactionsNews'
 import Profile from './pages/Profile'
 
@@ -66,6 +67,10 @@ export default function App() {
             <Route path="/cashout" element={<CashOut />} />
             <Route path="/send" element={<SendMoney />} />
             <Route path="/receive" element={<ReceiveMoney />} />
+            <Route path="/withdraw" element={<DirectWithdraw />} />
+            <Route path="/earn" element={<EarnPage />} />
+            <Route path="/swap" element={<SwapPage />} />
+            <Route path="/trade" element={<TradePage />} />
             <Route path="/referral" element={<Referral />} />
             <Route path="/loan" element={<LoanPage />} />
             <Route path="/crypto" element={<Suspense fallback={<div className="p-8 text-center">Loading market…</div>}><Market /></Suspense>} />

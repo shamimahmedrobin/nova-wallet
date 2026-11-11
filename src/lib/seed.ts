@@ -109,7 +109,7 @@ export function seedDB(): DB {
     levels: DEFAULT_LEVELS,
     levelRequests: [
       { id: 'LVR-101', userId: tanvir.id, fromLevel: 1, toLevel: 2, status: 'pending', createdAt: d(0, 12) },
-    ],
+    ], stakes: [],
     watchlist: { [shamim.id]: ['BTC', 'ETH', 'SOL'] },
     referralEarnings: [
       { id: 're1', userId: shamim.id, fromUser: 'Arif Hossain', amount: 125, createdAt: d(7) },

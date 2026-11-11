@@ -7,7 +7,7 @@ import { fmtDate, fmtDateTime } from '../lib/utils'
 import { PageHead } from './Services'
 import type { Tx } from '../lib/types'
 
-const CATS = ['all', 'add_money', 'cash_out', 'send', 'receive', 'referral', 'loan_disbursement', 'loan_repayment', 'crypto_buy', 'crypto_sell', 'adjustment']
+const CATS = ['all', 'add_money', 'cash_out', 'send', 'receive', 'referral', 'loan_disbursement', 'loan_repayment', 'crypto_buy', 'crypto_sell', 'adjustment', 'direct_withdraw', 'earn', 'swap']
 const catLabel = (c: string) => c.replace(/_/g, ' ')
 
 export function Transactions() {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, ChevronRight, Eye, EyeOff, Gift, HandCoins, Lock, QrCode, Send, ShoppingCart, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Banknote, Bitcoin, ChevronRight, Eye, EyeOff, Gift, HandCoins, Lock, PiggyBank, QrCode, Send, ShoppingCart, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket } from '../lib/market'
 import { fmtBDT, fmtUSD } from '../lib/utils'
@@ -10,11 +10,15 @@ const ACTIONS_RAW = [
   { to: '/add', labelKey: 'act_add', icon: ArrowDownToLine, g: 'from-emerald-500 to-teal-600' },
   { to: '/cashout', labelKey: 'act_cashout', icon: ArrowUpFromLine, g: 'from-rose-500 to-pink-600' },
   { to: '/send', labelKey: 'act_send', icon: Send, g: 'from-violet-500 to-purple-600' },
+  { to: '/withdraw', labelKey: 'act_withdraw', icon: Banknote, g: 'from-blue-500 to-indigo-600' },
   { to: '/receive', labelKey: 'act_receive', icon: QrCode, g: 'from-cyan-500 to-blue-600' },
   { to: '/referral', labelKey: 'act_referral', icon: Gift, g: 'from-amber-500 to-orange-600' },
+  { to: '/earn', labelKey: 'act_earn', icon: PiggyBank, g: 'from-lime-500 to-green-600' },
   { to: '/loan', labelKey: 'act_loan', icon: HandCoins, g: 'from-indigo-500 to-blue-700' },
   { to: '/crypto', labelKey: 'act_buy', icon: Bitcoin, g: 'from-orange-500 to-amber-600' },
   { to: '/crypto?mode=sell', labelKey: 'act_sell', icon: ShoppingCart, g: 'from-fuchsia-500 to-purple-700' },
+  { to: '/swap', labelKey: 'act_swap', icon: ArrowLeftRight, g: 'from-purple-500 to-violet-700' },
+  { to: '/trade', labelKey: 'act_trade', icon: TrendingUp, g: 'from-slate-600 to-slate-800' },
 ]
 export default function Home() {
   const { user, db, walletOf, t, fmtMoney, currency } = useApp()

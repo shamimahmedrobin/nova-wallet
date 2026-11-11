@@ -5,6 +5,7 @@ export type TxStatus = 'pending' | 'processing' | 'completed' | 'approved' | 're
 export type TxCategory =
   | 'add_money' | 'cash_out' | 'send' | 'receive' | 'referral'
   | 'loan_disbursement' | 'loan_repayment' | 'crypto_buy' | 'crypto_sell' | 'adjustment'
+  | 'direct_withdraw' | 'earn' | 'swap'
 
 export interface User {
   id: string; name: string; username: string; email: string; phone: string
@@ -55,11 +56,12 @@ export interface Settings {
 export interface Audit { id: string; actor: string; action: string; detail: string; createdAt: string }
 export interface SupportTicket { id: string; userId: string; subject: string; message: string; status: 'open' | 'closed'; createdAt: string }
 
+export interface Stake { id: string; userId: string; amount: number; apy: number; termDays: number; startAt: string; status: 'active' | 'closed' }
 export interface DB {
   users: User[]; wallets: Wallet[]; txs: Tx[]; ledger: LedgerEntry[]
   deposits: DepositReq[]; withdrawals: WithdrawReq[]; loans: Loan[]
   news: NewsItem[]; banners: Banner[]; notifications: Notif[]
   settings: Settings; audit: Audit[]; tickets: SupportTicket[]
-  levels: LevelDef[]; levelRequests: LevelRequest[]
+  levels: LevelDef[]; levelRequests: LevelRequest[]; stakes: Stake[]
   watchlist: Record<string, string[]>; referralEarnings: { id: string; userId: string; fromUser: string; amount: number; createdAt: string }[]
 }

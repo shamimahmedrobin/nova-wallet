@@ -17,6 +17,7 @@ function load(): DB {
       // migrate older saves: add account levels without wiping balances/history
       if (!db.levels) db.levels = DEFAULT_LEVELS
       if (!db.levelRequests) db.levelRequests = []
+      if (!db.stakes) db.stakes = []
       db.users.forEach(u => { if (!u.level) u.level = u.role === 'admin' ? 4 : u.kyc === 'verified' ? 2 : 1 })
       db.news.forEach(n => { if (!n.coin) n.coin = ({ Bitcoin: 'BTC', Ethereum: 'ETH' } as any)[n.category] ?? 'NOVA' })
       return db
@@ -38,6 +39,10 @@ interface Ctx {
   addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string }) => void
   decideDeposit: (id: string, ok: boolean) => void
   requestWithdraw: (p: { method: string; amount: number; destination: string; pin: string }) => string | null
+  directWithdraw: (p: { method: string; amount: number; destination: string; pin: string }) => string | null
+  stake: (amount: number, apy: number, termDays: number) => string | null
+  unstake: (stakeId: string) => string | null
+  swap: (fromSym: string, toSym: string, amountFrom: number, prices: Record<string, number>) => string | null
   decideWithdraw: (id: string, ok: boolean) => void
   sendMoney: (p: { toUserId: string; amount: number; note?: string; pin: string }) => string | Tx
   buyCrypto: (symbol: string, bdtAmount: number, priceUsd: number) => string | null
@@ -223,6 +228,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
     return null
   }
+  const directWithdraw: Ctx['directWithdraw'] = (p) => {
+    if (!user) return 'Not signed in'
+    if (user.pinHash !== hashSecret(p.pin)) return 'Incorrect transaction PIN.'
+    const w = walletOf(user.id)
+    if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
+    if (p.amount > w.available) return 'Insufficient available balance.'
+    const fee = Math.round(p.amount * dbRef.current.settings.cashoutFeePct / 100)
+    mutate(d => {
+      const dw = d.wallets.find(x => x.userId === user.id)!
+      dw.available -= p.amount
+      d.withdrawals.unshift({ id: uid('WDR'), userId: user.id, method: p.method, amount: p.amount, fee, destination: p.destination, status: 'completed', createdAt: nowISO() })
+      recordTx(d, { userId: user.id, category: 'direct_withdraw', title: 'Direct Withdraw to ' + p.method, amount: p.amount, fee, currency: 'BDT', status: 'completed', method: p.method, note: 'Instant withdrawal — no admin review' })
+      notify(d, user.id, 'Withdrawal completed', 'Your direct withdrawal of ' + p.amount + ' BDT to ' + p.method + ' is complete.', 'transaction')
+    })
+    return null
+  }
+  const stake: Ctx['stake'] = (amount, apy, termDays) => {
+    if (!user) return 'Not signed in'
+    const w = walletOf(user.id)
+    if (amount > w.available) return 'Insufficient available balance.'
+    mutate(d => {
+      const dw = d.wallets.find(x => x.userId === user.id)!
+      dw.available -= amount; dw.locked += amount
+      d.stakes.unshift({ id: uid('STK'), userId: user.id, amount, apy, termDays, startAt: nowISO(), status: 'active' })
+      recordTx(d, { userId: user.id, category: 'earn', title: 'Staked in Earn (' + apy + '% APY)', amount, fee: 0, currency: 'BDT', status: 'completed' })
+    })
+    return null
+  }
+  const unstake: Ctx['unstake'] = (stakeId) => {
+    if (!user) return 'Not signed in'
+    const st = dbRef.current.stakes.find(x => x.id === stakeId && x.userId === user.id)
+    if (!st || st.status !== 'active') return 'Stake not found.'
+    const days = Math.max(0, (Date.now() - new Date(st.startAt).getTime()) / 86_400_000)
+    const interest = Math.round(st.amount * st.apy / 100 * days / 365)
+    mutate(d => {
+      const dw = d.wallets.find(x => x.userId === user.id)!
+      dw.locked -= st.amount; dw.available += st.amount + interest
+      d.stakes.find(x => x.id === stakeId)!.status = 'closed'
+      recordTx(d, { userId: user.id, category: 'earn', title: 'Earn unstaked + interest', amount: st.amount + interest, fee: 0, currency: 'BDT', status: 'completed', note: 'Interest earned: ' + interest + ' BDT over ' + days.toFixed(2) + ' days' })
+    })
+    return null
+  }
+  const swap: Ctx['swap'] = (fromSym, toSym, amountFrom, prices) => {
+    if (!user) return 'Not signed in'
+    if (fromSym === toSym) return 'Choose two different assets.'
+    const w = walletOf(user.id)
+    const rate = dbRef.current.settings.bdtPerUsd
+    const priceOf = (sym: string) => sym === 'BDT' ? 1 / rate : (prices[sym] ?? 0)
+    if (!priceOf(fromSym) || !priceOf(toSym)) return 'Live price unavailable for this pair.'
+    if (fromSym === 'BDT' ? amountFrom > w.available : amountFrom > (w.holdings[fromSym] ?? 0)) return 'Insufficient ' + fromSym + ' balance.'
+    const usdGross = amountFrom * priceOf(fromSym)
+    const feeUsd = usdGross * 0.005
+    const toAmt = (usdGross - feeUsd) / priceOf(toSym)
+    mutate(d => {
+      const dw = d.wallets.find(x => x.userId === user.id)!
+      if (fromSym === 'BDT') dw.available -= amountFrom; else dw.holdings[fromSym] = (dw.holdings[fromSym] ?? 0) - amountFrom
+      if (toSym === 'BDT') dw.available += toAmt; else dw.holdings[toSym] = (dw.holdings[toSym] ?? 0) + toAmt
+      recordTx(d, { userId: user.id, category: 'swap', title: 'Swap ' + fromSym + ' → ' + toSym, amount: Math.round(usdGross * rate), fee: Math.round(feeUsd * rate), currency: 'BDT', status: 'completed', note: amountFrom + ' ' + fromSym + ' → ' + (toSym === 'BDT' ? Math.round(toAmt) : toAmt.toFixed(6)) + ' ' + toSym })
+    })
+    return null
+  }
   const decideWithdraw: Ctx['decideWithdraw'] = (id, ok) => {
     mutate(d => {
       const wd = d.withdrawals.find(x => x.id === id); if (!wd || wd.status !== 'pending') return
@@ -402,7 +468,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, logout, walletOf,
-    addDeposit, decideDeposit, requestWithdraw, decideWithdraw, sendMoney, buyCrypto, sellCrypto,
+    addDeposit, decideDeposit, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
     applyLoan, decideLoan, repayLoan, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, resetDemo,
