@@ -18,6 +18,12 @@ function load(): DB {
       if (!db.levels) db.levels = DEFAULT_LEVELS
       if (!db.levelRequests) db.levelRequests = []
       if (!db.stakes) db.stakes = []
+      db.tickets.forEach(tk => {
+        if (!tk.messages) tk.messages = [{ id: tk.id + '-m1', from: 'user', text: tk.message ?? '', at: tk.createdAt }]
+        if ((tk.status as any) === 'open') tk.status = 'pending'
+        if ((tk.status as any) === 'closed') tk.status = 'resolved'
+        if (!tk.updatedAt) tk.updatedAt = tk.createdAt
+      })
       db.users.forEach(u => { if (!u.level) u.level = u.role === 'admin' ? 4 : u.kyc === 'verified' ? 2 : 1 })
       db.news.forEach(n => { if (!n.coin) n.coin = ({ Bitcoin: 'BTC', Ethereum: 'ETH' } as any)[n.category] ?? 'NOVA' })
       return db
@@ -67,6 +73,8 @@ interface Ctx {
   updateLevelDef: (level: number, patch: Partial<DB['levels'][number]>) => void
   setUserLevel: (userId: string, level: number) => void
   addTicket: (subject: string, message: string) => void
+  replyTicket: (ticketId: string, text: string) => void
+  resolveTicket: (ticketId: string) => void
   resetDemo: () => void
 }
 const AppCtx = createContext<Ctx | null>(null)
@@ -437,7 +445,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const toggleBanner = (id: string) => mutate(d => { const b = d.banners.find(x => x.id === id); if (b) b.active = !b.active })
   const addTicket: Ctx['addTicket'] = (subject, message) => {
     if (!user) return
-    mutate(d => d.tickets.unshift({ id: uid('TKT'), userId: user.id, subject, message, status: 'open', createdAt: nowISO() }))
+    mutate(d => {
+      d.tickets.unshift({ id: uid('TKT'), userId: user.id, subject, status: 'pending', createdAt: nowISO(), updatedAt: nowISO(), messages: [{ id: uid('MSG'), from: 'user', text: message, at: nowISO() }] })
+      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'New support chat', user.name + ' opened a support chat: ' + subject, 'support'))
+    })
+  }
+  const replyTicket: Ctx['replyTicket'] = (ticketId, text) => {
+    if (!user || !text.trim()) return
+    const from = user.role === 'admin' ? 'admin' : 'user'
+    mutate(d => {
+      const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
+      tk.messages.push({ id: uid('MSG'), from, text: text.trim(), at: nowISO() })
+      tk.updatedAt = nowISO()
+      if (from === 'admin' && tk.status === 'pending') tk.status = 'processing'
+      if (from === 'admin') notify(d, tk.userId, 'Support replied', 'The support team replied to your chat: ' + tk.subject, 'support')
+      else d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Support chat reply', user.name + ' replied in: ' + tk.subject, 'support'))
+    })
+  }
+  const resolveTicket: Ctx['resolveTicket'] = (ticketId) => {
+    mutate(d => {
+      const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
+      tk.status = 'resolved'; tk.updatedAt = nowISO()
+      notify(d, tk.userId, 'Support chat resolved', 'Your support chat "' + tk.subject + '" was marked resolved and closed.', 'support')
+    })
   }
   const requestUpgrade: Ctx['requestUpgrade'] = (toLevel) => {
     if (!user) return 'Not signed in'
@@ -471,7 +501,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addDeposit, decideDeposit, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
     applyLoan, decideLoan, repayLoan, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
-    publishNews, deleteNews, updateSettings, toggleBanner, addTicket, resetDemo,
+    publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
     lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney,
   }

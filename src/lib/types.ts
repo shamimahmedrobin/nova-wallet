@@ -54,7 +54,8 @@ export interface Settings {
   bdtPerUsd: number; maintenance: boolean; platformName: string
 }
 export interface Audit { id: string; actor: string; action: string; detail: string; createdAt: string }
-export interface SupportTicket { id: string; userId: string; subject: string; message: string; status: 'open' | 'closed'; createdAt: string }
+export interface ChatMsg { id: string; from: 'user' | 'admin'; text: string; at: string }
+export interface SupportTicket { id: string; userId: string; subject: string; message?: string; status: 'pending' | 'processing' | 'resolved'; createdAt: string; updatedAt: string; messages: ChatMsg[] }
 
 export interface Stake { id: string; userId: string; amount: number; apy: number; termDays: number; startAt: string; status: 'active' | 'closed' }
 export interface DB {

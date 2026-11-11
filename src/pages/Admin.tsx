@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, LayoutDashboard, Megaphone, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { ArrowLeft, Check, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, statusTone } from '../components/ui'
@@ -13,6 +13,7 @@ const TABS = [
   { id: 'loans', label: 'Loans', icon: HandCoins },
   { id: 'referrals', label: 'Referrals', icon: Gift },
   { id: 'levels', label: 'Levels', icon: Award },
+  { id: 'support', label: 'Support Chat', icon: MessageCircle },
   { id: 'content', label: 'News & Banners', icon: Newspaper },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
@@ -268,12 +269,13 @@ export default function Admin() {
           </div>
         )}
 
+        {tab === 'support' && <SupportChat />}
         {tab === 'audit' && (
           <div className="anim-fade-up space-y-2">
             {db.audit.map(a => (
               <Card key={a.id} className="p-4 text-sm"><p className="font-bold">{a.action} <span className="text-slate-400 font-normal">by {a.actor}</span></p><p className="text-slate-500">{a.detail}</p><p className="text-[11px] text-slate-400">{fmtDateTime(a.createdAt)}</p></Card>
             ))}
-            <Card className="p-5"><h3 className="font-extrabold mb-2">Support tickets</h3>{db.tickets.length === 0 ? <p className="text-sm text-slate-500">No tickets.</p> : db.tickets.map(t => <p key={t.id} className="text-sm py-1"><b>{t.subject}</b> — {nameOf(t.userId)} · {t.status}</p>)}</Card>
+            <Card className="p-5"><h3 className="font-extrabold mb-2">Support chat</h3><p className="text-sm text-slate-500 mb-3">{db.tickets.filter(t => t.status === 'pending').length} pending · {db.tickets.filter(t => t.status === 'processing').length} processing · {db.tickets.filter(t => t.status === 'resolved').length} resolved</p><Btn variant="outline" className="!py-2 !text-xs" onClick={() => setTab('support')}>Open Support Chat</Btn></Card>
           </div>
         )}
 
@@ -332,6 +334,90 @@ export default function Admin() {
           </div>
         )}
       </Modal>
+    </div>
+  )
+}
+
+
+const SUP_TONE = (st: string) => st === 'pending' ? 'amber' : st === 'processing' ? 'violet' : 'green'
+
+function SupportChat() {
+  const { db, replyTicket, resolveTicket, toast } = useApp()
+  const [q, setQ] = useState('')
+  const [filter, setFilter] = useState('all')
+  const [sel, setSel] = useState<string | null>(null)
+  const [text, setText] = useState('')
+  const userOf = (id: string) => db.users.find(u => u.id === id)
+  const list = db.tickets.filter(tk => {
+    const u = userOf(tk.userId)
+    const hay = `${u?.name ?? ''} @${u?.username ?? ''} ${u?.email ?? ''} ${tk.subject}`.toLowerCase()
+    return (filter === 'all' || tk.status === filter) && hay.includes(q.trim().toLowerCase())
+  }).slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const tk = db.tickets.find(x => x.id === sel) ?? list[0]
+  const send = () => { if (tk && text.trim()) { replyTicket(tk.id, text); setText(''); toast({ kind: 'success', title: 'Reply sent' }) } }
+  return (
+    <div>
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="flex-1"><Input placeholder="Search by username or email…" value={q} onChange={e => setQ(e.target.value)} /></div>
+        <div className="flex gap-1.5 shrink-0">
+          {['all', 'pending', 'processing', 'resolved'].map(f => (
+            <button key={f} onClick={() => setFilter(f)} className={`px-3.5 py-2 rounded-full text-xs font-bold capitalize ${filter === f ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}>{f}{f !== 'all' ? ` (${db.tickets.filter(t => t.status === f).length})` : ''}</button>
+          ))}
+        </div>
+      </div>
+      <div className="grid lg:grid-cols-[1fr_1.25fr] gap-4 items-start">
+        <div className="space-y-2">
+          {list.length === 0 ? <Card><Empty title="No support chats" body="Nothing matches this search or filter." /></Card> : list.map(x => {
+            const u = userOf(x.userId); const last = x.messages[x.messages.length - 1]
+            return (
+              <button key={x.id} onClick={() => setSel(x.id)} className="w-full text-left">
+                <Card className={`p-4 ${tk?.id === x.id ? '!border-violet-400 dark:!border-violet-500' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <Avatar name={u?.name ?? '?'} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold truncate">{x.subject}</p>
+                      <p className="text-xs text-slate-400 truncate">{u?.name} · @{u?.username} · {u?.email}</p>
+                      {last && <p className="text-xs text-slate-500 truncate mt-0.5">{last.from === 'admin' ? 'You: ' : ''}{last.text}</p>}
+                    </div>
+                    <div className="text-right shrink-0"><Badge tone={SUP_TONE(x.status)}>{x.status}</Badge><p className="text-[10px] text-slate-400 mt-1">{fmtDateTime(x.updatedAt)}</p></div>
+                  </div>
+                </Card>
+              </button>
+            )
+          })}
+        </div>
+        {tk ? (
+          <Card className="p-5">
+            {(() => { const u = userOf(tk.userId); return (
+              <div className="flex items-center gap-3 flex-wrap mb-4">
+                <Avatar name={u?.name ?? '?'} />
+                <div className="flex-1 min-w-0"><p className="font-extrabold truncate">{tk.subject}</p><p className="text-xs text-slate-400 truncate">{u?.name} · @{u?.username} · {u?.email}</p></div>
+                <Badge tone={SUP_TONE(tk.status)}>{tk.status}</Badge>
+                {tk.status !== 'resolved' && <Btn className="!py-2 !text-xs !bg-emerald-500" onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }}>✓ Mark Resolved</Btn>}
+              </div>
+            ) })()}
+            <div className="h-80 overflow-y-auto rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 space-y-2.5 mb-3">
+              {tk.messages.map(m => (
+                <div key={m.id} className={`flex ${m.from === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'admin' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
+                    {m.from === 'user' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{userOf(tk.userId)?.name}</p>}
+                    <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                    <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {tk.status === 'resolved' ? (
+              <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3">This chat is resolved and closed. The user must open a new chat for further help.</p>
+            ) : (
+              <div className="flex gap-2">
+                <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send() }} placeholder="Type your reply… (first reply moves Pending → Processing)" className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
+                <Btn className="!px-5 shrink-0" onClick={send}>Send</Btn>
+              </div>
+            )}
+          </Card>
+        ) : <Card><Empty title="Select a chat" body="Pick a conversation from the list to reply." /></Card>}
+      </div>
     </div>
   )
 }

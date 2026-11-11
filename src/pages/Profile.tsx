@@ -14,7 +14,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [modal, setModal] = useState<string | null>(null)
@@ -22,6 +22,9 @@ export default function Profile() {
   const [pw, setPw] = useState({ old: '', next: '' })
   const [pin, setPin] = useState({ old: '', next: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
+  const [chatText, setChatText] = useState('')
+  const [viewTicket, setViewTicket] = useState<string | null>(null)
+  const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const [notifPrefs, setNotifPrefs] = useState({ tx: true, market: true, promo: false })
   const [curQ, setCurQ] = useState('')
   const [kycStep, setKycStep] = useState(1)
@@ -49,6 +52,9 @@ export default function Profile() {
     const ctx = canvas.getContext('2d')!; ctx.translate(canvas.width, 0); ctx.scale(-1, 1); ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
     setKycFacePhoto(canvas.toDataURL('image/jpeg', 0.75)); stopCam()
   }
+  useEffect(() => {
+    if (modal === 'support' && chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+  })
   useEffect(() => {
     if (modal === 'kyc') { setKycStep(1); setKycDocType(user?.kycDocType ?? 'nid'); setKycDocNumber(user?.kycDocNumber ?? ''); setKycDocPhoto(user?.kycDocPhoto ?? ''); setKycFacePhoto(user?.kycFacePhoto ?? ''); setCamErr(false) }
     if (modal !== 'kyc') stopCam()
@@ -132,7 +138,7 @@ export default function Profile() {
             </a>
           ))}
         </div>
-        {db.tickets.filter(x => x.userId === user.id && x.status === 'open').length > 0 && <p className="text-center text-xs font-semibold text-amber-600 mt-2.5">⏳ {db.tickets.filter(x => x.userId === user.id && x.status === 'open').length} open ticket(s)</p>}
+        {db.tickets.filter(x => x.userId === user.id && x.status !== 'resolved').length > 0 && <p className="text-center text-xs font-semibold text-amber-600 mt-2.5">⏳ {db.tickets.filter(x => x.userId === user.id && x.status !== 'resolved').length} open ticket(s)</p>}
       </Card>
 
       {user.role === 'admin' && <Btn className="w-full mt-4" onClick={() => navigate('/admin')}>{t('open_admin')}</Btn>}
@@ -311,8 +317,8 @@ export default function Profile() {
         </div>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
-      <Modal open={modal === 'support'} onClose={() => setModal(null)} title={t('p_support')}>
-        <ModalDesc>Send a message to our support team, or reach us instantly on any channel below. Open tickets: {db.tickets.filter(t => t.userId === user.id && t.status === 'open').length}</ModalDesc>
+      <Modal open={modal === 'support'} onClose={() => { setModal(null); setViewTicket(null) }} title={t('p_support')}>
+        <ModalDesc>Chat with our support team below, or reach us instantly on any channel. We usually reply within 24 hours.</ModalDesc>
         <div className="space-y-2.5 mb-4">
           {SUPPORT_CHANNELS.map(c => (
             <a key={c.label} href={c.href} target="_blank" rel="noreferrer" className="block">
@@ -320,11 +326,61 @@ export default function Profile() {
             </a>
           ))}
         </div>
-        <div className="space-y-4">
-          <Input label="Subject" value={ticket.subject} onChange={e => setTicket(t => ({ ...t, subject: e.target.value }))} />
-          <Input label="Message" value={ticket.message} onChange={e => setTicket(t => ({ ...t, message: e.target.value }))} />
-          <Btn className="w-full py-3.5" onClick={() => { addTicket(ticket.subject, ticket.message); setModal(null); toast({ kind: 'success', title: 'Support ticket created' }) }}>Send ticket</Btn>
-        </div>
+        {(() => {
+          const mine = db.tickets.filter(x => x.userId === user.id)
+          const active = mine.find(x => x.status !== 'resolved')
+          const viewing = viewTicket ? mine.find(x => x.id === viewTicket) : undefined
+          const tk = viewing ?? active
+          const statusBadge = (st: string) => st === 'pending' ? <Badge tone="amber">Pending</Badge> : st === 'processing' ? <Badge tone="violet">Processing</Badge> : <Badge tone="green">Resolved</Badge>
+          if (tk) return (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                {viewing && <button onClick={() => setViewTicket(null)} className="text-xs font-bold text-violet-600 shrink-0">← Back</button>}
+                <p className="font-extrabold text-sm flex-1 truncate">{tk.subject}</p>
+                {statusBadge(tk.status)}
+              </div>
+              <div ref={chatScrollRef} className="h-64 overflow-y-auto rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 space-y-2.5 mb-3">
+                {tk.messages.map(m => (
+                  <div key={m.id} className={`flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'user' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
+                      {m.from === 'admin' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{t('chat_team')}</p>}
+                      <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                      <p className={`text-[10px] mt-1 ${m.from === 'user' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {tk.status === 'resolved' ? (
+                <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3">{t('chat_closed_note')}</p>
+              ) : (
+                <div className="flex gap-2">
+                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { replyTicket(tk.id, chatText); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
+                  <Btn className="!px-4 shrink-0" onClick={() => { if (chatText.trim()) { replyTicket(tk.id, chatText); setChatText('') } }}><Send size={16} /></Btn>
+                </div>
+              )}
+            </div>
+          )
+          return (
+            <div>
+              <p className="font-extrabold text-sm mb-3">{t('chat_new')}</p>
+              <div className="space-y-4">
+                <Input label="Subject" value={ticket.subject} onChange={e => setTicket(x => ({ ...x, subject: e.target.value }))} />
+                <Input label="Message" value={ticket.message} onChange={e => setTicket(x => ({ ...x, message: e.target.value }))} />
+                <Btn className="w-full py-3.5" onClick={() => { if (!ticket.subject.trim() || !ticket.message.trim()) return toast({ kind: 'error', title: 'Write a subject and your message' }); addTicket(ticket.subject.trim(), ticket.message.trim()); setTicket({ subject: '', message: '' }); toast({ kind: 'success', title: 'Support chat started', body: 'Status: Pending — we usually reply within 24 hours.' }) }}>{t('chat_start')}</Btn>
+              </div>
+              {mine.length > 0 && <>
+                <p className="font-extrabold text-sm mt-6 mb-2.5">{t('chat_history')}</p>
+                <div className="space-y-2">
+                  {mine.map(x => (
+                    <button key={x.id} onClick={() => setViewTicket(x.id)} className="w-full text-left">
+                      <ModalRow><span className="flex items-center gap-2"><span className="flex-1 min-w-0"><span className="block font-bold text-sm truncate">{x.subject}</span><span className="text-xs text-slate-400">{fmtDateTime(x.updatedAt)}</span></span>{statusBadge(x.status)}</span></ModalRow>
+                    </button>
+                  ))}
+                </div>
+              </>}
+            </div>
+          )
+        })()}
       </Modal>
       <Modal open={modal === '2fa'} onClose={() => setModal(null)} title={t('p_2fa')}>
         <ModalDesc>When 2FA is on, sensitive actions (login on a new device, cash out, PIN change) need a second verification step in addition to your password.</ModalDesc>
