@@ -73,7 +73,7 @@ interface Ctx {
   updateLevelDef: (level: number, patch: Partial<DB['levels'][number]>) => void
   setUserLevel: (userId: string, level: number) => void
   addTicket: (subject: string, message: string) => void
-  replyTicket: (ticketId: string, text: string) => void
+  replyTicket: (ticketId: string, text: string, as: 'user' | 'admin') => void
   resolveTicket: (ticketId: string) => void
   resetDemo: () => void
 }
@@ -450,11 +450,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'New support chat', user.name + ' opened a support chat: ' + subject, 'support'))
     })
   }
-  const replyTicket: Ctx['replyTicket'] = (ticketId, text) => {
+  const replyTicket: Ctx['replyTicket'] = (ticketId, text, as) => {
     if (!user || !text.trim()) return
     mutate(d => {
       const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
-      const from = user.id === tk.userId ? 'user' : 'admin'
+      const from = as
       tk.messages.push({ id: uid('MSG'), from, text: text.trim(), at: nowISO() })
       tk.updatedAt = nowISO()
       if (from === 'admin' && tk.status === 'pending') tk.status = 'processing'

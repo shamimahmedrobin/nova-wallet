@@ -347,8 +347,8 @@ export default function Profile() {
                 <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3">{t('chat_closed_note')}</p>
               ) : (
                 <div className="flex gap-2">
-                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { replyTicket(tk.id, chatText); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
-                  <Btn className="!px-4 shrink-0" onClick={() => { if (chatText.trim()) { replyTicket(tk.id, chatText); setChatText('') } }}><Send size={16} /></Btn>
+                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { replyTicket(tk.id, chatText, 'user'); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
+                  <Btn className="!px-4 shrink-0" onClick={() => { if (chatText.trim()) { replyTicket(tk.id, chatText, 'user'); setChatText('') } }}><Send size={16} /></Btn>
                 </div>
               )}
             </div>

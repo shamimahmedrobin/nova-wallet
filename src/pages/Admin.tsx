@@ -356,7 +356,7 @@ function SupportChat() {
   }).slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   const tk = sel ? db.tickets.find(x => x.id === sel) : undefined
   useEffect(() => { if (tk && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight })
-  const send = () => { if (tk && text.trim()) { replyTicket(tk.id, text); setText('') } }
+  const send = () => { if (tk && text.trim()) { replyTicket(tk.id, text, 'admin'); setText('') } }
   const tku = tk ? userOf(tk.userId) : undefined
   return (
     <div>
