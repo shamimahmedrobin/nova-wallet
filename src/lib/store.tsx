@@ -36,7 +36,7 @@ export interface Toast { id: string; title: string; body?: string; kind: 'succes
 interface Ctx {
   db: DB; user: User | null; theme: 'light' | 'dark'; toggleTheme: () => void
   lang: string; setLanguage: (code: string) => void; t: (key: string) => string
-  currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string
+  currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string; fmtAmount: (bdt: number) => string
   toasts: Toast[]; toast: (t: Omit<Toast, 'id'>) => void; dismissToast: (id: string) => void
   login: (idOrEmail: string, password: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
@@ -126,6 +126,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       return new Intl.NumberFormat(lang === 'en' ? 'en-US' : lang, { style: 'currency', currency }).format(value)
     } catch { return currency + ' ' + value.toLocaleString('en-US', { maximumFractionDigits: 2 }) }
+  }, [currency, rates, lang])
+  const fmtAmount = useCallback((bdt: number) => {
+    if (currency === 'BDT') return Math.round(bdt).toLocaleString('en-US')
+    const rate = rates[currency]
+    if (!rate) return Math.round(bdt).toLocaleString('en-US')
+    const value = (bdt / dbRef.current.settings.bdtPerUsd) * rate
+    try {
+      return new Intl.NumberFormat(lang === 'en' ? 'en-US' : lang, { style: 'currency', currency }).formatToParts(value)
+        .filter(part => part.type !== 'currency').map(part => part.value).join('').trim()
+    } catch { return value.toLocaleString('en-US', { maximumFractionDigits: 2 }) }
   }, [currency, rates, lang])
   const setLanguage = useCallback((code: string) => {
     setLangPref(code); try { localStorage.setItem('nova.lang', code) } catch { /* ignore */ }
@@ -503,7 +513,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
-    lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney,
+    lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

@@ -21,7 +21,7 @@ const ACTIONS_RAW = [
   { to: '/trade', labelKey: 'act_trade', icon: TrendingUp, g: 'from-slate-600 to-slate-800' },
 ]
 export default function Home() {
-  const { user, db, walletOf, t, fmtMoney, currency } = useApp()
+  const { user, db, walletOf, t, fmtMoney, fmtAmount, currency } = useApp()
   const navigate = useNavigate()
   const { coins, loading, isLive } = useMarket()
   const [hide, setHide] = useState(false)
@@ -40,7 +40,6 @@ export default function Home() {
   const myTxs = db.txs.filter(t => t.userId === user.id).slice(0, 5)
   const myRefs = db.users.filter(u => u.referredBy === user.id)
   const refEarned = db.referralEarnings.filter(r => r.userId === user.id).reduce((s, r) => s + r.amount, 0)
-  const money = (n: number) => hide ? '••••••' : fmtMoney(n)
   const ACTIONS = ACTIONS_RAW.map(a => ({ ...a, label: t(a.labelKey) }))
 
   return (
@@ -54,15 +53,15 @@ export default function Home() {
             <p className="text-xs font-semibold uppercase tracking-widest text-white/70 flex items-center gap-1.5"><Wallet size={13} /> {t('total_balance')}</p>
             <button onClick={() => setHide(h => !h)} className="p-2 rounded-full bg-white/15">{hide ? <EyeOff size={16} /> : <Eye size={16} />}</button>
           </div>
-          <p className="mt-1 text-4xl font-extrabold tracking-tight">{money(total)} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
+          <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '••••••' : fmtAmount(total)} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
           {currency === 'USD'
             ? <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtBDT(total)} BDT</p>
             : <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSD(total / db.settings.bdtPerUsd)} USD</p>}
           <div className="grid grid-cols-3 gap-3 mt-5">
             {[{ l: t('available'), v: w.available, lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
-              <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5">
+              <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5 min-w-0">
                 <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}</p>
-                <p className="font-bold text-[15px]">{money(x.v)}</p>
+                <p className="font-bold text-[15px] truncate">{hide ? '••••' : fmtUSD(x.v / db.settings.bdtPerUsd)}</p>
               </div>
             ))}
           </div>
