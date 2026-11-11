@@ -40,6 +40,10 @@ interface Ctx {
   currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string; fmtAmount: (bdt: number) => string
   toasts: Toast[]; toast: (t: Omit<Toast, 'id'>) => void; dismissToast: (id: string) => void
   login: (idOrEmail: string, password: string) => string | null
+  twoFaPending: string | null
+  completeTwoFa: (code: string) => string | null
+  cancelTwoFa: () => void
+  resetPassword: (email: string, pin: string, newPassword: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
   logout: () => void
   walletOf: (userId: string) => DB['wallets'][number]
@@ -87,6 +91,7 @@ export const useApp = () => { const c = useContext(AppCtx); if (!c) throw new Er
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(load)
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
+  const [twoFaPending, setTwoFaPending] = useState<string | null>(null)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
   const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
   const [currencyPref, setCurrencyPref] = useState<string | null>(() => localStorage.getItem('nova.currency'))
@@ -167,13 +172,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDb(prev => { const draft: DB = JSON.parse(JSON.stringify(prev)); fn(draft); return draft })
   }
 
+  const levelDefOf = (u: User) => dbRef.current.levels.find(l => l.level === (u.level ?? 1))
+  const outgoingSum = (userId: string, period: 'day' | 'month') => {
+    const now = new Date()
+    return dbRef.current.txs.filter(tx => {
+      if (tx.userId !== userId || !['send', 'cash_out', 'direct_withdraw'].includes(tx.category)) return false
+      if (!['completed', 'pending', 'processing', 'approved'].includes(tx.status)) return false
+      const d = new Date(tx.createdAt)
+      return period === 'day' ? d.toDateString() === now.toDateString() : (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear())
+    }).reduce((a, tx) => a + tx.amount, 0)
+  }
+  const limitError = (u: User, amount: number): string | null => {
+    const def = levelDefOf(u); if (!def) return null
+    const day = outgoingSum(u.id, 'day')
+    if (day + amount > def.dailyLimit) return 'Daily limit exceeded — Level ' + u.level + ' allows ' + def.dailyLimit.toLocaleString() + ' BDT/day and you have already used ' + day.toLocaleString() + ' BDT today.'
+    const mon = outgoingSum(u.id, 'month')
+    if (mon + amount > def.monthlyLimit) return 'Monthly limit exceeded — Level ' + u.level + ' allows ' + def.monthlyLimit.toLocaleString() + ' BDT/month and you have already used ' + mon.toLocaleString() + ' BDT this month.'
+    return null
+  }
+  const feePctFor = (base: number, u: User) => base * (1 - (levelDefOf(u)?.feeDiscountPct ?? 0) / 100)
   const login: Ctx['login'] = (idOrEmail, password) => {
     const u = dbRef.current.users.find(x => x.email === idOrEmail || x.username === idOrEmail)
     if (!u) return 'No account found for that email / username.'
     if (u.passwordHash !== hashSecret(password)) return 'Wrong password. Please try again.'
     if (u.status === 'suspended') return 'This account is suspended. Contact support.'
+    if (u.twoFA) { setTwoFaPending(u.id); return '2fa' }
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO() })
     localStorage.setItem(SESSION, u.id); setUserId(u.id)
+    return null
+  }
+  const completeTwoFa: Ctx['completeTwoFa'] = (code) => {
+    if (!twoFaPending) return 'No verification is in progress.'
+    if (code.trim() !== '123456') return 'Incorrect code. Please try again.'
+    const u = dbRef.current.users.find(x => x.id === twoFaPending); if (!u) { setTwoFaPending(null); return 'Account not found.' }
+    mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO(); notify(d, u.id, 'New sign-in', 'Your account was signed in with two-factor verification.', 'security') })
+    localStorage.setItem(SESSION, u.id); setUserId(u.id); setTwoFaPending(null)
+    return null
+  }
+  const cancelTwoFa: Ctx['cancelTwoFa'] = () => setTwoFaPending(null)
+  const resetPassword: Ctx['resetPassword'] = (email, pin, newPassword) => {
+    const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())
+    if (!u) return 'No account found for that email.'
+    if (u.pinHash !== hashSecret(pin)) return 'Incorrect transaction PIN — identity could not be verified.'
+    if (newPassword.length < 6) return 'Password must be at least 6 characters.'
+    mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.passwordHash = hashSecret(newPassword); notify(d, u.id, 'Password reset', 'Your password was reset using your transaction PIN. If this was not you, contact support immediately.', 'security') })
     return null
   }
   const register: Ctx['register'] = (p) => {
@@ -241,7 +283,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const w = walletOf(user.id)
     if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
     if (p.amount > w.available) return 'Insufficient available balance.'
-    const fee = Math.round(p.amount * dbRef.current.settings.cashoutFeePct / 100)
+    const lim = limitError(user, p.amount); if (lim) return lim
+    const fee = Math.round(p.amount * feePctFor(dbRef.current.settings.cashoutFeePct, user) / 100)
     mutate(d => {
       const dw = d.wallets.find(x => x.userId === user.id)!
       dw.available -= p.amount; dw.locked += p.amount
@@ -256,7 +299,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const w = walletOf(user.id)
     if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
     if (p.amount > w.available) return 'Insufficient available balance.'
-    const fee = Math.round(p.amount * dbRef.current.settings.cashoutFeePct / 100)
+    const lim = limitError(user, p.amount); if (lim) return lim
+    const fee = Math.round(p.amount * feePctFor(dbRef.current.settings.cashoutFeePct, user) / 100)
     mutate(d => {
       const dw = d.wallets.find(x => x.userId === user.id)!
       dw.available -= p.amount
@@ -328,8 +372,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (user.pinHash !== hashSecret(p.pin)) return 'Incorrect transaction PIN.'
     if (p.toUserId === user.id) return 'You cannot send money to yourself.'
     const w = walletOf(user.id)
-    const fee = Math.round(p.amount * dbRef.current.settings.sendFeePct / 100 * 100) / 100
+    const fee = Math.round(p.amount * feePctFor(dbRef.current.settings.sendFeePct, user) / 100 * 100) / 100
     if (p.amount + fee > w.available) return 'Insufficient balance (amount + fee exceeds available balance).'
+    const limS = limitError(user, p.amount); if (limS) return limS
     if (user.status === 'frozen') return 'Your wallet is frozen.'
     let created: Tx | null = null
     mutate(d => {
@@ -541,7 +586,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
-    lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount,
+    twoFaPending, completeTwoFa, cancelTwoFa, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

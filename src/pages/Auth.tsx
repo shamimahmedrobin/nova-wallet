@@ -6,22 +6,40 @@ import { Btn, Input } from '../components/ui'
 import { Logo } from '../components/Layout'
 
 export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landing' | 'login' | 'register' }) {
-  const { login, register, toast, t } = useApp()
+  const { login, register, resetPassword, completeTwoFa, cancelTwoFa, toast, t } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const refCode = new URLSearchParams(window.location.search).get('ref') ?? ''
   const [mode] = useState<'landing' | 'login' | 'register'>(refCode ? 'register' : initialMode)
   const [form, setForm] = useState({ name: '', username: '', email: '', phone: '', password: '', pin: '', referralCode: refCode })
   const [loginId, setLoginId] = useState(''); const [loginPw, setLoginPw] = useState('')
+  const [step, setStep] = useState<'auth' | 'forgot' | '2fa'>('auth')
+  const [fp, setFp] = useState({ email: '', pin: '', password: '' })
+  const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const set = (k: string) => (e: any) => setForm(f => ({ ...f, [k]: e.target.value }))
 
-  const doLogin = (id = loginId, pw = loginPw) => {
-    const e = login(id.trim().toLowerCase(), pw)
-    if (e) { setErr(e); return }
+  const afterLogin = (id: string) => {
     toast({ kind: 'success', title: 'Welcome back!' })
     const from = (location.state as any)?.from as string | undefined
     navigate(id.includes('admin') ? '/admin' : (from && from !== '/login' ? from : '/home'))
+  }
+  const doLogin = (id = loginId, pw = loginPw) => {
+    const e = login(id.trim().toLowerCase(), pw)
+    if (e === '2fa') { setErr(''); setCode(''); setStep('2fa'); return }
+    if (e) { setErr(e); return }
+    afterLogin(id)
+  }
+  const doVerify = () => {
+    const e = completeTwoFa(code)
+    if (e) { setErr(e); return }
+    afterLogin(loginId)
+  }
+  const doReset = () => {
+    const e = resetPassword(fp.email, fp.pin, fp.password)
+    if (e) { setErr(e); return }
+    toast({ kind: 'success', title: 'Password reset', body: 'Log in with your new password.' })
+    setLoginId(fp.email); setLoginPw(''); setErr(''); setStep('auth')
   }
   const doRegister = () => {
     if (form.password.length < 6) return setErr('Password must be at least 6 characters.')
@@ -72,17 +90,42 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
       <div className="w-full max-w-md anim-fade-up">
         <div className="flex justify-center mb-6"><Logo /></div>
         <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 p-6 shadow-xl">
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5">
+          {step === 'auth' && <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5">
             {(['login', 'register'] as const).map(m => (
               <button key={m} onClick={() => { navigate(m === 'login' ? '/login' : '/register'); setErr('') }} className={`py-2 rounded-xl text-sm font-bold ${mode === m ? 'bg-white dark:bg-slate-900 shadow text-violet-600' : 'text-slate-500'}`}>{m === 'login' ? t('login') : t('register')}</button>
             ))}
-          </div>
+          </div>}
           {err && <div className="mb-4 rounded-2xl bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 px-4 py-3 text-sm font-semibold">{err}</div>}
-          {mode === 'login' ? (
+          {step === '2fa' ? (
+            <div className="space-y-4">
+              <div className="text-center">
+                <span className="inline-flex w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white items-center justify-center mb-2"><ShieldCheck size={26} /></span>
+                <p className="font-extrabold text-lg">Two-factor verification</p>
+                <p className="text-sm text-slate-500 mt-1">This account has 2FA on. Enter the 6-digit verification code to continue.</p>
+                <p className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-500/10 rounded-xl px-3 py-2 mt-3">Demo mode — your code is <span className="font-mono">123456</span></p>
+              </div>
+              <Input label="Verification code" inputMode="numeric" maxLength={6} placeholder="123456" value={code} onChange={e => setCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && doVerify()} />
+              <Btn className="w-full py-3.5" onClick={doVerify}>Verify & log in</Btn>
+              <button onClick={() => { cancelTwoFa(); setErr(''); setStep('auth') }} className="w-full text-center text-sm font-bold text-slate-500">← Back to login</button>
+            </div>
+          ) : step === 'forgot' ? (
+            <div className="space-y-4">
+              <div>
+                <p className="font-extrabold text-lg">Reset your password</p>
+                <p className="text-sm text-slate-500 mt-1">Verify your identity with your account email and 4-digit transaction PIN, then choose a new password.</p>
+              </div>
+              <Input label="Email" type="email" placeholder="you@email.com" value={fp.email} onChange={e => setFp(f => ({ ...f, email: e.target.value }))} />
+              <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={fp.pin} onChange={e => setFp(f => ({ ...f, pin: e.target.value }))} />
+              <Input label="New password (min 6 characters)" type="password" placeholder="••••••••" value={fp.password} onChange={e => setFp(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === 'Enter' && doReset()} />
+              <Btn className="w-full py-3.5" onClick={doReset}>Reset password</Btn>
+              <button onClick={() => { setErr(''); setStep('auth') }} className="w-full text-center text-sm font-bold text-slate-500">← Back to login</button>
+            </div>
+          ) : mode === 'login' ? (
             <div className="space-y-4">
               <Input label={t('email_or_username')} placeholder="you@email.com" value={loginId} onChange={e => setLoginId(e.target.value)} />
               <Input label={t('password')} type="password" placeholder="••••••••" value={loginPw} onChange={e => setLoginPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && doLogin()} />
               <Btn className="w-full py-3.5" onClick={() => doLogin()}>{t('login')}</Btn>
+              <button onClick={() => { setErr(''); setStep('forgot') }} className="w-full text-center text-sm font-bold text-violet-600">Forgot password?</button>
               <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-3.5 text-xs space-y-2">
                 <p className="font-bold text-slate-600 dark:text-slate-300">{t('demo_accounts')}</p>
                 <button className="block w-full text-left font-mono text-violet-600 dark:text-violet-300" onClick={() => { setLoginId('shamim@novawallet.app'); setLoginPw('123456') }}>👤 shamim@novawallet.app / 123456 · PIN 1234</button>

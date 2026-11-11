@@ -79,7 +79,9 @@ export function CashOut() {
   const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? ''); const [pin, setPin] = useState('')
   const [done, setDone] = useState(false)
   const amt = Number(amount) || 0
-  const fee = Math.round(amt * db.settings.cashoutFeePct / 100)
+  const disc = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
+  const effPct = db.settings.cashoutFeePct * (1 - disc / 100)
+  const fee = Math.round(amt * effPct / 100)
   const mine = db.withdrawals.filter(d => d.userId === user?.id)
   const w = user ? walletOf(user.id) : null
   const submit = () => {
@@ -92,7 +94,7 @@ export function CashOut() {
   }
   return (
     <div>
-      <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtBDT(w?.available ?? 0)} · Fee ${db.settings.cashoutFeePct}%`} />
+      <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtBDT(w?.available ?? 0)} · Fee ${Number(effPct.toFixed(2))}%${disc ? ` (Level ${user?.level} −${disc}%)` : ''} · Daily limit ${fmtBDT(db.levels.find(l => l.level === user?.level)?.dailyLimit ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{OUT_METHODS.map(m => <option key={m}>{m}</option>)}</Select>
         <div className="relative">
@@ -134,7 +136,9 @@ export function SendMoney() {
     return db.users.filter(u => u.id !== user?.id && u.role === 'user' && (u.username.includes(s) || u.email.includes(s) || u.id.toLowerCase().includes(s) || u.name.toLowerCase().includes(s))).slice(0, 5)
   }, [q, db.users, user])
   const amt = Number(amount) || 0
-  const fee = Math.round(amt * db.settings.sendFeePct / 100 * 100) / 100
+  const discS = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
+  const effPctS = db.settings.sendFeePct * (1 - discS / 100)
+  const fee = Math.round(amt * effPctS / 100 * 100) / 100
   const w = user ? walletOf(user.id) : null
   const submit = () => {
     if (!to) return toast({ kind: 'error', title: 'Select a recipient first' })
@@ -145,7 +149,7 @@ export function SendMoney() {
   }
   return (
     <div>
-      <PageHead title={t('send_title')} sub={`Fee ${db.settings.sendFeePct}% · ${t('available')} ${fmtBDT(w?.available ?? 0)}`} />
+      <PageHead title={t('send_title')} sub={`Fee ${Number(effPctS.toFixed(2))}%${discS ? ` (Level ${user?.level} −${discS}%)` : ''} · ${t('available')} ${fmtBDT(w?.available ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Input label={t('search_recipient')} placeholder="e.g. arif, arif@gmail.com, USR-…" value={q} onChange={e => { setQ(e.target.value); setTo(null) }} />
         {results.length > 0 && !to && (

@@ -34,7 +34,8 @@ export function DirectWithdraw() {
   const [done, setDone] = useState(false)
   const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null)
   const amt = Number(amount) || 0
-  const fee = Math.round(amt * db.settings.cashoutFeePct / 100)
+  const disc = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
+  const fee = Math.round(amt * db.settings.cashoutFeePct * (1 - disc / 100) / 100)
   const w = user ? walletOf(user.id) : null
   const mine = db.txs.filter(x => x.userId === user?.id && x.category === 'direct_withdraw')
   const submit = () => {

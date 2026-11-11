@@ -93,6 +93,8 @@ export function LoanPage() {
     if (!photo) return toast({ kind: 'error', title: 'Upload your photo' })
     if (!gName.trim() || !gPhone.trim()) return toast({ kind: 'error', title: 'Enter guarantor name and mobile number' })
     if (amt < s.minLoan || amt > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtBDT(s.minLoan)} and ${fmtBDT(s.maxLoan)}` })
+    const lvlDef = db.levels.find(l => l.level === user.level)
+    if (lvlDef && amt > lvlDef.loanLimit) return toast({ kind: 'error', title: `Your Level ${user.level} loan limit is ${fmtBDT(lvlDef.loanLimit)} — upgrade your level for a higher limit.` })
     applyLoan(amt, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim() }); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review your information. Loans are never auto-approved.' })
   }
   return (
