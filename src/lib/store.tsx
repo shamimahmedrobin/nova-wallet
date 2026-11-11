@@ -379,7 +379,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loan = d.loans.find(x => x.id === loanId); if (!loan) return
       loan.processingFee = amount; loan.feeStatus = 'unpaid'
       audit(d, 'admin', 'loan.fee_set', loanId + ' processing fee ' + amount + ' BDT')
-      notify(d, loan.userId, 'Loan processing fee', 'A processing fee of ' + amount + ' BDT was set for your loan ' + loanId + '. Pay it from your Profile to continue.', 'loan')
+      notify(d, loan.userId, 'Loan processing fee', 'A processing fee of ' + amount + ' BDT was set for your loan ' + loanId + '. Pay it from the Loan section to continue.', 'loan')
     })
   }
   const submitLoanFee: Ctx['submitLoanFee'] = (loanId, method, ref) => {

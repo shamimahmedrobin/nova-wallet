@@ -197,7 +197,7 @@ export default function Admin() {
                     {l.feeStatus === 'submitted' && <Btn className="!py-1.5 !text-xs !bg-emerald-500" onClick={() => { confirmLoanFee(l.id); toast({ kind: 'success', title: 'Fee marked as paid' }) }}>Confirm fee paid</Btn>}
                   </> : <>
                     <div className="w-[150px]"><Input type="number" placeholder="Amount (BDT)" value={feeInputs[l.id] ?? ''} onChange={e => setFeeInputs(f => ({ ...f, [l.id]: e.target.value }))} /></div>
-                    <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const a = Number(feeInputs[l.id]); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter a fee amount' }); setLoanFee(l.id, a); toast({ kind: 'success', title: 'Processing fee set', body: 'It now shows in the customer profile with a Pay button.' }) }}>Set fee</Btn>
+                    <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const a = Number(feeInputs[l.id]); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter a fee amount' }); setLoanFee(l.id, a); toast({ kind: 'success', title: 'Processing fee set', body: 'It now shows in the customer's Loan section with a Pay button.' }) }}>Set fee</Btn>
                   </>}
                 </div>
               </Card>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, HandCoins, KeyRound, LogOut, Mail, MessageCircle, Moon, ScanFace, Send, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, Moon, ScanFace, Send, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
 import { fileToScaledDataUrl, fmtBDT, fmtDateTime } from '../lib/utils'
@@ -14,7 +14,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, submitLoanFee, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
@@ -22,6 +22,7 @@ export default function Profile() {
 
   useEffect(() => {
     if ((location.state as any)?.openLevels) { setModal('levels'); navigate(location.pathname, { replace: true, state: null }) }
+    else if ((location.state as any)?.openSupport) { setModal('support'); navigate(location.pathname, { replace: true, state: null }) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [edit, setEdit] = useState({ name: user?.name ?? '', phone: user?.phone ?? '' })
@@ -29,7 +30,6 @@ export default function Profile() {
   const [pin, setPin] = useState({ old: '', next: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
-  const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
   const [viewTicket, setViewTicket] = useState<string | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const [notifPrefs, setNotifPrefs] = useState({ tx: true, market: true, promo: false })
@@ -127,31 +127,6 @@ export default function Profile() {
           </button>
         ))}
       </Card>
-
-      {db.loans.filter(l => l.userId === user.id && l.processingFee).length > 0 && (
-        <Card className="p-5 mt-4">
-          <div className="flex items-center gap-3">
-            <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shrink-0"><HandCoins size={20} /></span>
-            <div className="flex-1 min-w-0">
-              <p className="font-extrabold">Loan processing fee</p>
-              <p className="text-xs text-slate-500 mt-0.5">An admin set a processing fee for your loan application. Pay it to continue.</p>
-            </div>
-          </div>
-          <div className="space-y-2 mt-4">
-            {db.loans.filter(l => l.userId === user.id && l.processingFee).map(l => (
-              <div key={l.id} className="flex items-center gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm">{l.id} · Loan {fmtBDT(l.amount)}</p>
-                  <p className="text-xs text-slate-500">Processing fee: <b className="text-slate-700 dark:text-slate-200">{fmtBDT(l.processingFee ?? 0)}</b></p>
-                </div>
-                {l.feeStatus === 'paid' ? <Badge tone="green">✓ Paid</Badge>
-                  : l.feeStatus === 'submitted' ? <Badge tone="violet">Confirming…</Badge>
-                  : <Btn className="!py-2 !text-xs shrink-0" onClick={() => { setFeePay(l.id); setFeeMethod(db.settings.payMethods?.[0]?.id ?? ''); setFeeRef('') }}>Pay</Btn>}
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
 
       <Card className="p-5 mt-4">
         <div className="flex items-center gap-3">
@@ -348,33 +323,6 @@ export default function Profile() {
           {user.sessions.map(s => <ModalRow key={s.id}><span className="flex justify-between items-center gap-3"><span><span className="block font-bold text-sm">{s.device}</span><span className="text-xs text-slate-400">Last login {new Date(user.lastLogin).toLocaleString('en-GB')}</span></span>{s.current && <Badge tone="green">This device</Badge>}</span></ModalRow>)}
         </div>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
-      </Modal>
-      <Modal open={!!feePay} onClose={() => setFeePay(null)} title="Pay processing fee">
-        {(() => {
-          const loan = db.loans.find(l => l.id === feePay); if (!loan) return null
-          const methods = db.settings.payMethods ?? []
-          const sel = methods.find(m => m.id === feeMethod) ?? methods[0]
-          return (
-            <div>
-              <ModalDesc>Pay <b>{fmtBDT(loan.processingFee ?? 0)}</b> for loan {loan.id} using any option below — the same payment options as on the main website.</ModalDesc>
-              <div className="space-y-2">
-                {methods.map(m => (
-                  <button key={m.id} onClick={() => setFeeMethod(m.id)} className="w-full text-left">
-                    <ModalRow><span className="flex items-center gap-2.5"><span className={`w-4 h-4 rounded-full border-2 shrink-0 ${sel?.id === m.id ? 'bg-violet-600 border-violet-600' : 'border-slate-300 dark:border-slate-600'}`} /><span className="font-bold text-sm">{m.label}</span></span></ModalRow>
-                  </button>
-                ))}
-              </div>
-              {sel && (
-                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 mt-3">
-                  <p className="text-[11px] text-slate-400 font-bold">SEND PAYMENT TO</p>
-                  <p className="font-mono font-bold break-all mt-0.5">{sel.detail}</p>
-                </div>
-              )}
-              <div className="mt-4"><Input label="Your TrxID / sender number" placeholder="e.g. 9HX7K2LMN or 01XXXXXXXXX" value={feeRef} onChange={e => setFeeRef(e.target.value)} /></div>
-              <Btn className="w-full py-3.5 mt-4" onClick={() => { if (!feeRef.trim()) return toast({ kind: 'error', title: 'Enter the TrxID or sender number' }); submitLoanFee(loan.id, sel?.label ?? '', feeRef.trim()); setFeePay(null); toast({ kind: 'success', title: 'Payment submitted', body: 'The admin will confirm your payment shortly.' }) }}>Submit payment</Btn>
-            </div>
-          )
-        })()}
       </Modal>
       <Modal open={modal === 'support'} onClose={() => { setModal(null); setViewTicket(null) }} title={t('p_support')}>
         <ModalDesc>Chat with our support team — we usually reply within 24 hours.</ModalDesc>

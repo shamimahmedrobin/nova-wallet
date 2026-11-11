@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Link, useParams } from 'react-router-dom'
-import { Bell, FileText, Search, X } from 'lucide-react'
+import { Bell, FileText, Search, X , CheckCheck, ChevronRight } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Badge, Btn, Card, Empty, Modal, NewsLogo, statusTone } from '../components/ui'
 import { fmtDate, fmtDateTime } from '../lib/utils'
@@ -156,20 +157,46 @@ export function NewsDetail() {
     </article>
   )
 }
+const NOTIF_ROUTES: Record<string, { to: string; state?: any }> = {
+  loan: { to: '/loan' },
+  support: { to: '/profile', state: { openSupport: true } },
+  transaction: { to: '/transactions' },
+  deposit: { to: '/transactions' },
+  withdraw: { to: '/transactions' },
+  receive: { to: '/transactions' },
+  referral: { to: '/referral' },
+  security: { to: '/profile' },
+  kyc: { to: '/profile' },
+  info: { to: '/home' },
+}
 export function Notifications() {
   const { user, db, markAllRead, markRead, t } = useApp()
+  const navigate = useNavigate()
   const mine = db.notifications.filter(n => n.userId === user?.id)
+  const unread = mine.filter(n => !n.read).length
+  const open = (n: typeof mine[number]) => {
+    markRead(n.id)
+    const r = NOTIF_ROUTES[n.kind] ?? { to: '/home' }
+    navigate(r.to, r.state ? { state: r.state } : undefined)
+  }
   return (
     <div>
-      <div className="flex items-start justify-between"><PageHead title={t('notif_title')} sub={t('notif_sub')} />
-        <Btn variant="ghost" onClick={markAllRead}>Mark all read</Btn></div>
+      <div className="flex items-start justify-between gap-3">
+        <PageHead title={t('notif_title')} sub={unread > 0 ? `${unread} unread` : t('notif_sub')} />
+        {unread > 0 && (
+          <button onClick={markAllRead} className="shrink-0 mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-bold text-violet-600 dark:text-violet-400 shadow-sm active:scale-95 transition">
+            <CheckCheck size={14} /> Mark all read
+          </button>
+        )}
+      </div>
       {mine.length === 0 ? <Card><Empty title="No notifications" body="You're all caught up." /></Card> : (
         <div className="space-y-2">
           {mine.map(n => (
-            <button key={n.id} onClick={() => markRead(n.id)} className="w-full text-left">
-              <Card className={`p-4 flex gap-3 ${!n.read ? 'border-l-4 !border-l-violet-500' : 'opacity-75'}`}>
+            <button key={n.id} onClick={() => open(n)} className="w-full text-left">
+              <Card className={`p-4 flex gap-3 items-center ${!n.read ? 'border-l-4 !border-l-violet-500' : 'opacity-75'}`}>
                 <div className="p-2.5 rounded-2xl bg-violet-100 dark:bg-violet-500/15 text-violet-600 h-fit"><Bell size={17} /></div>
-                <div className="flex-1"><p className="font-bold text-sm">{n.title} {!n.read && <span className="ml-1 inline-block w-2 h-2 rounded-full bg-rose-500" />}</p><p className="text-sm text-slate-500">{n.body}</p><p className="text-[11px] text-slate-400 mt-1 capitalize">{n.kind} · {fmtDateTime(n.createdAt)}</p></div>
+                <div className="flex-1 min-w-0"><p className="font-bold text-sm">{n.title} {!n.read && <span className="ml-1 inline-block w-2 h-2 rounded-full bg-rose-500" />}</p><p className="text-sm text-slate-500">{n.body}</p><p className="text-[11px] text-slate-400 mt-1 capitalize">{n.kind} · {fmtDateTime(n.createdAt)}</p></div>
+                <ChevronRight size={16} className="text-slate-300 shrink-0" />
               </Card>
             </button>
           ))}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Copy, Share2, Trophy } from 'lucide-react'
+import { Copy, HandCoins, Share2, Trophy } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, Empty, Input, Select } from '../components/ui'
+import { Avatar, Badge, Btn, Card, Empty, Input, Modal, ModalDesc, ModalRow, Select } from '../components/ui'
 import { emiCalc, fmtBDT, fmtDateTime , fileToScaledDataUrl } from '../lib/utils'
 import { PageHead } from './Services'
 
@@ -72,11 +72,12 @@ export function Referral() {
 }
 
 export function LoanPage() {
-  const { user, db, applyLoan, repayLoan, toast, t } = useApp()
+  const { user, db, applyLoan, repayLoan, submitLoanFee, toast, t } = useApp()
   const [amount, setAmount] = useState('30000'); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
   const [appName, setAppName] = useState(user?.name ?? ''); const [code, setCode] = useState('+880'); const [phoneNum, setPhoneNum] = useState(user?.phone ?? '')
   const [whatsapp, setWhatsapp] = useState(''); const [nid, setNid] = useState(''); const [photo, setPhoto] = useState('')
   const [gName, setGName] = useState(''); const [gPhone, setGPhone] = useState('')
+  const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
   if (!user) return null
   const s = db.settings
   const amt = Number(amount) || 0; const mo = Number(months) || 12
@@ -97,11 +98,63 @@ export function LoanPage() {
   return (
     <div>
       <PageHead title={t('loan_title')} sub={t('loan_sub')} />
+      <Modal open={!!feePay} onClose={() => setFeePay(null)} title="Pay processing fee">
+        {(() => {
+          const loan = db.loans.find(l => l.id === feePay); if (!loan) return null
+          const methods = db.settings.payMethods ?? []
+          const sel = methods.find(m => m.id === feeMethod) ?? methods[0]
+          return (
+            <div>
+              <ModalDesc>Pay <b>{fmtBDT(loan.processingFee ?? 0)}</b> for loan {loan.id} using any option below — the same payment options as on the main website.</ModalDesc>
+              <div className="space-y-2">
+                {methods.map(m => (
+                  <button key={m.id} onClick={() => setFeeMethod(m.id)} className="w-full text-left">
+                    <ModalRow><span className="flex items-center gap-2.5"><span className={`w-4 h-4 rounded-full border-2 shrink-0 ${sel?.id === m.id ? 'bg-violet-600 border-violet-600' : 'border-slate-300 dark:border-slate-600'}`} /><span className="font-bold text-sm">{m.label}</span></span></ModalRow>
+                  </button>
+                ))}
+              </div>
+              {sel && (
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 mt-3">
+                  <p className="text-[11px] text-slate-400 font-bold">SEND PAYMENT TO</p>
+                  <p className="font-mono font-bold break-all mt-0.5">{sel.detail}</p>
+                </div>
+              )}
+              <div className="mt-4"><Input label="Your TrxID / sender number" placeholder="e.g. 9HX7K2LMN or 01XXXXXXXXX" value={feeRef} onChange={e => setFeeRef(e.target.value)} /></div>
+              <Btn className="w-full py-3.5 mt-4" onClick={() => { if (!feeRef.trim()) return toast({ kind: 'error', title: 'Enter the TrxID or sender number' }); submitLoanFee(loan.id, sel?.label ?? '', feeRef.trim()); setFeePay(null); toast({ kind: 'success', title: 'Payment submitted', body: 'The admin will confirm your payment shortly.' }) }}>Submit payment</Btn>
+            </div>
+          )
+        })()}
+      </Modal>
+
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtBDT(s.loanLimit)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Outstanding</p><p className="font-extrabold mt-1 text-rose-500">{fmtBDT(outstanding)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Account level</p><p className="font-extrabold mt-1">Level {user.level}</p></Card>
       </div>
+      {myLoans.filter(l => l.processingFee).length > 0 && (
+        <Card className="p-5 mb-4 border-l-4 !border-l-amber-500">
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shrink-0"><HandCoins size={20} /></span>
+            <div className="flex-1 min-w-0">
+              <p className="font-extrabold">Loan processing fee</p>
+              <p className="text-xs text-slate-500 mt-0.5">An admin set a processing fee for your application. Pay it here to continue.</p>
+            </div>
+          </div>
+          <div className="space-y-2 mt-4">
+            {myLoans.filter(l => l.processingFee).map(l => (
+              <div key={l.id} className="flex items-center gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm">{l.id} · Loan {fmtBDT(l.amount)}</p>
+                  <p className="text-xs text-slate-500">Processing fee: <b className="text-slate-700 dark:text-slate-200">{fmtBDT(l.processingFee ?? 0)}</b></p>
+                </div>
+                {l.feeStatus === 'paid' ? <Badge tone="green">✓ Paid</Badge>
+                  : l.feeStatus === 'submitted' ? <Badge tone="violet">Confirming…</Badge>
+                  : <Btn className="!py-2 !text-xs shrink-0" onClick={() => { setFeePay(l.id); setFeeMethod(db.settings.payMethods?.[0]?.id ?? ''); setFeeRef('') }}>Pay</Btn>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
       {active && (
         <Card className="p-5 mb-4 border-l-4 !border-l-violet-500">
           <div className="flex justify-between items-start"><div><p className="font-extrabold">Active loan {active.id}</p><p className="text-sm text-slate-500">{fmtBDT(active.amount)} · {active.months} months · EMI {fmtBDT(active.emi)}</p></div><Badge tone="green">Active</Badge></div>
