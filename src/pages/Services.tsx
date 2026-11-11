@@ -75,7 +75,7 @@ export function AddMoney() {
 
 export function CashOut() {
   const { requestWithdraw, db, user, walletOf, toast, t, currency } = useApp()
-  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? ''); const [pin, setPin] = useState('')
+  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(''); const [pin, setPin] = useState('')
   const [done, setDone] = useState(false)
   const outMethods = withdrawMethods(currency)
   const activeOut = outMethods.includes(method) ? method : outMethods[0]

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../lib/store'
 import { Btn, Card } from '../components/ui'
 import { PageHead } from './Services'
-import { fmtBDT } from '../lib/utils'
+import { fmtUSD } from '../lib/utils'
 import { ADS_PER_DAY, CHECKIN_REWARDS, EARN_TASKS, QUIZ, SCRATCH_PER_DAY, SPINS_PER_DAY, WHEEL_PRIZES } from '../lib/earn'
 
 const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
@@ -15,7 +15,8 @@ function BackLink() {
 
 /* ---------------- Daily Check-in ---------------- */
 export function CheckinPage() {
-  const { earnInfo, claimCheckin, toast } = useApp()
+  const { earnInfo, claimCheckin, toast, db } = useApp()
+  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const claimed = info.lastCheckin === todayStr()
   const continuing = info.lastCheckin === yesterdayStr()
@@ -24,7 +25,7 @@ export function CheckinPage() {
   const claim = () => {
     const r = claimCheckin()
     if (r.err) return toast({ kind: 'error', title: r.err })
-    toast({ kind: 'success', title: '+' + fmtBDT(r.amount ?? 0) + ' added to your balance', body: 'Day ' + r.streak + ' check-in streak. Come back tomorrow for the next reward.' })
+    toast({ kind: 'success', title: '+' + usd(r.amount ?? 0) + ' added to your balance', body: 'Day ' + r.streak + ' check-in streak. Come back tomorrow for the next reward.' })
   }
   return (
     <div>
@@ -33,18 +34,18 @@ export function CheckinPage() {
       <Card className="p-5">
         <div className="flex items-center justify-between mb-4">
           <div><p className="text-xs text-slate-400 font-bold uppercase">Current streak</p><p className="text-2xl font-extrabold">🔥 {info.streak} day{info.streak === 1 ? '' : 's'}</p></div>
-          <div className="text-right"><p className="text-xs text-slate-400 font-bold uppercase">Next reward</p><p className="text-2xl font-extrabold text-emerald-500">{fmtBDT(nextReward)}</p></div>
+          <div className="text-right"><p className="text-xs text-slate-400 font-bold uppercase">Next reward</p><p className="text-2xl font-extrabold text-emerald-500">{usd(nextReward)}</p></div>
         </div>
         <div className="grid grid-cols-7 gap-1.5 mb-5">
           {CHECKIN_REWARDS.map((r, i) => (
             <div key={i} className={`rounded-xl py-2.5 text-center border-2 ${i < filled ? 'bg-emerald-500 border-emerald-500 text-white' : i === filled && !claimed ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
               <p className="text-sm">{i < filled ? '✓' : '🎁'}</p>
-              <p className="text-[10px] font-extrabold mt-0.5">৳{r}</p>
+              <p className="text-[10px] font-extrabold mt-0.5">{usd(r)}</p>
               <p className="text-[9px] opacity-70 font-bold">Day {i + 1}</p>
             </div>
           ))}
         </div>
-        <Btn className="w-full py-3.5" disabled={claimed} onClick={claim}>{claimed ? '✓ Claimed today — see you tomorrow' : 'Claim ' + fmtBDT(nextReward)}</Btn>
+        <Btn className="w-full py-3.5" disabled={claimed} onClick={claim}>{claimed ? '✓ Claimed today — see you tomorrow' : 'Claim ' + usd(nextReward)}</Btn>
         <p className="text-xs text-slate-400 text-center mt-3">Rewards go straight to your available balance. Missing a day restarts the streak.</p>
       </Card>
     </div>
@@ -58,7 +59,8 @@ const DEMO_ADS = [
   { brand: 'Crypto Academy', text: 'Learn trading in 7 days — free beginner course inside.', emoji: '🎓', grad: 'from-violet-600 to-indigo-500' },
 ]
 export function AdsPage() {
-  const { earnInfo, watchAdReward, toast } = useApp()
+  const { earnInfo, watchAdReward, toast, db } = useApp()
+  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const left = ADS_PER_DAY - info.ads
   const [phase, setPhase] = useState<'idle' | 'watching' | 'done'>('idle')
@@ -79,13 +81,13 @@ export function AdsPage() {
   const claim = () => {
     const r = watchAdReward()
     if (r.err) return toast({ kind: 'error', title: r.err })
-    toast({ kind: 'success', title: '+' + fmtBDT(r.amount ?? 0) + ' ad reward added', body: r.left + ' ads left today.' })
+    toast({ kind: 'success', title: '+' + usd(r.amount ?? 0) + ' ad reward added', body: r.left + ' ads left today.' })
     setPhase('idle'); setProgress(0); setAdIdx(i => i + 1)
   }
   return (
     <div>
       <BackLink />
-      <PageHead title="View Ads" sub={`Watch a short ad and earn ৳2–8 each time. ${left} of ${ADS_PER_DAY} left today.`} />
+      <PageHead title="View Ads" sub={`Watch a short ad and earn ${usd(2)}–${usd(8)} each time. ${left} of ${ADS_PER_DAY} left today.`} />
       <Card className="p-5">
         <div className={`rounded-3xl bg-gradient-to-br ${ad.grad} text-white p-6 min-h-[180px] flex flex-col justify-between overflow-hidden relative`}>
           <div><p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Ad · {ad.brand}</p><p className="text-4xl mt-3">{ad.emoji}</p></div>
@@ -104,7 +106,8 @@ export function AdsPage() {
 /* ---------------- Spin Wheel ---------------- */
 const SEG_COLORS = ['#7c3aed', '#06b6d4', '#f59e0b', '#ec4899', '#10b981', '#64748b', '#8b5cf6', '#f43f5e']
 export function SpinPage() {
-  const { earnInfo, spinReward, toast } = useApp()
+  const { earnInfo, spinReward, toast, db } = useApp()
+  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const left = SPINS_PER_DAY - info.spins
   const [rot, setRot] = useState(0)
@@ -121,27 +124,27 @@ export function SpinPage() {
     setSpinning(true); setLastPrize(null)
     setTimeout(() => {
       setSpinning(false); setLastPrize(r.prize ?? 0)
-      if ((r.prize ?? 0) > 0) toast({ kind: 'success', title: '🎉 You won ' + fmtBDT(r.prize ?? 0), body: 'Added to your balance. ' + (r.left ?? 0) + ' spins left today.' })
+      if ((r.prize ?? 0) > 0) toast({ kind: 'success', title: '🎉 You won ' + usd(r.prize ?? 0), body: 'Added to your balance. ' + (r.left ?? 0) + ' spins left today.' })
       else toast({ kind: 'info', title: 'No prize this time', body: (r.left ?? 0) + ' spins left today — try again!' })
     }, 4300)
   }
   return (
     <div>
       <BackLink />
-      <PageHead title="Spin Wheel" sub={`Spin the wheel and win up to ৳50. ${left} of ${SPINS_PER_DAY} free spins left today.`} />
+      <PageHead title="Spin Wheel" sub={`Spin the wheel and win up to ${usd(50)}. ${left} of ${SPINS_PER_DAY} free spins left today.`} />
       <Card className="p-5 flex flex-col items-center">
         <div className="relative w-64 h-64 sm:w-72 sm:h-72">
           <div className="absolute left-1/2 -translate-x-1/2 -top-1 z-10 text-2xl">▼</div>
           <div className="w-full h-full rounded-full border-8 border-white dark:border-slate-700 shadow-xl relative overflow-hidden" style={{ background: gradient, transform: `rotate(${rot}deg)`, transition: spinning ? 'transform 4.2s cubic-bezier(0.12, 0.8, 0.08, 1)' : 'none' }}>
             {WHEEL_PRIZES.map((p, i) => (
               <div key={i} className="absolute inset-0 flex justify-center" style={{ transform: `rotate(${i * 45 + 22.5}deg)` }}>
-                <span className="mt-4 text-white font-extrabold text-sm drop-shadow">{p === 0 ? '✕' : '৳' + p}</span>
+                <span className="mt-4 text-white font-extrabold text-sm drop-shadow">{p === 0 ? '✕' : usd(p)}</span>
               </div>
             ))}
           </div>
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-white dark:bg-slate-800 shadow flex items-center justify-center text-xl">🎡</div>
         </div>
-        {lastPrize !== null && <p className="font-extrabold mt-4">{lastPrize > 0 ? '🎉 You won ' + fmtBDT(lastPrize) : 'No prize — better luck next spin!'}</p>}
+        {lastPrize !== null && <p className="font-extrabold mt-4">{lastPrize > 0 ? '🎉 You won ' + usd(lastPrize) : 'No prize — better luck next spin!'}</p>}
         <Btn className="w-full py-3.5 mt-4" disabled={spinning || left <= 0} onClick={spin}>{spinning ? 'Spinning…' : left <= 0 ? 'No spins left today' : 'Spin now (free)'}</Btn>
       </Card>
     </div>
@@ -150,7 +153,8 @@ export function SpinPage() {
 
 /* ---------------- Scratch Card ---------------- */
 export function ScratchPage() {
-  const { earnInfo, scratchDraw, toast } = useApp()
+  const { earnInfo, scratchDraw, toast, db } = useApp()
+  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [prize, setPrize] = useState<number | null>(null)
@@ -200,13 +204,13 @@ export function ScratchPage() {
     if (total && clear / total > 0.35) {
       setRevealed(true)
       ctx.clearRect(0, 0, c.width, c.height)
-      if (prize !== null && prize > 0) toast({ kind: 'success', title: '🎉 You won ' + fmtBDT(prize), body: 'The reward was added to your balance when the card was drawn.' })
+      if (prize !== null && prize > 0) toast({ kind: 'success', title: '🎉 You won ' + usd(prize), body: 'The reward was added to your balance when the card was drawn.' })
     }
   }
   return (
     <div>
       <BackLink />
-      <PageHead title="Scratch Card" sub={`Scratch to reveal a prize up to ৳50. ${left} card${left === 1 ? '' : 's'} left today.`} />
+      <PageHead title="Scratch Card" sub={`Scratch to reveal a prize up to ${usd(50)}. ${left} card${left === 1 ? '' : 's'} left today.`} />
       <Card className="p-5">
         {exhausted || (prize === null && left <= 0) ? (
           <p className="text-center font-bold text-slate-500 py-10">No scratch cards left today — come back tomorrow. 🎫</p>
@@ -214,7 +218,7 @@ export function ScratchPage() {
           <>
             <div className="relative rounded-3xl overflow-hidden select-none touch-none" style={{ height: 200 }}>
               <div className="absolute inset-0 bg-gradient-to-br from-amber-100 to-rose-100 dark:from-slate-800 dark:to-slate-700 flex flex-col items-center justify-center">
-                {prize !== null && prize > 0 ? (<><p className="text-5xl">🎉</p><p className="text-4xl font-extrabold text-emerald-600 mt-1">{fmtBDT(prize)}</p><p className="text-xs font-bold text-slate-500">added to your balance</p></>) : (<><p className="text-5xl">🍀</p><p className="text-xl font-extrabold text-slate-500 mt-1">No luck this time</p></>)}
+                {prize !== null && prize > 0 ? (<><p className="text-5xl">🎉</p><p className="text-4xl font-extrabold text-emerald-600 mt-1">{usd(prize)}</p><p className="text-xs font-bold text-slate-500">added to your balance</p></>) : (<><p className="text-5xl">🍀</p><p className="text-xl font-extrabold text-slate-500 mt-1">No luck this time</p></>)}
               </div>
               <canvas ref={canvasRef} width={680} height={400} className="absolute inset-0 w-full h-full cursor-pointer" style={{ opacity: revealed ? 0 : 1, transition: 'opacity .4s' }} onPointerDown={scratchAt} onPointerMove={e => { if (e.buttons & 1) scratchAt(e) }} onPointerUp={checkReveal} onPointerLeave={checkReveal} />
             </div>
@@ -230,7 +234,8 @@ export function ScratchPage() {
 
 /* ---------------- Complete Tasks ---------------- */
 export function TasksPage() {
-  const { earnInfo, completeEarnTask, toast } = useApp()
+  const { earnInfo, completeEarnTask, toast, db } = useApp()
+  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const [phase, setPhase] = useState<Record<string, number>>({})
   const timers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
@@ -248,7 +253,7 @@ export function TasksPage() {
   const claim = (id: string) => {
     const r = completeEarnTask(id)
     if (r.err) return toast({ kind: 'error', title: r.err })
-    toast({ kind: 'success', title: '+' + fmtBDT(r.amount ?? 0) + ' task reward added' })
+    toast({ kind: 'success', title: '+' + usd(r.amount ?? 0) + ' task reward added' })
   }
   return (
     <div>
@@ -265,11 +270,11 @@ export function TasksPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm">{task.title}</p>
                 <p className="text-xs text-slate-400">{task.desc}</p>
-                <p className="text-xs font-extrabold text-emerald-600 mt-0.5">Reward {fmtBDT(task.reward)}</p>
+                <p className="text-xs font-extrabold text-emerald-600 mt-0.5">Reward {usd(task.reward)}</p>
               </div>
               {done ? <span className="font-extrabold text-emerald-600 text-sm shrink-0">✓ Done</span>
                 : counting ? <Btn className="!py-2 !text-xs shrink-0" disabled>Verifying… {phase[task.id]}s</Btn>
-                : ready ? <Btn className="!py-2 !text-xs shrink-0" onClick={() => claim(task.id)}>Claim {fmtBDT(task.reward)}</Btn>
+                : ready ? <Btn className="!py-2 !text-xs shrink-0" onClick={() => claim(task.id)}>Claim {usd(task.reward)}</Btn>
                 : <Btn className="!py-2 !text-xs shrink-0" onClick={() => start(task.id)}>Start</Btn>}
             </Card>
           )
@@ -281,7 +286,8 @@ export function TasksPage() {
 
 /* ---------------- Daily Quiz ---------------- */
 export function QuizPage() {
-  const { earnInfo, submitQuiz, toast } = useApp()
+  const { earnInfo, submitQuiz, toast, db } = useApp()
+  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
   const info = earnInfo()
   const playedToday = info.quizDay === todayStr()
   const [i, setI] = useState(0)
@@ -303,7 +309,7 @@ export function QuizPage() {
           submitted.current = true
           const r = submitQuiz(scoreRef.current)
           if (r.err) toast({ kind: 'error', title: r.err })
-          else { setEarned(r.amount ?? 0); if ((r.amount ?? 0) > 0) toast({ kind: 'success', title: '+' + fmtBDT(r.amount ?? 0) + ' quiz reward added' }) }
+          else { setEarned(r.amount ?? 0); if ((r.amount ?? 0) > 0) toast({ kind: 'success', title: '+' + usd(r.amount ?? 0) + ' quiz reward added' }) }
         }
       }
     }, 950)
@@ -311,18 +317,18 @@ export function QuizPage() {
   if (playedToday && !finished) return (
     <div>
       <BackLink />
-      <PageHead title="Daily Quiz" sub="Answer 5 questions — earn ৳4 for every correct answer." />
+      <PageHead title="Daily Quiz" sub={`Answer 5 questions — earn ${usd(4)} for every correct answer.`} />
       <Card className="p-8 text-center"><p className="text-4xl">🧠</p><p className="font-extrabold mt-2">You've played today's quiz</p><p className="text-sm text-slate-400 mt-1">A new quiz arrives tomorrow. Check the other Earn options meanwhile!</p></Card>
     </div>
   )
   if (finished) return (
     <div>
       <BackLink />
-      <PageHead title="Daily Quiz" sub="Answer 5 questions — earn ৳4 for every correct answer." />
+      <PageHead title="Daily Quiz" sub={`Answer 5 questions — earn ${usd(4)} for every correct answer.`} />
       <Card className="p-8 text-center">
         <p className="text-5xl">{scoreRef.current >= 4 ? '🏆' : scoreRef.current >= 2 ? '🎉' : '💪'}</p>
         <p className="font-extrabold text-xl mt-2">You scored {scoreRef.current} / {QUIZ.length}</p>
-        <p className="text-sm text-slate-400 mt-1">{earned > 0 ? fmtBDT(earned) + ' was added to your balance.' : 'No reward this time — try again tomorrow.'}</p>
+        <p className="text-sm text-slate-400 mt-1">{earned > 0 ? usd(earned) + ' was added to your balance.' : 'No reward this time — try again tomorrow.'}</p>
       </Card>
     </div>
   )
@@ -330,7 +336,7 @@ export function QuizPage() {
   return (
     <div>
       <BackLink />
-      <PageHead title="Daily Quiz" sub="Answer 5 questions — earn ৳4 for every correct answer." />
+      <PageHead title="Daily Quiz" sub={`Answer 5 questions — earn ${usd(4)} for every correct answer.`} />
       <Card className="p-5">
         <div className="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>Question {i + 1} of {QUIZ.length}</span><span>Score: {scoreRef.current}</span></div>
         <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden mb-4"><div className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 transition-all" style={{ width: ((i) / QUIZ.length) * 100 + '%' }} /></div>

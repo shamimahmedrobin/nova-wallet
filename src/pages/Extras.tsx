@@ -31,7 +31,7 @@ export function Level2GateModal({ open, onClose, feature }: { open: boolean; onC
 export function DirectWithdraw() {
   const { directWithdraw, db, user, walletOf, toast, t, currency } = useApp()
   const outMethods = withdrawMethods(currency)
-  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? '')
+  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState('')
   const [gate, setGate] = useState(false)
   const [done, setDone] = useState(false)
   const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null)
@@ -94,14 +94,15 @@ export function EarnPage() {
   const [amount, setAmount] = useState(''); const [plan, setPlan] = useState(1)
   if (!user) return null
   const einfo = earnInfo()
+  const usd = (bdt: number) => fmtUSD(bdt / db.settings.bdtPerUsd)
   const todayL = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') })()
   const rewardOptions = [
-    { to: '/earn/checkin', icon: '📅', title: 'Daily Check-in', sub: 'Up to ৳50 a day', badge: einfo.lastCheckin === todayL ? '✓ Claimed' : 'Claim now' },
-    { to: '/earn/ads', icon: '📺', title: 'View Ads', sub: '৳2–8 per ad', badge: (ADS_PER_DAY - einfo.ads) + ' left today' },
-    { to: '/earn/spin', icon: '🎡', title: 'Spin Wheel', sub: 'Win up to ৳50', badge: (SPINS_PER_DAY - einfo.spins) + ' spins left' },
-    { to: '/earn/scratch', icon: '🎫', title: 'Scratch Card', sub: 'Win up to ৳50', badge: (SCRATCH_PER_DAY - einfo.scratches) + ' cards left' },
-    { to: '/earn/tasks', icon: '✅', title: 'Complete Tasks', sub: 'Simple tasks, real BDT', badge: (EARN_TASKS.length - einfo.tasksDone.length) + ' open' },
-    { to: '/earn/quiz', icon: '🧠', title: 'Daily Quiz', sub: '৳4 per correct answer', badge: einfo.quizDay === todayL ? 'Played today' : 'Play now' },
+    { to: '/earn/checkin', icon: '📅', title: 'Daily Check-in', sub: 'Up to ' + usd(50) + ' a day', badge: einfo.lastCheckin === todayL ? '✓ Claimed' : 'Claim now' },
+    { to: '/earn/ads', icon: '📺', title: 'View Ads', sub: usd(2) + '–' + usd(8) + ' per ad', badge: (ADS_PER_DAY - einfo.ads) + ' left today' },
+    { to: '/earn/spin', icon: '🎡', title: 'Spin Wheel', sub: 'Win up to ' + usd(50), badge: (SPINS_PER_DAY - einfo.spins) + ' spins left' },
+    { to: '/earn/scratch', icon: '🎫', title: 'Scratch Card', sub: 'Win up to ' + usd(50), badge: (SCRATCH_PER_DAY - einfo.scratches) + ' cards left' },
+    { to: '/earn/tasks', icon: '✅', title: 'Complete Tasks', sub: 'Simple tasks, real rewards', badge: (EARN_TASKS.length - einfo.tasksDone.length) + ' open' },
+    { to: '/earn/quiz', icon: '🧠', title: 'Daily Quiz', sub: usd(4) + ' per correct answer', badge: einfo.quizDay === todayL ? 'Played today' : 'Play now' },
   ]
   const w = walletOf(user.id)
   const amt = Number(amount) || 0

@@ -74,7 +74,7 @@ export function Referral() {
 
 export function LoanPage() {
   const { user, db, applyLoan, repayLoan, submitLoanFee, toast, t, currency, fmtMoney, toBDT } = useApp()
-  const [amount, setAmount] = useState('30000'); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
+  const [amount, setAmount] = useState(''); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
   const [appName, setAppName] = useState(user?.name ?? ''); const [code, setCode] = useState('+880'); const [phoneNum, setPhoneNum] = useState(user?.phone ?? '')
   const [whatsapp, setWhatsapp] = useState(''); const [nid, setNid] = useState(''); const [photo, setPhoto] = useState('')
   const [idType, setIdType] = useState('National ID'); const [idPhoto, setIdPhoto] = useState('')
