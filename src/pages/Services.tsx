@@ -7,10 +7,7 @@ import { Badge, Btn, Card, Empty, Input, Modal, PinField, Select, statusTone , M
 import { fmtBDT, fmtDateTime } from '../lib/utils'
 import type { User } from '../lib/types'
 
-const METHODS = ['bKash', 'Nagad', 'Rocket', 'Bank Transfer', 'Crypto Deposit']
-const OUT_METHODS = ['bKash', 'Nagad', 'Rocket', 'Bank Account', 'Crypto Wallet']
-const METHOD_ID: Record<string, string> = { bKash: 'bkash', Nagad: 'nagad', Rocket: 'rocket', 'Bank Transfer': 'bank', 'Crypto Deposit': 'usdt' }
-const AGENT: Record<string, string> = { bKash: '01712-345678 (Personal)', Nagad: '01712-345678 (Personal)', Rocket: '01712-3456789 (Personal)', 'Bank Transfer': 'BRAC Bank · A/C 1501200000001 · NovaWallet', 'Crypto Deposit': 'USDT (TRC20): TNovaWalletAddressExample123456789' }
+import { depositMethods, withdrawMethods } from '../lib/localPayments'
 
 function PageHead({ title, sub }: { title: string; sub: string }) {
   return <div className="mb-5 anim-fade-up"><h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{title}</h1><p className="text-sm text-slate-500 mt-0.5">{sub}</p></div>
@@ -28,26 +25,28 @@ function SuccessModal({ open, onClose, title, rows }: any) {
 }
 
 export function AddMoney() {
-  const { addDeposit, db, user, toast, t } = useApp()
-  const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [trx, setTrx] = useState(''); const [receipt, setReceipt] = useState('')
+  const { addDeposit, db, user, toast, t, currency } = useApp()
+  const depMethods = depositMethods(currency, db.settings.payMethods)
+  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [trx, setTrx] = useState(''); const [receipt, setReceipt] = useState('')
   const [done, setDone] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const mine = db.deposits.filter(d => d.userId === user?.id)
+  const activeMethod = depMethods.find(m => m.label === method) ?? depMethods[0]
   const submit = () => {
     const amt = Number(amount)
     if (!amt || amt < 10) return toast({ kind: 'error', title: 'Enter an amount of at least ৳10' })
-    if (method !== 'Crypto Deposit' && trx.trim().length < 6) return toast({ kind: 'error', title: 'Enter the payment Transaction ID' })
-    addDeposit({ method, amount: amt, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined })
+    if (activeMethod.label !== 'Crypto Deposit' && trx.trim().length < 6) return toast({ kind: 'error', title: 'Enter the payment Transaction ID' })
+    addDeposit({ method: activeMethod.label, amount: amt, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined })
     setDone(true); setAmount(''); setTrx(''); setReceipt('')
   }
   return (
     <div>
       <PageHead title={t('add_title')} sub={t('add_sub')} />
       <Card className="p-5 space-y-4">
-        <Select label={t('payment_method')} value={method} onChange={(e: any) => setMethod(e.target.value)}>{METHODS.map(m => <option key={m}>{m}</option>)}</Select>
+        <Select label={t('payment_method')} value={activeMethod.label} onChange={(e: any) => setMethod(e.target.value)}>{depMethods.map(m => <option key={m.label}>{m.label}</option>)}</Select>
         <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20 p-4 text-sm">
           <p className="font-bold text-violet-700 dark:text-violet-300 mb-1">Payment instructions</p>
-          <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{db.settings.payMethods?.find(p => p.id === METHOD_ID[method])?.detail ?? AGENT[method]}</span></p>
+          <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{activeMethod.detail}</span></p>
           <p className="text-slate-500 mt-1">Then enter the amount and Transaction ID below. Status flow: Pending → Approved (credited) / Rejected.</p>
         </div>
         <Input label={t('amount_bdt')} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
@@ -69,15 +68,17 @@ export function AddMoney() {
         </div>
       )}
       <SuccessModal open={done} onClose={() => setDone(false)} title="Request submitted"
-        rows={[['Status', 'Pending review'], ['Method', method], ['Note', 'You will be notified when an admin approves it.']]} />
+        rows={[['Status', 'Pending review'], ['Method', activeMethod.label], ['Note', 'You will be notified when an admin approves it.']]} />
     </div>
   )
 }
 
 export function CashOut() {
-  const { requestWithdraw, db, user, walletOf, toast, t } = useApp()
-  const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? ''); const [pin, setPin] = useState('')
+  const { requestWithdraw, db, user, walletOf, toast, t, currency } = useApp()
+  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? ''); const [pin, setPin] = useState('')
   const [done, setDone] = useState(false)
+  const outMethods = withdrawMethods(currency)
+  const activeOut = outMethods.includes(method) ? method : outMethods[0]
   const amt = Number(amount) || 0
   const disc = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
   const effPct = db.settings.cashoutFeePct * (1 - disc / 100)
@@ -87,7 +88,7 @@ export function CashOut() {
   const submit = () => {
     if (!amt || amt < 50) return toast({ kind: 'error', title: 'Minimum cash out is ৳50' })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
-    const err = requestWithdraw({ method, amount: amt, destination: dest.trim(), pin })
+    const err = requestWithdraw({ method: activeOut, amount: amt, destination: dest.trim(), pin })
     if (err) return toast({ kind: 'error', title: err })
     setDone(true); setAmount(''); setPin('')
     toast({ kind: 'success', title: 'Cash out requested', body: 'Amount locked until processed.' })
@@ -96,12 +97,12 @@ export function CashOut() {
     <div>
       <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtBDT(w?.available ?? 0)} · Fee ${Number(effPct.toFixed(2))}%${disc ? ` (Level ${user?.level} −${disc}%)` : ''} · Daily limit ${fmtBDT(db.levels.find(l => l.level === user?.level)?.dailyLimit ?? 0)}`} />
       <Card className="p-5 space-y-4">
-        <Select label="Withdrawal method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{OUT_METHODS.map(m => <option key={m}>{m}</option>)}</Select>
+        <Select label="Withdrawal method" value={activeOut} onChange={(e: any) => setMethod(e.target.value)}>{outMethods.map(m => <option key={m}>{m}</option>)}</Select>
         <div className="relative">
-          <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
+          <Input label={t('amount_bdt')} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
           <MaxBtn onClick={() => setAmount(String(w?.available ?? 0))} />
         </div>
-        <Input label="Destination account / number / address" placeholder="01XXXXXXXXX" value={dest} onChange={e => setDest(e.target.value)} />
+        <Input label="Destination account / number / address" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtBDT(Math.max(amt - fee, 0))}</span></div>

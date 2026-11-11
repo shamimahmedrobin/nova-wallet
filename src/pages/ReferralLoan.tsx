@@ -3,6 +3,7 @@ import { Copy, HandCoins, Share2, Trophy } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, ModalDesc, ModalRow, Select } from '../components/ui'
 import { emiCalc, fmtBDT, fmtDateTime , fileToScaledDataUrl } from '../lib/utils'
+import { depositMethods } from '../lib/localPayments'
 import { PageHead } from './Services'
 
 export function Referral() {
@@ -104,15 +105,15 @@ export function LoanPage() {
       <Modal open={!!feePay} onClose={() => setFeePay(null)} title="Pay processing fee">
         {(() => {
           const loan = db.loans.find(l => l.id === feePay); if (!loan) return null
-          const methods = db.settings.payMethods ?? []
-          const sel = methods.find(m => m.id === feeMethod) ?? methods[0]
+          const methods = depositMethods(currency, db.settings.payMethods)
+          const sel = methods.find(m => m.label === feeMethod) ?? methods[0]
           return (
             <div>
               <ModalDesc>Pay <b>{fmtMoney(loan.processingFee ?? 0)}</b> for loan {loan.id} using any option below — the same payment options as on the main website.</ModalDesc>
               <div className="space-y-2">
                 {methods.map(m => (
-                  <button key={m.id} onClick={() => setFeeMethod(m.id)} className="w-full text-left">
-                    <ModalRow><span className="flex items-center gap-2.5"><span className={`w-4 h-4 rounded-full border-2 shrink-0 ${sel?.id === m.id ? 'bg-violet-600 border-violet-600' : 'border-slate-300 dark:border-slate-600'}`} /><span className="font-bold text-sm">{m.label}</span></span></ModalRow>
+                  <button key={m.label} onClick={() => setFeeMethod(m.label)} className="w-full text-left">
+                    <ModalRow><span className="flex items-center gap-2.5"><span className={`w-4 h-4 rounded-full border-2 shrink-0 ${sel.label === m.label ? 'bg-violet-600 border-violet-600' : 'border-slate-300 dark:border-slate-600'}`} /><span className="font-bold text-sm">{m.label}</span></span></ModalRow>
                   </button>
                 ))}
               </div>
@@ -122,7 +123,7 @@ export function LoanPage() {
                   <p className="font-mono font-bold break-all mt-0.5">{sel.detail}</p>
                 </div>
               )}
-              <div className="mt-4"><Input label="Your TrxID / sender number" placeholder="e.g. 9HX7K2LMN or 01XXXXXXXXX" value={feeRef} onChange={e => setFeeRef(e.target.value)} /></div>
+              <div className="mt-4"><Input label="Your TrxID / sender number" value={feeRef} onChange={e => setFeeRef(e.target.value)} /></div>
               <Btn className="w-full py-3.5 mt-4" onClick={() => { if (!feeRef.trim()) return toast({ kind: 'error', title: 'Enter the TrxID or sender number' }); submitLoanFee(loan.id, sel?.label ?? '', feeRef.trim()); setFeePay(null); toast({ kind: 'success', title: 'Payment submitted', body: 'The admin will confirm your payment shortly.' }) }}>Submit payment</Btn>
             </div>
           )
@@ -152,7 +153,7 @@ export function LoanPage() {
                 </div>
                 {l.feeStatus === 'paid' ? <Badge tone="green">✓ Paid</Badge>
                   : l.feeStatus === 'submitted' ? <Badge tone="violet">Confirming…</Badge>
-                  : <Btn className="!py-2 !text-xs shrink-0" onClick={() => { setFeePay(l.id); setFeeMethod(db.settings.payMethods?.[0]?.id ?? ''); setFeeRef('') }}>Pay</Btn>}
+                  : <Btn className="!py-2 !text-xs shrink-0" onClick={() => { setFeePay(l.id); setFeeMethod(''); setFeeRef('') }}>Pay</Btn>}
               </div>
             ))}
           </div>
@@ -164,7 +165,7 @@ export function LoanPage() {
           <div className="h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 mt-3 overflow-hidden"><div className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full" style={{ width: Math.min(100, active.paid / active.totalPayable * 100) + '%' }} /></div>
           <p className="text-xs text-slate-500 mt-2">Paid {fmtMoney(active.paid)} of {fmtMoney(active.totalPayable)} · Remaining {fmtMoney(outstanding)}</p>
           <div className="flex gap-2 mt-3">
-            <Input type="number" placeholder={`Repayment (${currency})`} value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} />
+            <Input type="number" value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} />
             <Btn onClick={() => { const err = repayLoan(active, Math.round(toBDT(Number(repayAmt[active.id]) || 0))); if (err) toast({ kind: 'error', title: err }); else toast({ kind: 'success', title: 'Repayment recorded' }) }}>Repay</Btn>
           </div>
         </Card>
@@ -185,10 +186,10 @@ export function LoanPage() {
                 {['+880', '+91', '+92', '+1', '+44', '+971', '+966', '+60'].map(c => <option key={c} value={c}>{c}</option>)}
               </Select>
             </div>
-            <div className="flex-1 min-w-0"><Input label="Phone number" placeholder="1XXXXXXXXX" value={phoneNum} onChange={e => setPhoneNum(e.target.value)} /></div>
+            <div className="flex-1 min-w-0"><Input label="Phone number" value={phoneNum} onChange={e => setPhoneNum(e.target.value)} /></div>
           </div>
-          <Input label="WhatsApp number" placeholder="01XXXXXXXXX" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
-          <Input label="National ID (NID) number" placeholder="e.g. 1234567890" value={nid} onChange={e => setNid(e.target.value)} />
+          <Input label="WhatsApp number" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
+          <Input label="National ID (NID) number" value={nid} onChange={e => setNid(e.target.value)} />
           <div>
             <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Your photo</span>
             <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">
@@ -197,8 +198,8 @@ export function LoanPage() {
               <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToScaledDataUrl(f)) }} />
             </label>
           </div>
-          <Input label="Guarantor — full name" placeholder="Name of your guarantor" value={gName} onChange={e => setGName(e.target.value)} />
-          <Input label="Guarantor — mobile number" placeholder="01XXXXXXXXX" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+          <Input label="Guarantor — full name" value={gName} onChange={e => setGName(e.target.value)} />
+          <Input label="Guarantor — mobile number" value={gPhone} onChange={e => setGPhone(e.target.value)} />
         </div>
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Interest rate</span><span className="font-bold">{s.loanRatePct}% / year</span></div>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeftRight, Award, TrendingDown, TrendingUp } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
+import { withdrawMethods } from '../lib/localPayments'
 import { COIN_META, useMarket } from '../lib/market'
 import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select } from '../components/ui'
 import { fmtBDT, fmtDateTime, fmtUSD } from '../lib/utils'
@@ -25,11 +26,11 @@ export function Level2GateModal({ open, onClose, feature }: { open: boolean; onC
   )
 }
 
-const OUT_METHODS = ['bKash', 'Nagad', 'Rocket', 'Bank Account', 'Crypto Wallet']
 
 export function DirectWithdraw() {
-  const { directWithdraw, db, user, walletOf, toast, t } = useApp()
-  const [method, setMethod] = useState('bKash'); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? '')
+  const { directWithdraw, db, user, walletOf, toast, t, currency } = useApp()
+  const outMethods = withdrawMethods(currency)
+  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(user?.phone ?? '')
   const [gate, setGate] = useState(false)
   const [done, setDone] = useState(false)
   const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null)
@@ -38,13 +39,14 @@ export function DirectWithdraw() {
   const fee = Math.round(amt * db.settings.cashoutFeePct * (1 - disc / 100) / 100)
   const w = user ? walletOf(user.id) : null
   const mine = db.txs.filter(x => x.userId === user?.id && x.category === 'direct_withdraw')
+  const activeOut = outMethods.includes(method) ? method : outMethods[0]
   const submit = () => {
     if (!amt || amt < 50) return toast({ kind: 'error', title: 'Minimum direct withdraw is ৳50' })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
     if (user && user.level < 2) return setGate(true)
-    const err = directWithdraw({ method, amount: amt, destination: dest.trim() })
+    const err = directWithdraw({ method: activeOut, amount: amt, destination: dest.trim() })
     if (err) return toast({ kind: 'error', title: err })
-    setLastTx({ amount: amt, method }); setDone(true); setAmount('')
+    setLastTx({ amount: amt, method: activeOut }); setDone(true); setAmount('')
     toast({ kind: 'success', title: 'Withdrawal completed', body: 'Money sent instantly — no admin review needed.' })
   }
   if (!user) return null
@@ -52,12 +54,12 @@ export function DirectWithdraw() {
     <div>
       <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')}: ${fmtBDT(w?.available ?? 0)}`} />
       <Card className="p-5 space-y-4">
-        <Select label="Withdrawal method" value={method} onChange={(e: any) => setMethod(e.target.value)}>{OUT_METHODS.map(m => <option key={m}>{m}</option>)}</Select>
+        <Select label="Withdrawal method" value={activeOut} onChange={(e: any) => setMethod(e.target.value)}>{outMethods.map(m => <option key={m}>{m}</option>)}</Select>
         <div className="relative">
-          <Input label={t('amount_bdt')} type="number" placeholder="e.g. 10000" value={amount} onChange={e => setAmount(e.target.value)} />
+          <Input label={t('amount_bdt')} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
           <MaxBtn onClick={() => setAmount(String(w?.available ?? 0))} />
         </div>
-        <Input label="Destination account / number / address" placeholder="01XXXXXXXXX" value={dest} onChange={e => setDest(e.target.value)} />
+        <Input label="Destination account / number / address" value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtBDT(fee)}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtBDT(Math.max(amt - fee, 0))}</span></div>
