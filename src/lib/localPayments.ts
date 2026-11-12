@@ -78,3 +78,29 @@ export function depositMethods(currency: string, adminMethods?: { label: string;
 export function withdrawMethods(currency: string): string[] {
   return [...(RAILS[currency] ?? []), 'Bank Account', 'Crypto Wallet']
 }
+
+// Crypto transfer systems / networks. When a user picks the crypto option in
+// Add Money, Cash Out or Direct Withdraw, a second dropdown offers these.
+// `detail` is the demo receiving address shown for deposits.
+export interface CryptoNetwork { label: string; detail: string }
+
+export const CRYPTO_NETWORKS: CryptoNetwork[] = [
+  { label: 'Binance Pay', detail: 'Binance Pay ID: 123456789 · NovaWallet' },
+  { label: 'BNB Smart Chain (BEP20)', detail: '0xNovaWalletBEP20AddressExample0001' },
+  { label: 'Ethereum (ERC20)', detail: '0xNovaWalletERC20AddressExample0001' },
+  { label: 'Tron (TRC20)', detail: 'TNovaWalletAddressExample123456789' },
+  { label: 'Solana', detail: 'NovaWalletSo1anaAddressExample111111' },
+  { label: 'Polygon', detail: '0xNovaWalletPolygonAddressExample01' },
+  { label: 'Arbitrum One', detail: '0xNovaWalletArbitrumAddressExample1' },
+  { label: 'Optimism', detail: '0xNovaWalletOptimismAddressExample1' },
+  { label: 'Avalanche (C-Chain)', detail: '0xNovaWalletAvalancheAddressExample' },
+  { label: 'Base', detail: '0xNovaWalletBaseAddressExample00001' },
+  { label: 'Bitcoin (BTC)', detail: 'bc1qnovawalletexampleaddress000001' },
+  { label: 'Litecoin (LTC)', detail: 'ltc1qnovawalletexampleaddress00001' },
+  { label: 'Dogecoin (DOGE)', detail: 'DNovaWalletDogeAddressExample0001' },
+  { label: 'XRP (Ripple)', detail: 'rNovaWalletXRPAddressExample000001' },
+  { label: 'TON', detail: 'UQNovaWalletTONAddressExample00001' },
+  { label: 'NEAR', detail: 'novawallet.near' },
+]
+
+export const CRYPTO_NETWORK_LABELS: string[] = CRYPTO_NETWORKS.map(n => n.label)

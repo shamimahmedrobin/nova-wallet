@@ -7,7 +7,7 @@ import { Badge, Btn, Card, Empty, Input, Modal, PinField, Select, statusTone , M
 import { fmtDateTime, fmtUSDT } from '../lib/utils'
 import type { User } from '../lib/types'
 
-import { depositMethods, withdrawMethods } from '../lib/localPayments'
+import { depositMethods, withdrawMethods, CRYPTO_NETWORKS, CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
 
 function PageHead({ title, sub }: { title: string; sub: string }) {
   return <div className="mb-5 anim-fade-up"><h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{title}</h1><p className="text-sm text-slate-500 mt-0.5">{sub}</p></div>
@@ -27,16 +27,20 @@ function SuccessModal({ open, onClose, title, rows }: any) {
 export function AddMoney() {
   const { addDeposit, db, user, toast, t, currency, fmtMoney, toBDT } = useApp()
   const depMethods = depositMethods(currency, db.settings.payMethods)
-  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [trx, setTrx] = useState(''); const [receipt, setReceipt] = useState('')
+  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [trx, setTrx] = useState(''); const [receipt, setReceipt] = useState(''); const [network, setNetwork] = useState('')
   const [done, setDone] = useState(false); const [lastAmt, setLastAmt] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const mine = db.deposits.filter(d => d.userId === user?.id)
   const activeMethod = depMethods.find(m => m.label === method) ?? depMethods[0]
+  const isCrypto = activeMethod.label === 'Crypto Deposit'
+  const activeNetwork = CRYPTO_NETWORKS.find(n => n.label === network) ?? CRYPTO_NETWORKS[0]
+  const methodLabel = isCrypto ? 'Crypto Deposit · ' + activeNetwork.label : activeMethod.label
+  const shownDetail = isCrypto && activeNetwork.label !== 'Tron (TRC20)' ? activeNetwork.detail : activeMethod.detail
   const amtBDT = Math.round(toBDT(Number(amount) || 0))
   const submit = () => {
     if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Enter an amount of at least ' + fmtMoney(10) })
     if (activeMethod.label !== 'Crypto Deposit' && trx.trim().length < 6) return toast({ kind: 'error', title: 'Enter the payment Transaction ID' })
-    addDeposit({ method: activeMethod.label, amount: amtBDT, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined })
+    addDeposit({ method: methodLabel, amount: amtBDT, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined })
     setLastAmt(amtBDT); setDone(true); setAmount(''); setTrx(''); setReceipt('')
   }
   return (
@@ -44,14 +48,15 @@ export function AddMoney() {
       <PageHead title={t('add_title')} sub={t('add_sub')} />
       <Card className="p-5 space-y-4">
         <Select label={t('payment_method')} value={activeMethod.label} onChange={(e: any) => setMethod(e.target.value)}>{depMethods.map(m => <option key={m.label}>{m.label}</option>)}</Select>
+        {isCrypto && <Select label="Crypto network / transfer system" value={activeNetwork.label} onChange={(e: any) => setNetwork(e.target.value)}>{CRYPTO_NETWORKS.map(n => <option key={n.label}>{n.label}</option>)}</Select>}
         <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20 p-4 text-sm">
           <p className="font-bold text-violet-700 dark:text-violet-300 mb-1">Payment instructions</p>
-          <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{activeMethod.detail}</span></p>
+          <p className="text-slate-600 dark:text-slate-300">Send money to: <span className="font-mono font-bold">{shownDetail}</span></p>
           <p className="text-slate-500 mt-1">Then enter the amount and Transaction ID below. Status flow: Pending → Approved (credited) / Rejected.</p>
         </div>
         <Input label={`Amount (${currency})`} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
         {currency !== 'BDT' && Number(amount) > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} will be credited after approval, at today's rate.</p>}
-        <Input label="Transaction ID" placeholder="e.g. BKX92KD81P" value={trx} onChange={e => setTrx(e.target.value)} />
+        <Input label={isCrypto ? 'Transaction hash (optional)' : 'Transaction ID'} placeholder={isCrypto ? 'Paste the transaction hash' : 'e.g. BKX92KD81P'} value={trx} onChange={e => setTrx(e.target.value)} />
         <div>
           <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Payment receipt (optional)</span>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => setReceipt(e.target.files?.[0]?.name ?? '')} />
@@ -69,17 +74,21 @@ export function AddMoney() {
         </div>
       )}
       <SuccessModal open={done} onClose={() => setDone(false)} title="Request submitted"
-        rows={[['Status', 'Pending review'], ['Method', activeMethod.label], ['Amount', fmtMoney(lastAmt)], ['Note', 'You will be notified when an admin approves it.']]} />
+        rows={[['Status', 'Pending review'], ['Method', methodLabel], ['Amount', fmtMoney(lastAmt)], ['Note', 'You will be notified when an admin approves it.']]} />
     </div>
   )
 }
 
 export function CashOut() {
   const { requestWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
-  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(''); const [pin, setPin] = useState('')
+  const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(''); const [pin, setPin] = useState(''); const [network, setNetwork] = useState('')
   const [done, setDone] = useState(false)
   const outMethods = withdrawMethods(currency)
   const activeOut = outMethods.includes(method) ? method : outMethods[0]
+  const isCrypto = activeOut === 'Crypto Wallet'
+  const activeNetwork = CRYPTO_NETWORK_LABELS.includes(network) ? network : CRYPTO_NETWORK_LABELS[0]
+  const fullMethod = isCrypto ? 'Crypto Wallet · ' + activeNetwork : activeOut
+  const destLabel = !isCrypto ? 'Destination account / number / address' : activeNetwork === 'Binance Pay' ? 'Binance Pay ID / email' : 'Wallet address'
   const amt = Number(amount) || 0
   const amtBDT = Math.round(toBDT(amt))
   const disc = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
@@ -90,7 +99,7 @@ export function CashOut() {
   const submit = () => {
     if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum cash out is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
-    const err = requestWithdraw({ method: activeOut, amount: amtBDT, destination: dest.trim(), pin })
+    const err = requestWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim(), pin })
     if (err) return toast({ kind: 'error', title: err })
     setDone(true); setAmount(''); setPin('')
     toast({ kind: 'success', title: 'Cash out requested', body: 'Amount locked until processed.' })
@@ -100,12 +109,13 @@ export function CashOut() {
       <PageHead title={t('cashout_title')} sub={`${t('available')}: ${fmtMoney(w?.available ?? 0)} · Fee ${Number(effPct.toFixed(2))}%${disc ? ` (Level ${user?.level} −${disc}%)` : ''} · Daily limit ${fmtMoney(db.levels.find(l => l.level === user?.level)?.dailyLimit ?? 0)}`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={activeOut} onChange={(e: any) => setMethod(e.target.value)}>{outMethods.map(m => <option key={m}>{m}</option>)}</Select>
+        {isCrypto && <Select label="Crypto network / transfer system" value={activeNetwork} onChange={(e: any) => setNetwork(e.target.value)}>{CRYPTO_NETWORK_LABELS.map(n => <option key={n}>{n}</option>)}</Select>}
         <div className="relative">
           <Input label={`Amount (${currency})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
           <MaxBtn onClick={() => setAmount(String(Math.round(fromBDT(w?.available ?? 0) * 100) / 100))} />
         </div>
         {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} at today's rate.</p>}
-        <Input label="Destination account / number / address" value={dest} onChange={e => setDest(e.target.value)} />
+        <Input label={destLabel} value={dest} onChange={e => setDest(e.target.value)} />
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">Withdrawal fee</span><span className="font-bold">{fmtMoney(fee)}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">You will receive</span><span className="font-bold text-emerald-600">{fmtMoney(Math.max(amtBDT - fee, 0))}</span></div>
