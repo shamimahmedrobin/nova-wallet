@@ -364,13 +364,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const rate = dbRef.current.settings.bdtPerUsd
     const priceOf = (sym: string) => sym === 'BDT' ? 1 / rate : sym === 'USDT' ? 1 : (prices[sym] ?? 0)
     if (!priceOf(fromSym) || !priceOf(toSym)) return 'Live price unavailable for this pair.'
-    if (fromSym === 'BDT' ? amountFrom > w.available : amountFrom > (w.holdings[fromSym] ?? 0)) return 'Insufficient ' + fromSym + ' balance.'
+    const heldFrom = w.holdings[fromSym] ?? 0
+    // USDT is the trading balance: the USDT holding spends first, and any
+    // shortfall converts automatically from the added-money (BDT) balance,
+    // so money from Add Money is always usable in Swap and Buy Crypto.
+    const spendableFrom = fromSym === 'BDT' ? w.available : fromSym === 'USDT' ? heldFrom + w.available / rate : heldFrom
+    if (amountFrom > spendableFrom) return 'Insufficient ' + fromSym + ' balance.'
     const usdGross = amountFrom * priceOf(fromSym)
     const feeUsd = usdGross * 0.005
     const toAmt = (usdGross - feeUsd) / priceOf(toSym)
     mutate(d => {
       const dw = d.wallets.find(x => x.userId === user.id)!
-      if (fromSym === 'BDT') dw.available -= amountFrom; else dw.holdings[fromSym] = (dw.holdings[fromSym] ?? 0) - amountFrom
+      if (fromSym === 'BDT') dw.available -= amountFrom
+      else if (fromSym === 'USDT') { const fromHeld = Math.min(amountFrom, heldFrom); dw.holdings.USDT = heldFrom - fromHeld; dw.available -= Math.round((amountFrom - fromHeld) * rate) }
+      else dw.holdings[fromSym] = heldFrom - amountFrom
       if (toSym === 'BDT') dw.available += toAmt; else dw.holdings[toSym] = (dw.holdings[toSym] ?? 0) + toAmt
       recordTx(d, { userId: user.id, category: 'swap', title: 'Swap ' + fromSym + ' → ' + toSym, amount: Math.round(usdGross * rate), fee: Math.round(feeUsd * rate), currency: 'BDT', status: 'completed', note: amountFrom + ' ' + fromSym + ' → ' + (toSym === 'BDT' ? Math.round(toAmt) : toSym === 'USDT' ? toAmt.toFixed(2) : toAmt.toFixed(6)) + ' ' + toSym })
     })
@@ -424,11 +431,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       })
       return null
     }
-    if (amount > (w.holdings.USDT ?? 0)) return 'Insufficient USDT balance. Buy USDT first.'
+    const heldUsdt = w.holdings.USDT ?? 0
+    const shortfall = Math.max(0, amount - heldUsdt)
+    if (shortfall * rate > w.available) return 'Insufficient balance. Add money first.'
     const coins = amount / priceUsd
     mutate(d => {
       const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.holdings.USDT = (dw.holdings.USDT ?? 0) - amount; dw.holdings[symbol] = (dw.holdings[symbol] ?? 0) + coins
+      dw.holdings.USDT = heldUsdt - Math.min(amount, heldUsdt); dw.available -= Math.round(shortfall * rate); dw.holdings[symbol] = (dw.holdings[symbol] ?? 0) + coins
       recordTx(d, { userId: user.id, category: 'crypto_buy', title: 'Bought ' + symbol, amount: Math.round(amount * rate), fee: 0, currency: symbol, status: 'completed', note: coins.toFixed(6) + ' ' + symbol + ' @ ' + priceUsd + ' USDT' })
     })
     return null

@@ -18,6 +18,7 @@ export default function Market() {
   const [amount, setAmount] = useState('')
   const watch = db.watchlist[user?.id ?? ''] ?? []
   const w = user ? walletOf(user.id) : null
+  const spendableUSDT = (w?.holdings.USDT ?? 0) + (w?.available ?? 0) / db.settings.bdtPerUsd
   const list = useMemo(() => coins.filter(c => (!onlyWatch || watch.includes(c.symbol)) && (c.name.toLowerCase().includes(q.toLowerCase()) || c.symbol.toLowerCase().includes(q.toLowerCase()))), [coins, q, onlyWatch, watch])
   const open = (c: Coin, m: 'buy' | 'sell') => { setSelected(c); setMode(m); setAmount('') }
   const trade = () => {
@@ -90,7 +91,7 @@ export default function Market() {
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm space-y-1.5">
               <div className="flex justify-between"><span className="text-slate-500">Market price</span><span className="font-bold">{fmtUSDT(selected.priceUsd)} <Badge tone={selected.live ? 'green' : 'amber'}>{selected.live ? 'Live' : 'Cached'}</Badge></span></div>
               <div className="flex justify-between"><span className="text-slate-500">24h change</span><span className={`font-bold ${selected.change24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{selected.change24h.toFixed(2)}%</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Your balance</span><span className="font-bold">{mode === 'buy' ? (selected.symbol === 'USDT' ? fmtBDT(w?.available ?? 0) : fmtUSDT(w?.holdings.USDT ?? 0)) : `${w?.holdings[selected.symbol] ?? 0} ${selected.symbol}`}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Your balance</span><span className="font-bold">{mode === 'buy' ? (selected.symbol === 'USDT' ? fmtBDT(w?.available ?? 0) : fmtUSDT(spendableUSDT)) : `${w?.holdings[selected.symbol] ?? 0} ${selected.symbol}`}</span></div>
             </div>
             <div className="h-28">
               <ResponsiveContainer>
@@ -103,7 +104,7 @@ export default function Market() {
             </div>
             <div className="relative">
               <Input label={mode === 'buy' ? (selected.symbol === 'USDT' ? 'Amount in BDT' : 'Amount in USDT') : `Amount in ${selected.symbol}`} type="number" placeholder={mode === 'buy' ? (selected.symbol === 'USDT' ? 'e.g. 5000' : 'e.g. 100') : 'e.g. 0.01'} value={amount} onChange={e => setAmount(e.target.value)} />
-              <MaxBtn onClick={() => setAmount(String(mode === 'buy' ? (selected.symbol === 'USDT' ? (w?.available ?? 0) : (w?.holdings.USDT ?? 0)) : (w?.holdings[selected.symbol] ?? 0)))} />
+              <MaxBtn onClick={() => setAmount(String(mode === 'buy' ? (selected.symbol === 'USDT' ? (w?.available ?? 0) : Math.round(spendableUSDT * 100) / 100) : (w?.holdings[selected.symbol] ?? 0)))} />
             </div>
             {Number(amount) > 0 && <p className="text-sm text-slate-500">You {mode === 'buy' ? `receive ≈ ${buyPreview.toFixed(selected.symbol === 'USDT' ? 2 : 6)} ${selected.symbol}` : selected.symbol === 'USDT' ? `receive ≈ ${fmtBDT(Math.round(sellPreview * db.settings.bdtPerUsd))}` : `receive ≈ ${fmtUSDT(sellPreview)}`}. Final executable price is confirmed at execution.</p>}
             <Btn className="w-full py-3.5" variant={mode === 'buy' ? 'primary' : 'danger'} disabled={!Number(amount)} onClick={trade}>{mode === 'buy' ? 'Buy' : 'Sell'} {selected.symbol}</Btn>

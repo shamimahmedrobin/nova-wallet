@@ -179,7 +179,7 @@ export function EarnPage() {
 }
 
 export function SwapPage() {
-  const { user, walletOf, swap, toast } = useApp()
+  const { user, db, walletOf, swap, toast } = useApp()
   const { coins } = useMarket()
   const [from, setFrom] = useState('USDT'); const [to, setTo] = useState('BTC'); const [amount, setAmount] = useState('')
   if (!user) return null
@@ -189,7 +189,8 @@ export function SwapPage() {
   const amt = Number(amount) || 0
   const usdGross = amt * priceOf(from)
   const receive = priceOf(to) ? (usdGross * 0.995) / priceOf(to) : 0
-  const balanceOf = (sym: string) => sym === 'BDT' ? w.available : (w.holdings[sym] ?? 0)
+  const spendableUSDT = (w.holdings.USDT ?? 0) + w.available / db.settings.bdtPerUsd
+  const balanceOf = (sym: string) => sym === 'BDT' ? w.available : sym === 'USDT' ? spendableUSDT : (w.holdings[sym] ?? 0)
   const assets = ['USDT', ...Object.keys(COIN_META).filter(s => s !== 'USDT')]
   const fmtAmt = (sym: string, v: number) => sym === 'USDT' ? v.toFixed(2) + ' USDT' : v.toFixed(6) + ' ' + sym
   const submit = () => {
@@ -208,6 +209,7 @@ export function SwapPage() {
             <Input className="mt-3" type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
             <MaxBtn onClick={() => setAmount(String(from === 'USDT' ? Math.round(balanceOf(from) * 100) / 100 : balanceOf(from)))} />
           </div>
+          {from === 'USDT' && w.available > 0 && <p className="text-[11px] text-slate-400 mt-1.5">Includes {fmtUSDT(w.available / db.settings.bdtPerUsd)} from your added-money balance — it converts automatically when you swap.</p>}
         </div>
         <div className="flex justify-center">
           <button onClick={() => { setFrom(to); setTo(from) }} className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg active:scale-95 transition" aria-label="Flip pair"><ArrowLeftRight size={19} /></button>
@@ -285,7 +287,7 @@ export function TradePage() {
             </div>
             <div className="relative">
               <Input label={side === 'buy' ? (coin.symbol === 'USDT' ? t('amount_bdt') : 'Amount (USDT)') : `Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
-              <MaxBtn onClick={() => setAmount(String(side === 'buy' ? (coin.symbol === 'USDT' ? w.available : (w.holdings.USDT ?? 0)) : (w.holdings[coin.symbol] ?? 0)))} />
+              <MaxBtn onClick={() => setAmount(String(side === 'buy' ? (coin.symbol === 'USDT' ? w.available : Math.round(((w.holdings.USDT ?? 0) + w.available / db.settings.bdtPerUsd) * 100) / 100) : (w.holdings[coin.symbol] ?? 0)))} />
             </div>
             {amt > 0 && <p className="text-xs text-slate-500">{side === 'buy'
               ? <>You receive ≈ <b>{(coin.symbol === 'USDT' ? amt / db.settings.bdtPerUsd : amt / coin.priceUsd).toFixed(coin.symbol === 'USDT' ? 2 : 6)} {coin.symbol}</b></>
