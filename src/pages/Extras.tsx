@@ -7,7 +7,7 @@ import { withdrawMethods, CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
 import { ADS_PER_DAY, EARN_TASKS, SCRATCH_PER_DAY, SPINS_PER_DAY } from '../lib/earn'
 import { COIN_META, useMarket } from '../lib/market'
 import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select } from '../components/ui'
-import { fmtBDT, fmtDateTime, fmtUSDT } from '../lib/utils'
+import { fmtBDT, fmtDateTime, fmtPrice, fmtUSDT } from '../lib/utils'
 import { PageHead, SuccessModal } from './Services'
 
 export function Level2GateModal({ open, onClose, feature }: { open: boolean; onClose: () => void; feature: string }) {
@@ -181,14 +181,17 @@ export function EarnPage() {
 export function SwapPage() {
   const { user, db, walletOf, swap, toast } = useApp()
   const { coins } = useMarket()
-  const [from, setFrom] = useState('USDT'); const [to, setTo] = useState('BTC'); const [amount, setAmount] = useState('')
+  const [from, setFrom] = useState('USDT'); const [to, setTo] = useState('BTC'); const [amount, setAmount] = useState(''); const [receiveAmt, setReceiveAmt] = useState('')
   if (!user) return null
   const w = walletOf(user.id)
   const prices = useMemo(() => Object.fromEntries(coins.map(c => [c.symbol, c.priceUsd])), [coins])
   const priceOf = (sym: string) => sym === 'USDT' ? 1 : (prices[sym] ?? 0)
   const amt = Number(amount) || 0
   const usdGross = amt * priceOf(from)
-  const receive = priceOf(to) ? (usdGross * 0.995) / priceOf(to) : 0
+  const dpOf = (sym: string) => sym === 'USDT' ? 2 : 6
+  const fmtIn = (v: number, sym: string) => String(Math.round(v * 10 ** dpOf(sym)) / 10 ** dpOf(sym))
+  const onFromAmt = (v: string) => { setAmount(v); const a = Number(v) || 0; setReceiveAmt(v && priceOf(to) ? fmtIn(a * priceOf(from) * 0.995 / priceOf(to), to) : '') }
+  const onReceiveAmt = (v: string) => { setReceiveAmt(v); const r = Number(v) || 0; setAmount(v && priceOf(from) ? fmtIn(r * priceOf(to) / 0.995 / priceOf(from), from) : '') }
   const spendableUSDT = (w.holdings.USDT ?? 0) + w.available / db.settings.bdtPerUsd
   const balanceOf = (sym: string) => sym === 'BDT' ? w.available : sym === 'USDT' ? spendableUSDT : (w.holdings[sym] ?? 0)
   const assets = ['USDT', ...Object.keys(COIN_META).filter(s => s !== 'USDT')]
@@ -197,28 +200,31 @@ export function SwapPage() {
     if (!amt) return toast({ kind: 'error', title: 'Enter an amount' })
     const err = swap(from, to, amt, prices)
     if (err) return toast({ kind: 'error', title: err })
-    setAmount(''); toast({ kind: 'success', title: 'Swap completed', body: 'Your balance has been updated.' })
+    setAmount(''); setReceiveAmt(''); toast({ kind: 'success', title: 'Swap completed', body: 'Your balance has been updated.' })
   }
   return (
     <div>
       <PageHead title="Swap" sub="Instantly exchange USDT and crypto at live prices · 0.5% swap fee." />
       <Card className="p-5 space-y-4">
         <div>
-          <Select label="From" value={from} onChange={(e: any) => { setFrom(e.target.value); if (e.target.value === to) setTo(from) }}>{assets.map(a => <option key={a} value={a}>{a} — balance {fmtAmt(a, balanceOf(a))}</option>)}</Select>
+          <Select label="From" value={from} onChange={(e: any) => { setFrom(e.target.value); if (e.target.value === to) setTo(from); setAmount(''); setReceiveAmt('') }}>{assets.map(a => <option key={a} value={a}>{a} — balance {fmtAmt(a, balanceOf(a))}</option>)}</Select>
           <div className="relative">
-            <Input className="mt-3" type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
-            <MaxBtn onClick={() => setAmount(String(from === 'USDT' ? Math.round(balanceOf(from) * 100) / 100 : balanceOf(from)))} />
+            <Input className="mt-3" type="number" placeholder="0.00" value={amount} onChange={e => onFromAmt(e.target.value)} />
+            <MaxBtn onClick={() => onFromAmt(fmtIn(balanceOf(from), from))} />
           </div>
           {from === 'USDT' && w.available > 0 && <p className="text-[11px] text-slate-400 mt-1.5">Includes {fmtUSDT(w.available / db.settings.bdtPerUsd)} from your added-money balance — it converts automatically when you swap.</p>}
         </div>
         <div className="flex justify-center">
-          <button onClick={() => { setFrom(to); setTo(from) }} className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg active:scale-95 transition" aria-label="Flip pair"><ArrowLeftRight size={19} /></button>
+          <button onClick={() => { setFrom(to); setTo(from); setAmount(''); setReceiveAmt('') }} className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg active:scale-95 transition" aria-label="Flip pair"><ArrowLeftRight size={19} /></button>
         </div>
         <div>
-          <Select label="To" value={to} onChange={(e: any) => { setTo(e.target.value); if (e.target.value === from) setFrom(to) }}>{assets.map(a => <option key={a} value={a}>{a} — balance {fmtAmt(a, balanceOf(a))}</option>)}</Select>
+          <Select label="To" value={to} onChange={(e: any) => { setTo(e.target.value); if (e.target.value === from) setFrom(to); setAmount(''); setReceiveAmt('') }}>{assets.map(a => <option key={a} value={a}>{a} — balance {fmtAmt(a, balanceOf(a))}</option>)}</Select>
           <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4">
             <p className="text-xs text-slate-400 font-bold">YOU RECEIVE (EST.)</p>
-            <p className="text-2xl font-extrabold mt-0.5">{fmtAmt(to, receive)}</p>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <input value={receiveAmt} onChange={e => onReceiveAmt(e.target.value)} type="number" placeholder="0.00" className="w-full min-w-0 bg-transparent text-2xl font-extrabold outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600" />
+              <span className="font-extrabold text-slate-400 shrink-0">{to}</span>
+            </div>
           </div>
         </div>
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
@@ -236,25 +242,31 @@ export function TradePage() {
   const { coins, loading, isLive } = useMarket()
   const [sel, setSel] = useState('BTC')
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(''); const [coinAmt, setCoinAmt] = useState(''); const [usdtVal, setUsdtVal] = useState('')
   if (!user) return null
   const w = walletOf(user.id)
   const coin = coins.find(c => c.symbol === sel) ?? coins[0]
   const amt = Number(amount) || 0
+  const px = coin?.priceUsd ?? 0
+  const spendableT = (w.holdings.USDT ?? 0) + w.available / db.settings.bdtPerUsd
+  const setUsdtT = (v: string) => { setAmount(v); setCoinAmt(v && px ? String(Math.round(Number(v) / px * 1e6) / 1e6) : '') }
+  const setCoinT = (v: string) => { setCoinAmt(v); setAmount(v ? String(Math.round(Number(v) * px * 100) / 100) : '') }
+  const setCoinSellT = (v: string) => { setAmount(v); setUsdtVal(v ? String(Math.round(Number(v) * px * 100) / 100) : '') }
+  const setUsdtSellT = (v: string) => { setUsdtVal(v); setAmount(v && px ? String(Math.round(Number(v) / px * 1e6) / 1e6) : '') }
   const data = coin ? coin.spark.filter((_, i) => i % Math.max(1, Math.floor(coin.spark.length / 40)) === 0).map((v, i) => ({ i, v })) : []
   const up = (coin?.change24h ?? 0) >= 0
   const submit = () => {
     if (!coin || !amt) return toast({ kind: 'error', title: 'Enter an amount' })
     const err = side === 'buy' ? buyCrypto(coin.symbol, amt, coin.priceUsd) : sellCrypto(coin.symbol, amt, coin.priceUsd)
     if (err) return toast({ kind: 'error', title: err })
-    setAmount(''); toast({ kind: 'success', title: (side === 'buy' ? 'Bought ' : 'Sold ') + coin.symbol, body: 'Executed at the confirmed market price.' })
+    setAmount(''); setCoinAmt(''); setUsdtVal(''); toast({ kind: 'success', title: (side === 'buy' ? 'Bought ' : 'Sold ') + coin.symbol, body: 'Executed at the confirmed market price.' })
   }
   return (
     <div>
       <PageHead title="Trade" sub={isLive ? 'Live spot trading · CoinGecko prices' : 'Cached prices — live feed unreachable'} />
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 -mx-4 px-4">
         {coins.map(c => (
-          <button key={c.symbol} onClick={() => setSel(c.symbol)} className={`shrink-0 flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border-2 font-bold text-sm ${sel === c.symbol ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-white dark:bg-slate-900'}`}>
+          <button key={c.symbol} onClick={() => { setSel(c.symbol); setAmount(''); setCoinAmt(''); setUsdtVal('') }} className={`shrink-0 flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border-2 font-bold text-sm ${sel === c.symbol ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-white dark:bg-slate-900'}`}>
             <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-extrabold" style={{ background: COIN_META[c.symbol].color }}>{c.symbol[0]}</span>{c.symbol}
             <span className={c.change24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}>{c.change24h >= 0 ? '+' : ''}{c.change24h.toFixed(1)}%</span>
           </button>
@@ -265,15 +277,15 @@ export function TradePage() {
           <Card className="p-5 mb-4">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div><p className="font-extrabold text-lg">{coin.name} <span className="text-slate-400 text-sm">{coin.symbol}/USDT</span></p>
-                <p className="text-3xl font-extrabold mt-1">{fmtUSDT(coin.priceUsd, coin.priceUsd < 10 ? 2 : 0)}</p>
-                <p className="text-sm text-slate-400">{fmtUSDT(coin.priceUsd, coin.priceUsd < 10 ? 2 : 0)} · You hold <b className="text-slate-600 dark:text-slate-200">{(w.holdings[coin.symbol] ?? 0).toFixed(6)} {coin.symbol}</b></p></div>
+                <p className="text-3xl font-extrabold mt-1">{fmtPrice(coin.priceUsd)}</p>
+                <p className="text-sm text-slate-400">{fmtPrice(coin.priceUsd)} · You hold <b className="text-slate-600 dark:text-slate-200">{(w.holdings[coin.symbol] ?? 0).toFixed(6)} {coin.symbol}</b></p></div>
               <span className={`flex items-center gap-1 font-extrabold ${up ? 'text-emerald-500' : 'text-rose-500'}`}>{up ? <TrendingUp size={17} /> : <TrendingDown size={17} />}{up ? '+' : ''}{coin.change24h.toFixed(2)}%</span>
             </div>
             <div className="h-36 mt-4">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data}>
                   <YAxis hide domain={['dataMin', 'dataMax']} />
-                  <Tooltip formatter={(v: any) => [fmtUSDT(Number(v)), 'Price']} labelFormatter={() => ''} />
+                  <Tooltip formatter={(v: any) => [fmtPrice(Number(v)), 'Price']} labelFormatter={() => ''} />
                   <Area type="monotone" dataKey="v" stroke={up ? '#10b981' : '#f43f5e'} fill={up ? '#10b98133' : '#f43f5e33'} strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -282,13 +294,31 @@ export function TradePage() {
           <Card className="p-5 space-y-4">
             <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">
               {(['buy', 'sell'] as const).map(x => (
-                <button key={x} onClick={() => { setSide(x); setAmount('') }} className={`py-2.5 rounded-xl text-sm font-extrabold capitalize ${side === x ? (x === 'buy' ? 'bg-emerald-500 text-white shadow' : 'bg-rose-500 text-white shadow') : 'text-slate-500'}`}>{x === 'buy' ? t('buy') : t('sell')} {coin.symbol}</button>
+                <button key={x} onClick={() => { setSide(x); setAmount(''); setCoinAmt(''); setUsdtVal('') }} className={`py-2.5 rounded-xl text-sm font-extrabold capitalize ${side === x ? (x === 'buy' ? 'bg-emerald-500 text-white shadow' : 'bg-rose-500 text-white shadow') : 'text-slate-500'}`}>{x === 'buy' ? t('buy') : t('sell')} {coin.symbol}</button>
               ))}
             </div>
-            <div className="relative">
-              <Input label={side === 'buy' ? (coin.symbol === 'USDT' ? t('amount_bdt') : 'Amount (USDT)') : `Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
-              <MaxBtn onClick={() => setAmount(String(side === 'buy' ? (coin.symbol === 'USDT' ? w.available : Math.round(((w.holdings.USDT ?? 0) + w.available / db.settings.bdtPerUsd) * 100) / 100) : (w.holdings[coin.symbol] ?? 0)))} />
-            </div>
+            {side === 'buy' && coin.symbol !== 'USDT' ? (
+              <>
+                <div className="relative">
+                  <Input label="Amount (USDT)" type="number" placeholder="0.00" value={amount} onChange={e => setUsdtT(e.target.value)} />
+                  <MaxBtn onClick={() => setUsdtT(String(Math.round(spendableT * 100) / 100))} />
+                </div>
+                <Input label={`Amount (${coin.symbol})`} type="number" placeholder="0.00" value={coinAmt} onChange={e => setCoinT(e.target.value)} />
+              </>
+            ) : side === 'sell' && coin.symbol !== 'USDT' ? (
+              <>
+                <div className="relative">
+                  <Input label={`Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setCoinSellT(e.target.value)} />
+                  <MaxBtn onClick={() => setCoinSellT(String(w.holdings[coin.symbol] ?? 0))} />
+                </div>
+                <Input label="Value in USDT" type="number" placeholder="0.00" value={usdtVal} onChange={e => setUsdtSellT(e.target.value)} />
+              </>
+            ) : (
+              <div className="relative">
+                <Input label={side === 'buy' ? t('amount_bdt') : `Amount (${coin.symbol})`} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+                <MaxBtn onClick={() => setAmount(String(side === 'buy' ? w.available : (w.holdings[coin.symbol] ?? 0)))} />
+              </div>
+            )}
             {amt > 0 && <p className="text-xs text-slate-500">{side === 'buy'
               ? <>You receive ≈ <b>{(coin.symbol === 'USDT' ? amt / db.settings.bdtPerUsd : amt / coin.priceUsd).toFixed(coin.symbol === 'USDT' ? 2 : 6)} {coin.symbol}</b></>
               : coin.symbol === 'USDT'

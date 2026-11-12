@@ -5,7 +5,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'rec
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket, type Coin } from '../lib/market'
 import { Badge, Btn, Card, Input, Modal, SkeletonRows , MaxBtn } from '../components/ui'
-import { fmtBDT, fmtUSDT } from '../lib/utils'
+import { fmtBDT, fmtPrice, fmtUSDT } from '../lib/utils'
 import { PageHead } from './Services'
 
 export default function Market() {
@@ -15,12 +15,17 @@ export default function Market() {
   const [q, setQ] = useState(''); const [onlyWatch, setOnlyWatch] = useState(false)
   const [selected, setSelected] = useState<Coin | null>(null)
   const [mode, setMode] = useState<'buy' | 'sell'>(params.get('mode') === 'sell' ? 'sell' : 'buy')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(''); const [coinAmt, setCoinAmt] = useState(''); const [usdtVal, setUsdtVal] = useState('')
   const watch = db.watchlist[user?.id ?? ''] ?? []
   const w = user ? walletOf(user.id) : null
   const spendableUSDT = (w?.holdings.USDT ?? 0) + (w?.available ?? 0) / db.settings.bdtPerUsd
+  const livePrice = selected ? (coins.find(c => c.symbol === selected.symbol)?.priceUsd ?? selected.priceUsd) : 0
+  const setUsdt = (v: string) => { setAmount(v); setCoinAmt(v && livePrice ? String(Math.round(Number(v) / livePrice * 1e6) / 1e6) : '') }
+  const setCoin = (v: string) => { setCoinAmt(v); setAmount(v ? String(Math.round(Number(v) * livePrice * 100) / 100) : '') }
+  const setCoinSell = (v: string) => { setAmount(v); setUsdtVal(v ? String(Math.round(Number(v) * livePrice * 100) / 100) : '') }
+  const setUsdtSell = (v: string) => { setUsdtVal(v); setAmount(v && livePrice ? String(Math.round(Number(v) / livePrice * 1e6) / 1e6) : '') }
   const list = useMemo(() => coins.filter(c => (!onlyWatch || watch.includes(c.symbol)) && (c.name.toLowerCase().includes(q.toLowerCase()) || c.symbol.toLowerCase().includes(q.toLowerCase()))), [coins, q, onlyWatch, watch])
-  const open = (c: Coin, m: 'buy' | 'sell') => { setSelected(c); setMode(m); setAmount('') }
+  const open = (c: Coin, m: 'buy' | 'sell') => { setSelected(c); setMode(m); setAmount(''); setCoinAmt(''); setUsdtVal('') }
   const trade = () => {
     if (!selected) return
     const live = coins.find(c => c.symbol === selected.symbol) ?? selected
@@ -67,9 +72,9 @@ export default function Market() {
                     <ResponsiveContainer><AreaChart data={data}><Area type="monotone" dataKey="v" stroke={up ? '#10b981' : '#f43f5e'} fill={up ? '#10b98133' : '#f43f5e33'} strokeWidth={2} /></AreaChart></ResponsiveContainer>
                   </div>
                   <div className="text-right">
-                    <p className="font-extrabold">{fmtUSDT(c.priceUsd, c.priceUsd < 10 ? 3 : 0)}</p>
+                    <p className="font-extrabold">{fmtPrice(c.priceUsd)}</p>
                     <p className={`text-xs font-bold flex items-center justify-end gap-0.5 ${up ? 'text-emerald-500' : 'text-rose-500'}`}>{up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{up ? '+' : ''}{c.change24h.toFixed(2)}% · 24h</p>
-                    <p className="text-[11px] text-slate-400">{fmtUSDT(c.priceUsd, c.priceUsd < 10 ? 2 : 0)}</p>
+                    <p className="text-[11px] text-slate-400">{fmtPrice(c.priceUsd)}</p>
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
@@ -86,10 +91,10 @@ export default function Market() {
         {selected && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">
-              {(['buy', 'sell'] as const).map(m => <button key={m} onClick={() => setMode(m)} className={`py-2 rounded-xl text-sm font-bold capitalize ${mode === m ? (m === 'buy' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white') : 'text-slate-500'}`}>{m}</button>)}
+              {(['buy', 'sell'] as const).map(m => <button key={m} onClick={() => { setMode(m); setAmount(''); setCoinAmt(''); setUsdtVal('') }} className={`py-2 rounded-xl text-sm font-bold capitalize ${mode === m ? (m === 'buy' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white') : 'text-slate-500'}`}>{m}</button>)}
             </div>
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm space-y-1.5">
-              <div className="flex justify-between"><span className="text-slate-500">Market price</span><span className="font-bold">{fmtUSDT(selected.priceUsd)} <Badge tone={selected.live ? 'green' : 'amber'}>{selected.live ? 'Live' : 'Cached'}</Badge></span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Market price</span><span className="font-bold">{fmtPrice(selected.priceUsd)} <Badge tone={selected.live ? 'green' : 'amber'}>{selected.live ? 'Live' : 'Cached'}</Badge></span></div>
               <div className="flex justify-between"><span className="text-slate-500">24h change</span><span className={`font-bold ${selected.change24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{selected.change24h.toFixed(2)}%</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Your balance</span><span className="font-bold">{mode === 'buy' ? (selected.symbol === 'USDT' ? fmtBDT(w?.available ?? 0) : fmtUSDT(spendableUSDT)) : `${w?.holdings[selected.symbol] ?? 0} ${selected.symbol}`}</span></div>
             </div>
@@ -97,15 +102,33 @@ export default function Market() {
               <ResponsiveContainer>
                 <AreaChart data={selected.spark.filter((_, i) => i % Math.max(1, Math.floor(selected.spark.length / 30)) === 0).map((v, i) => ({ i, v }))}>
                   <XAxis dataKey="i" hide /><YAxis hide domain={['dataMin', 'dataMax']} />
-                  <Tooltip formatter={(v: any) => fmtUSDT(Number(v))} labelFormatter={() => '7d trend'} />
+                  <Tooltip formatter={(v: any) => fmtPrice(Number(v))} labelFormatter={() => '7d trend'} />
                   <Area type="monotone" dataKey="v" stroke="#8b5cf6" fill="#8b5cf633" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-            <div className="relative">
-              <Input label={mode === 'buy' ? (selected.symbol === 'USDT' ? 'Amount in BDT' : 'Amount in USDT') : `Amount in ${selected.symbol}`} type="number" placeholder={mode === 'buy' ? (selected.symbol === 'USDT' ? 'e.g. 5000' : 'e.g. 100') : 'e.g. 0.01'} value={amount} onChange={e => setAmount(e.target.value)} />
-              <MaxBtn onClick={() => setAmount(String(mode === 'buy' ? (selected.symbol === 'USDT' ? (w?.available ?? 0) : Math.round(spendableUSDT * 100) / 100) : (w?.holdings[selected.symbol] ?? 0)))} />
-            </div>
+            {mode === 'buy' && selected.symbol !== 'USDT' ? (
+              <>
+                <div className="relative">
+                  <Input label="Amount in USDT" type="number" placeholder="e.g. 100" value={amount} onChange={e => setUsdt(e.target.value)} />
+                  <MaxBtn onClick={() => setUsdt(String(Math.round(spendableUSDT * 100) / 100))} />
+                </div>
+                <Input label={`Amount in ${selected.symbol}`} type="number" placeholder="e.g. 0.01" value={coinAmt} onChange={e => setCoin(e.target.value)} />
+              </>
+            ) : mode === 'sell' && selected.symbol !== 'USDT' ? (
+              <>
+                <div className="relative">
+                  <Input label={`Amount in ${selected.symbol}`} type="number" placeholder="e.g. 0.01" value={amount} onChange={e => setCoinSell(e.target.value)} />
+                  <MaxBtn onClick={() => setCoinSell(String(w?.holdings[selected.symbol] ?? 0))} />
+                </div>
+                <Input label="Value in USDT" type="number" placeholder="e.g. 100" value={usdtVal} onChange={e => setUsdtSell(e.target.value)} />
+              </>
+            ) : (
+              <div className="relative">
+                <Input label={mode === 'buy' ? 'Amount in BDT' : `Amount in ${selected.symbol}`} type="number" placeholder={mode === 'buy' ? 'e.g. 5000' : 'e.g. 0.01'} value={amount} onChange={e => setAmount(e.target.value)} />
+                <MaxBtn onClick={() => setAmount(String(mode === 'buy' ? (w?.available ?? 0) : (w?.holdings[selected.symbol] ?? 0)))} />
+              </div>
+            )}
             {Number(amount) > 0 && <p className="text-sm text-slate-500">You {mode === 'buy' ? `receive ≈ ${buyPreview.toFixed(selected.symbol === 'USDT' ? 2 : 6)} ${selected.symbol}` : selected.symbol === 'USDT' ? `receive ≈ ${fmtBDT(Math.round(sellPreview * db.settings.bdtPerUsd))}` : `receive ≈ ${fmtUSDT(sellPreview)}`}. Final executable price is confirmed at execution.</p>}
             <Btn className="w-full py-3.5" variant={mode === 'buy' ? 'primary' : 'danger'} disabled={!Number(amount)} onClick={trade}>{mode === 'buy' ? 'Buy' : 'Sell'} {selected.symbol}</Btn>
           </div>

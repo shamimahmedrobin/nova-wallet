@@ -133,7 +133,7 @@ export function Toasts() {
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-4 z-[100] w-[calc(100%-2rem)] sm:w-96 space-y-2">
       {toasts.map(t => (
-        <div key={t.id} className="anim-fade-up flex gap-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 p-3.5 shadow-2xl">
+        <div key={t.id} className="anim-fade-up flex gap-3 rounded-2xl bg-slate-900/75 dark:bg-white/80 text-white dark:text-slate-900 p-3.5 shadow-2xl backdrop-blur-md border border-white/15 dark:border-slate-900/10">
           {t.kind === 'success' ? <CheckCircle2 className="text-emerald-400 shrink-0" size={20} /> : t.kind === 'error' ? <XCircle className="text-rose-400 shrink-0" size={20} /> : <Info className="text-cyan-400 shrink-0" size={20} />}
           <div className="flex-1 min-w-0"><p className="text-sm font-bold">{t.title}</p>{t.body && <p className="text-xs opacity-80 mt-0.5">{t.body}</p>}</div>
           <button onClick={() => dismissToast(t.id)} className="opacity-60 hover:opacity-100"><X size={16} /></button>

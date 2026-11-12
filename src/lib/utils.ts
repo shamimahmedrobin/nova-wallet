@@ -20,6 +20,8 @@ export const fmtUSD = (n: number, dec = 2) =>
   '$' + n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 export const fmtUSDT = (n: number, dec = 2) =>
   n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + ' USDT'
+export const priceDecimals = (p: number) => p >= 100 ? 0 : p >= 1 ? 2 : p >= 0.01 ? 4 : 8
+export const fmtPrice = (p: number) => fmtUSDT(p, priceDecimals(p))
 export const fmtCrypto = (n: number, sym: string) =>
   n.toLocaleString('en-US', { maximumFractionDigits: sym === 'BTC' ? 6 : sym === 'ETH' ? 5 : 2 }) + ' ' + sym
 export const fmtDate = (iso: string) =>

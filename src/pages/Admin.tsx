@@ -4,7 +4,7 @@ import { ArrowLeft, Check, LayoutDashboard, Megaphone, MessageCircle, Moon, News
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, statusTone } from '../components/ui'
-import { fmtBDT, fmtDateTime } from '../lib/utils'
+import { fmtDateTime, fmtUSDT } from '../lib/utils'
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -21,6 +21,7 @@ const TABS = [
 
 export default function Admin() {
   const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel } = useApp()
+  const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
   const [userQ, setUserQ] = useState('')
@@ -75,8 +76,8 @@ export default function Admin() {
         {tab === 'overview' && (
           <div className="space-y-4 anim-fade-up">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[['Registered users', stats.users], ['Active users', stats.active], ['Total wallet balance', fmtBDT(stats.totalBalance)], ['Revenue (fees)', fmtBDT(Math.round(stats.fees))],
-                ['Total deposits', fmtBDT(stats.deposits)], ['Total withdrawals', fmtBDT(stats.withdrawals)], ['Total transfers', fmtBDT(stats.transfers)], ['Referral commissions paid', fmtBDT(stats.refPaid)],
+              {[['Registered users', stats.users], ['Active users', stats.active], ['Total wallet balance', usdt(stats.totalBalance)], ['Revenue (fees)', usdt(Math.round(stats.fees))],
+                ['Total deposits', usdt(stats.deposits)], ['Total withdrawals', usdt(stats.withdrawals)], ['Total transfers', usdt(stats.transfers)], ['Referral commissions paid', usdt(stats.refPaid)],
                 ['Pending deposits', stats.pendingDeposits.length], ['Pending withdrawals', stats.pendingWithdrawals.length], ['Pending loans', stats.pendingLoans.length], ['Pending KYC', stats.pendingKyc.length],
               ].map(([k, v]) => (
                 <Card key={k as string} className="p-4"><p className="text-[11px] uppercase font-bold text-slate-400">{k}</p><p className="text-xl font-extrabold mt-1">{v}</p></Card>
@@ -84,14 +85,14 @@ export default function Admin() {
             </div>
             <Card className="p-5">
               <h3 className="font-extrabold mb-3">Transaction volume (completed)</h3>
-              <div className="h-52"><ResponsiveContainer><BarChart data={chartData}><XAxis dataKey="name" fontSize={11} /><YAxis fontSize={11} /><Tooltip formatter={(v: any) => fmtBDT(Number(v))} /><Bar dataKey="volume" fill="#8b5cf6" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div>
+              <div className="h-52"><ResponsiveContainer><BarChart data={chartData}><XAxis dataKey="name" fontSize={11} /><YAxis fontSize={11} /><Tooltip formatter={(v: any) => usdt(Number(v))} /><Bar dataKey="volume" fill="#8b5cf6" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div>
             </Card>
             <Card className="p-5">
               <h3 className="font-extrabold mb-2">Recent transactions</h3>
               {db.txs.slice(0, 8).map(t => (
                 <div key={t.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800 last:border-0 text-sm">
                   <div className="flex-1 min-w-0"><p className="font-semibold truncate">{t.title}</p><p className="text-xs text-slate-400">{nameOf(t.userId)} · {t.id} · {fmtDateTime(t.createdAt)}</p></div>
-                  <span className="font-bold">{fmtBDT(t.amount)}</span><Badge tone={statusTone(t.status)}>{t.status}</Badge>
+                  <span className="font-bold">{usdt(t.amount)}</span><Badge tone={statusTone(t.status)}>{t.status}</Badge>
                 </div>
               ))}
             </Card>
@@ -104,7 +105,7 @@ export default function Admin() {
               <h3 className="font-extrabold mb-3">Deposit requests</h3>
               {db.deposits.length === 0 ? <Card><Empty title="No deposit requests" /></Card> : db.deposits.map(d => (
                 <Card key={d.id} className="p-4 mb-2 flex flex-wrap items-center gap-3">
-                  <div className="flex-1 min-w-[180px]"><p className="font-bold">{fmtBDT(d.amount)} · {d.method} — {nameOf(d.userId)}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId}{d.receipt ? ' · 📎 ' + d.receipt : ''} · {fmtDateTime(d.createdAt)}</p></div>
+                  <div className="flex-1 min-w-[180px]"><p className="font-bold">{usdt(d.amount)} · {d.method} — {nameOf(d.userId)}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId}{d.receipt ? ' · 📎 ' + d.receipt : ''} · {fmtDateTime(d.createdAt)}</p></div>
                   <Badge tone={statusTone(d.status)}>{d.status}</Badge>
                   {d.status === 'pending' && <><Btn variant="success" className="!py-2" onClick={() => { decideDeposit(d.id, true); toast({ kind: 'success', title: 'Deposit approved & credited' }) }}><Check size={15} /> Approve</Btn><Btn variant="danger" className="!py-2" onClick={() => { decideDeposit(d.id, false); toast({ kind: 'info', title: 'Deposit rejected' }) }}><X size={15} /> Reject</Btn></>}
                 </Card>
@@ -114,7 +115,7 @@ export default function Admin() {
               <h3 className="font-extrabold mb-3">Withdrawal requests</h3>
               {db.withdrawals.length === 0 ? <Card><Empty title="No withdrawal requests" /></Card> : db.withdrawals.map(d => (
                 <Card key={d.id} className="p-4 mb-2 flex flex-wrap items-center gap-3">
-                  <div className="flex-1 min-w-[180px]"><p className="font-bold">{fmtBDT(d.amount)} · {d.method} — {nameOf(d.userId)}</p><p className="text-xs text-slate-400">{d.id} → {d.destination} · fee {fmtBDT(d.fee)} · payable {fmtBDT(d.amount - d.fee)} · {fmtDateTime(d.createdAt)}</p></div>
+                  <div className="flex-1 min-w-[180px]"><p className="font-bold">{usdt(d.amount)} · {d.method} — {nameOf(d.userId)}</p><p className="text-xs text-slate-400">{d.id} → {d.destination} · fee {usdt(d.fee)} · payable {usdt(d.amount - d.fee)} · {fmtDateTime(d.createdAt)}</p></div>
                   <Badge tone={statusTone(d.status)}>{d.status}</Badge>
                   {d.status === 'pending' && <><Btn variant="success" className="!py-2" onClick={() => { decideWithdraw(d.id, true); toast({ kind: 'success', title: 'Withdrawal completed' }) }}><Check size={15} /> Complete</Btn><Btn variant="danger" className="!py-2" onClick={() => { decideWithdraw(d.id, false); toast({ kind: 'info', title: 'Withdrawal rejected & refunded' }) }}><X size={15} /> Reject</Btn></>}
                 </Card>
@@ -138,7 +139,7 @@ export default function Admin() {
                   <Card key={u.id} className="p-4">
                     <div className="flex flex-wrap items-center gap-3">
                       <Avatar name={u.name} />
-                      <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {fmtBDT((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
+                      <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {usdt((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
                       <Badge tone={statusTone(u.kyc)}>KYC {u.kyc}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
                     </div>
                     {u.kycDocType && (
@@ -170,7 +171,7 @@ export default function Admin() {
             {db.loans.length === 0 ? <Card><Empty title="No loan applications" /></Card> : db.loans.map(l => (
               <Card key={l.id} className="p-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex-1 min-w-[190px]"><p className="font-bold">{l.id} · {fmtBDT(l.amount)} — {nameOf(l.userId)}</p><p className="text-xs text-slate-400">{l.months} mo · {l.ratePct}% · EMI {fmtBDT(l.emi)} · Total {fmtBDT(l.totalPayable)} · Paid {fmtBDT(l.paid)} · {fmtDateTime(l.createdAt)}</p>
+                  <div className="flex-1 min-w-[190px]"><p className="font-bold">{l.id} · {usdt(l.amount)} — {nameOf(l.userId)}</p><p className="text-xs text-slate-400">{l.months} mo · {l.ratePct}% · EMI {usdt(l.emi)} · Total {usdt(l.totalPayable)} · Paid {usdt(l.paid)} · {fmtDateTime(l.createdAt)}</p>
                     {l.status === 'active' && l.paid < l.totalPayable * 0.3 && <p className="text-xs text-amber-600 font-bold mt-0.5">Watch: low repayment progress</p>}</div>
                   <Badge tone={statusTone(l.status)}>{l.status}</Badge>
                   {l.status === 'pending' && <><Btn variant="success" className="!py-2" onClick={() => { decideLoan(l.id, true); toast({ kind: 'success', title: 'Loan approved & disbursed' }) }}>Approve & disburse</Btn><Btn variant="danger" className="!py-2" onClick={() => decideLoan(l.id, false)}>Reject</Btn></>}
@@ -194,13 +195,13 @@ export default function Admin() {
                 <div className="mt-3 flex flex-wrap items-center gap-2.5 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 px-3.5 py-3">
                   <p className="font-extrabold text-sm">Processing fee</p>
                   {l.processingFee ? <>
-                    <span className="font-bold">{fmtBDT(l.processingFee)}</span>
+                    <span className="font-bold">{usdt(l.processingFee)}</span>
                     <Badge tone={l.feeStatus === 'paid' ? 'green' : l.feeStatus === 'submitted' ? 'violet' : 'amber'}>{l.feeStatus === 'paid' ? '✓ Paid' : l.feeStatus === 'submitted' ? 'Submitted — check & confirm' : 'Unpaid'}</Badge>
                     {l.feeStatus === 'submitted' && <span className="text-xs text-slate-500">via {l.feeMethod} · Ref: <b className="font-mono">{l.feeTxRef}</b></span>}
                     {l.feeStatus === 'submitted' && <Btn className="!py-1.5 !text-xs !bg-emerald-500" onClick={() => { confirmLoanFee(l.id); toast({ kind: 'success', title: 'Fee marked as paid' }) }}>Confirm fee paid</Btn>}
                   </> : <>
-                    <div className="w-[150px]"><Input type="number" placeholder="Amount (BDT)" value={feeInputs[l.id] ?? ''} onChange={e => setFeeInputs(f => ({ ...f, [l.id]: e.target.value }))} /></div>
-                    <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const a = Number(feeInputs[l.id]); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter a fee amount' }); setLoanFee(l.id, a); toast({ kind: 'success', title: 'Processing fee set', body: 'It now shows in the Loan section with a Pay button.' }) }}>Set fee</Btn>
+                    <div className="w-[150px]"><Input type="number" placeholder="Amount (USDT)" value={feeInputs[l.id] ?? ''} onChange={e => setFeeInputs(f => ({ ...f, [l.id]: e.target.value }))} /></div>
+                    <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const a = Number(feeInputs[l.id]); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter a fee amount' }); setLoanFee(l.id, Math.round(a * db.settings.bdtPerUsd)); toast({ kind: 'success', title: 'Processing fee set', body: 'It now shows in the Loan section with a Pay button.' }) }}>Set fee</Btn>
                   </>}
                 </div>
               </Card>
@@ -213,13 +214,13 @@ export default function Admin() {
           <div className="anim-fade-up space-y-4">
             <div className="grid grid-cols-3 gap-3">
               <Card className="p-4 text-center"><p className="text-[11px] uppercase font-bold text-slate-400">Commission rate</p><p className="text-xl font-extrabold mt-1">{db.settings.referralPct}%</p></Card>
-              <Card className="p-4 text-center"><p className="text-[11px] uppercase font-bold text-slate-400">Total paid</p><p className="text-xl font-extrabold mt-1">{fmtBDT(stats.refPaid)}</p></Card>
+              <Card className="p-4 text-center"><p className="text-[11px] uppercase font-bold text-slate-400">Total paid</p><p className="text-xl font-extrabold mt-1">{usdt(stats.refPaid)}</p></Card>
               <Card className="p-4 text-center"><p className="text-[11px] uppercase font-bold text-slate-400">Referred users</p><p className="text-xl font-extrabold mt-1">{db.users.filter(u => u.referredBy).length}</p></Card>
             </div>
             <Card className="p-5">
               <h3 className="font-extrabold mb-2">Suspicious referral check</h3>
               <p className="text-sm text-slate-500">Self-referrals are blocked at registration. Duplicate email/username signups are rejected. Accounts flagged: <b>{db.users.filter(u => u.status === 'suspended').length}</b> suspended.</p>
-              <div className="mt-3 space-y-1.5">{db.referralEarnings.map(r => <p key={r.id} className="text-sm">{nameOf(r.userId)} earned {fmtBDT(r.amount)} from {r.fromUser} · {fmtDateTime(r.createdAt)}</p>)}</div>
+              <div className="mt-3 space-y-1.5">{db.referralEarnings.map(r => <p key={r.id} className="text-sm">{nameOf(r.userId)} earned {usdt(r.amount)} from {r.fromUser} · {fmtDateTime(r.createdAt)}</p>)}</div>
             </Card>
           </div>
         )}
@@ -274,9 +275,9 @@ export default function Admin() {
                     </div>
                     <div className="grid sm:grid-cols-2 gap-3">
                       <Input label="Tagline" value={f.tagline} onChange={e => upd('tagline', e.target.value)} />
-                      <Input label="Daily limit (BDT)" type="number" value={f.dailyLimit} onChange={e => upd('dailyLimit', Number(e.target.value))} />
-                      <Input label="Monthly limit (BDT)" type="number" value={f.monthlyLimit} onChange={e => upd('monthlyLimit', Number(e.target.value))} />
-                      <Input label="Loan limit (BDT)" type="number" value={f.loanLimit} onChange={e => upd('loanLimit', Number(e.target.value))} />
+                      <Input label="Daily limit (USDT)" type="number" value={Math.round(f.dailyLimit / db.settings.bdtPerUsd * 100) / 100} onChange={e => upd('dailyLimit', Math.round(Number(e.target.value) * db.settings.bdtPerUsd))} />
+                      <Input label="Monthly limit (USDT)" type="number" value={Math.round(f.monthlyLimit / db.settings.bdtPerUsd * 100) / 100} onChange={e => upd('monthlyLimit', Math.round(Number(e.target.value) * db.settings.bdtPerUsd))} />
+                      <Input label="Loan limit (USDT)" type="number" value={Math.round(f.loanLimit / db.settings.bdtPerUsd * 100) / 100} onChange={e => upd('loanLimit', Math.round(Number(e.target.value) * db.settings.bdtPerUsd))} />
                       <Input label="Fee discount %" type="number" value={f.feeDiscountPct} onChange={e => upd('feeDiscountPct', Number(e.target.value))} />
                     </div>
                     <Input label="Requirement" className="mt-3" value={f.requirement} onChange={e => upd('requirement', e.target.value)} />
@@ -321,8 +322,8 @@ export default function Admin() {
                 <Input label="Cash out fee %" type="number" step="0.1" value={setForm.cashoutFeePct} onChange={e => setSetForm(s => ({ ...s, cashoutFeePct: Number(e.target.value) }))} />
                 <Input label="Referral commission %" type="number" value={setForm.referralPct} onChange={e => setSetForm(s => ({ ...s, referralPct: Number(e.target.value) }))} />
                 <Input label="Loan interest % / year" type="number" value={setForm.loanRatePct} onChange={e => setSetForm(s => ({ ...s, loanRatePct: Number(e.target.value) }))} />
-                <Input label="Min loan (BDT)" type="number" value={setForm.minLoan} onChange={e => setSetForm(s => ({ ...s, minLoan: Number(e.target.value) }))} />
-                <Input label="Max loan / limit (BDT)" type="number" value={setForm.maxLoan} onChange={e => setSetForm(s => ({ ...s, maxLoan: Number(e.target.value), loanLimit: Number(e.target.value) }))} />
+                <Input label="Min loan (USDT)" type="number" value={Math.round(setForm.minLoan / setForm.bdtPerUsd * 100) / 100} onChange={e => setSetForm(s => ({ ...s, minLoan: Math.round(Number(e.target.value) * s.bdtPerUsd) }))} />
+                <Input label="Max loan / limit (USDT)" type="number" value={Math.round(setForm.maxLoan / setForm.bdtPerUsd * 100) / 100} onChange={e => setSetForm(s => ({ ...s, maxLoan: Math.round(Number(e.target.value) * s.bdtPerUsd), loanLimit: Math.round(Number(e.target.value) * s.bdtPerUsd) }))} />
               </div>
               <div>
                 <p className="font-extrabold text-sm mb-1">Payment options <span className="text-slate-400 font-semibold">(one shared list — shown in Add Money on the website and in loan-fee payments)</span></p>
@@ -354,9 +355,9 @@ export default function Admin() {
         {adj && (
           <div className="space-y-4">
             <p className="text-sm text-slate-500">User: <b>{nameOf(adj.userId)}</b>. Positive adds, negative deducts. This writes a ledger entry + audit log.</p>
-            <Input label="Amount (+/- BDT)" type="number" value={adj.amount} onChange={e => setAdj(a => a && ({ ...a, amount: e.target.value }))} />
+            <Input label="Amount (+/- USDT)" type="number" value={adj.amount} onChange={e => setAdj(a => a && ({ ...a, amount: e.target.value }))} />
             <Input label="Reason (required)" value={adj.reason} onChange={e => setAdj(a => a && ({ ...a, reason: e.target.value }))} />
-            <Btn className="w-full" onClick={() => { if (!adj.reason.trim()) return toast({ kind: 'error', title: 'Reason required for audit' }); adjustBalance(adj.userId, Number(adj.amount), adj.reason); setAdj(null); toast({ kind: 'success', title: 'Adjustment recorded' }) }}>Apply adjustment</Btn>
+            <Btn className="w-full" onClick={() => { if (!adj.reason.trim()) return toast({ kind: 'error', title: 'Reason required for audit' }); adjustBalance(adj.userId, Math.round(Number(adj.amount) * db.settings.bdtPerUsd), adj.reason); setAdj(null); toast({ kind: 'success', title: 'Adjustment recorded' }) }}>Apply adjustment</Btn>
           </div>
         )}
       </Modal>

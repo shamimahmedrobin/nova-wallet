@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Banknote, Bitcoin, ChevronRight, Eye, EyeOff, Gift, HandCoins, Lock, PiggyBank, QrCode, Send, ShoppingCart, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket } from '../lib/market'
-import { fmtUSDT } from '../lib/utils'
+import { fmtPrice, fmtUSDT } from '../lib/utils'
 import { Badge, Card, SkeletonRows, statusTone } from '../components/ui'
 
 const ACTIONS_RAW = [
@@ -111,8 +111,8 @@ export default function Home() {
             {coins.slice(0, 3).map(c => (
               <button key={c.symbol} onClick={() => navigate('/crypto')} className="w-full flex items-center gap-3 py-3 text-left">
                 <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-extrabold text-sm" style={{ background: COIN_META[c.symbol].color }}>{c.symbol[0]}</span>
-                <span className="flex-1"><span className="block font-bold text-slate-800 dark:text-slate-100">{c.name}</span><span className="text-xs text-slate-400">{c.symbol} · {fmtUSDT(c.priceUsd, c.priceUsd < 10 ? 2 : 0)}</span></span>
-                <span className="text-right"><span className="block font-bold">{fmtUSDT(c.priceUsd, c.priceUsd < 10 ? 2 : 0)}</span>
+                <span className="flex-1"><span className="block font-bold text-slate-800 dark:text-slate-100">{c.name}</span><span className="text-xs text-slate-400">{c.symbol} · {fmtPrice(c.priceUsd)}</span></span>
+                <span className="text-right"><span className="block font-bold">{fmtPrice(c.priceUsd)}</span>
                   <span className={`text-xs font-bold flex items-center justify-end gap-0.5 ${c.change24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{c.change24h >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{c.change24h >= 0 ? '+' : ''}{c.change24h.toFixed(2)}%</span></span>
               </button>
             ))}
