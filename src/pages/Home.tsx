@@ -34,9 +34,10 @@ export default function Home() {
   }, [activeBanners.length])
   const w = user ? walletOf(user.id) : null
   const priceOf = (s: string) => coins.find(c => c.symbol === s)?.priceUsd ?? 0
-  const cryptoBdt = useMemo(() => w ? Object.entries(w.holdings).reduce((sum, [s, amt]) => sum + amt * priceOf(s) * db.settings.bdtPerUsd, 0) : 0, [w, coins, db.settings.bdtPerUsd])
+  const usdtBdt = w ? (w.holdings.USDT ?? 0) * db.settings.bdtPerUsd : 0
+  const cryptoBdt = useMemo(() => w ? Object.entries(w.holdings).filter(([s]) => s !== 'USDT').reduce((sum, [s, amt]) => sum + amt * priceOf(s) * db.settings.bdtPerUsd, 0) : 0, [w, coins, db.settings.bdtPerUsd])
   if (!user || !w) return null
-  const total = w.available + w.locked + cryptoBdt
+  const total = w.available + w.locked + usdtBdt + cryptoBdt
   const myTxs = db.txs.filter(t => t.userId === user.id).slice(0, 5)
   const myRefs = db.users.filter(u => u.referredBy === user.id)
   const refEarned = db.referralEarnings.filter(r => r.userId === user.id).reduce((s, r) => s + r.amount, 0)
@@ -56,7 +57,7 @@ export default function Home() {
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '••••••' : fmtAmount(total)} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
           <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSDT(total / db.settings.bdtPerUsd)}</p>
           <div className="grid grid-cols-3 gap-3 mt-5">
-            {[{ l: t('available'), v: w.available, lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
+            {[{ l: t('available'), v: Math.round(w.available + usdtBdt), lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
               <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5 min-w-0">
                 <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}</p>
                 <p className="font-bold text-[15px] truncate">{hide ? '••••' : fmtUSDT(x.v / db.settings.bdtPerUsd)}</p>
