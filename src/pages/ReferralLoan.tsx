@@ -82,6 +82,7 @@ export function LoanPage() {
   const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
   if (!user) return null
   const s = db.settings
+  const effLoanLimit = user?.loanLimitOverride ?? db.levels.find(l => l.level === user?.level)?.loanLimit ?? s.loanLimit
   const amt = Number(amount) || 0; const mo = Number(months) || 12
   const amtBDT = Math.round(toBDT(amt))
   const calc = emiCalc(amtBDT, s.loanRatePct, mo)
@@ -97,8 +98,7 @@ export function LoanPage() {
     if (!photo) return toast({ kind: 'error', title: 'Upload your photo' })
     if (!gName.trim() || !gPhone.trim()) return toast({ kind: 'error', title: 'Enter guarantor name and mobile number' })
     if (amtBDT < s.minLoan || amtBDT > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtMoney(s.minLoan)} and ${fmtMoney(s.maxLoan)}` })
-    const lvlDef = db.levels.find(l => l.level === user.level)
-    if (lvlDef && amtBDT > lvlDef.loanLimit) return toast({ kind: 'error', title: `Your Level ${user.level} loan limit is ${fmtMoney(lvlDef.loanLimit)} — upgrade your level for a higher limit.` })
+    if (amtBDT > effLoanLimit) return toast({ kind: 'error', title: user.loanLimitOverride ? `Your personal loan limit is ${fmtMoney(effLoanLimit)}.` : `Your Level ${user.level} loan limit is ${fmtMoney(effLoanLimit)} — upgrade your level for a higher limit.` })
     applyLoan(amtBDT, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim(), idType, idPhoto }); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review your information. Loans are never auto-approved.' })
   }
   return (
@@ -133,7 +133,7 @@ export function LoanPage() {
       </Modal>
 
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtMoney(s.loanLimit)}</p></Card>
+        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtMoney(effLoanLimit)}</p>{user?.loanLimitOverride ? <p className="text-[10px] text-violet-500 font-bold mt-0.5">Custom limit by admin</p> : null}</Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Outstanding</p><p className="font-extrabold mt-1 text-rose-500">{fmtMoney(outstanding)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Account level</p><p className="font-extrabold mt-1">Level {user.level}</p></Card>
       </div>

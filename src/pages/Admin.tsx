@@ -20,12 +20,17 @@ const TABS = [
 ] as const
 
 export default function Admin() {
-  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel } = useApp()
+  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit } = useApp()
   const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
   const [userQ, setUserQ] = useState('')
-  const [adj, setAdj] = useState<{ userId: string; amount: string; reason: string } | null>(null)
+  const [selUserId, setSelUserId] = useState<string | null>(null)
+  const [mAdjAmt, setMAdjAmt] = useState(''); const [mAdjReason, setMAdjReason] = useState(''); const [mLoanLimit, setMLoanLimit] = useState('')
+  const openUser = (u: any) => { setSelUserId(u.id); setMAdjAmt(''); setMAdjReason(''); setMLoanLimit(u.loanLimitOverride ? String(Math.round(u.loanLimitOverride / db.settings.bdtPerUsd * 100) / 100) : '') }
+  const selUser = selUserId ? db.users.find(x => x.id === selUserId) ?? null : null
+  const selWallet = selUser ? db.wallets.find(x => x.userId === selUser.id) : null
+  const pendingLevels = db.levelRequests.filter(r => r.status === 'pending').length
   const [newsForm, setNewsForm] = useState<any>(null)
   const [setForm, setSetForm] = useState({ ...db.settings })
   const [levelForms, setLevelForms] = useState<Record<number, any>>({})
@@ -68,7 +73,7 @@ export default function Admin() {
           </div>
         </div>
         <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto no-scrollbar">
-          {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold ${tab === t.id ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}><t.icon size={14} /> {t.label}</button>)}
+          {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold ${tab === t.id ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}><t.icon size={14} /> {t.label}{t.id === 'levels' && pendingLevels > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{pendingLevels}</span>}</button>)}
         </div>
       </header>
 
@@ -137,7 +142,7 @@ export default function Admin() {
                 const w = db.wallets.find(x => x.userId === u.id)
                 return (
                   <Card key={u.id} className="p-4">
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3 cursor-pointer" onClick={() => openUser(u)} title="Click to manage this account">
                       <Avatar name={u.name} />
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {usdt((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
                       <Badge tone={statusTone(u.kyc)}>KYC {u.kyc}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
@@ -156,7 +161,7 @@ export default function Admin() {
                         {u.kyc === 'pending' && <><Btn variant="success" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, false)}>Reject KYC</Btn></>}
                         {u.status !== 'frozen' ? <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'active')}>Unfreeze</Btn>}
                         {u.status !== 'suspended' ? <Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'suspended')}>Suspend</Btn> : <Btn variant="success" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'active')}>Activate</Btn>}
-                        <Btn variant="ghost" className="!py-1.5 !text-xs" onClick={() => setAdj({ userId: u.id, amount: '', reason: '' })}>Adjust balance (audited)</Btn>
+                        <Btn variant="ghost" className="!py-1.5 !text-xs" onClick={() => openUser(u)}>Manage account</Btn>
                       </div>
                     )}
                   </Card>
@@ -351,15 +356,54 @@ export default function Admin() {
         )}
       </main>
 
-      <Modal open={!!adj} onClose={() => setAdj(null)} title="Adjust balance (audited)">
-        {adj && (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-500">User: <b>{nameOf(adj.userId)}</b>. Positive adds, negative deducts. This writes a ledger entry + audit log.</p>
-            <Input label="Amount (+/- USDT)" type="number" value={adj.amount} onChange={e => setAdj(a => a && ({ ...a, amount: e.target.value }))} />
-            <Input label="Reason (required)" value={adj.reason} onChange={e => setAdj(a => a && ({ ...a, reason: e.target.value }))} />
-            <Btn className="w-full" onClick={() => { if (!adj.reason.trim()) return toast({ kind: 'error', title: 'Reason required for audit' }); adjustBalance(adj.userId, Math.round(Number(adj.amount) * db.settings.bdtPerUsd), adj.reason); setAdj(null); toast({ kind: 'success', title: 'Adjustment recorded' }) }}>Apply adjustment</Btn>
-          </div>
-        )}
+      <Modal open={!!selUser} onClose={() => setSelUserId(null)} title={selUser ? 'Manage — ' + selUser.name : ''}>
+        {selUser && (() => {
+          const lvlDef = db.levels.find(l => l.level === selUser.level)
+          const pendingReq = db.levelRequests.find(r => r.userId === selUser.id && r.status === 'pending')
+          return (
+            <div className="space-y-5">
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm space-y-1.5">
+                <div className="flex justify-between gap-3"><span className="text-slate-500">User ID</span><span className="font-bold">{selUser.id}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Email</span><span className="font-bold">{selUser.email}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">KYC / Status</span><span className="font-bold capitalize">{selUser.kyc} · {selUser.status}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Available</span><span className="font-bold">{usdt(selWallet?.available ?? 0)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Locked</span><span className="font-bold">{usdt(selWallet?.locked ?? 0)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">USDT holding</span><span className="font-bold">{fmtUSDT(selWallet?.holdings.USDT ?? 0)}</span></div>
+              </div>
+              <div>
+                <p className="font-extrabold text-sm mb-2">Account level</p>
+                <select value={selUser.level} onChange={e => { setUserLevel(selUser.id, Number(e.target.value)); toast({ kind: 'success', title: selUser.name + ' → Level ' + e.target.value }) }} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm font-bold">
+                  {[1, 2, 3, 4].map(n => <option key={n} value={n}>Level {n}</option>)}
+                </select>
+                {pendingReq && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/20 p-3">
+                    <p className="flex-1 min-w-[140px] text-xs font-bold text-amber-700 dark:text-amber-300">Upgrade request pending: Level {pendingReq.fromLevel} → Level {pendingReq.toLevel}</p>
+                    <Btn variant="success" className="!py-1.5 !text-xs" onClick={() => { decideUpgrade(pendingReq.id, true); toast({ kind: 'success', title: 'Level upgraded' }) }}>Approve</Btn>
+                    <Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideUpgrade(pendingReq.id, false)}>Reject</Btn>
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="font-extrabold text-sm mb-2">Adjust balance (audited)</p>
+                <div className="space-y-3">
+                  <Input label="Amount (+/- USDT)" type="number" value={mAdjAmt} onChange={e => setMAdjAmt(e.target.value)} />
+                  <Input label="Reason (required)" value={mAdjReason} onChange={e => setMAdjReason(e.target.value)} />
+                  <Btn className="w-full" onClick={() => { const a = Number(mAdjAmt); if (!a) return toast({ kind: 'error', title: 'Enter an amount' }); if (!mAdjReason.trim()) return toast({ kind: 'error', title: 'Reason required for audit' }); adjustBalance(selUser.id, Math.round(a * db.settings.bdtPerUsd), mAdjReason.trim()); setMAdjAmt(''); setMAdjReason(''); toast({ kind: 'success', title: 'Adjustment recorded' }) }}>Apply adjustment</Btn>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">Positive adds, negative deducts. Writes a ledger entry + audit log.</p>
+              </div>
+              <div>
+                <p className="font-extrabold text-sm mb-2">Loan limit</p>
+                <p className="text-xs text-slate-400 mb-2">Level {selUser.level} default: <b>{usdt(lvlDef?.loanLimit ?? 0)}</b> · Current: <b>{selUser.loanLimitOverride ? usdt(selUser.loanLimitOverride) + ' (custom)' : 'level default'}</b></p>
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1"><Input label="Personal loan limit (USDT)" type="number" value={mLoanLimit} onChange={e => setMLoanLimit(e.target.value)} /></div>
+                  <Btn className="!py-3" onClick={() => { const a = Number(mLoanLimit); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter a loan limit' }); setUserLoanLimit(selUser.id, Math.round(a * db.settings.bdtPerUsd)); toast({ kind: 'success', title: 'Loan limit updated' }) }}>Save</Btn>
+                </div>
+                {selUser.loanLimitOverride ? <Btn variant="ghost" className="!py-1.5 !text-xs mt-1" onClick={() => { setUserLoanLimit(selUser.id, null); setMLoanLimit(''); toast({ kind: 'success', title: 'Loan limit reset to level default' }) }}>Reset to level default</Btn> : null}
+              </div>
+            </div>
+          )
+        })()}
       </Modal>
       <Modal open={!!newsForm} onClose={() => setNewsForm(null)} title={newsForm?.id ? 'Edit news' : 'Publish news'}>
         {newsForm && (

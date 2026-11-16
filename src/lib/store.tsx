@@ -89,6 +89,7 @@ interface Ctx {
   decideUpgrade: (id: string, ok: boolean) => void
   updateLevelDef: (level: number, patch: Partial<DB['levels'][number]>) => void
   setUserLevel: (userId: string, level: number) => void
+  setUserLoanLimit: (userId: string, bdt: number | null) => void
   addTicket: (subject: string, message: string) => void
   replyTicket: (ticketId: string, text: string, as: 'user' | 'admin') => void
   resolveTicket: (ticketId: string) => void
@@ -734,6 +735,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setUserLevel: Ctx['setUserLevel'] = (userId2, level) => mutate(d => {
     const u = d.users.find(x => x.id === userId2); if (u) { u.level = level; audit(d, 'admin', 'level.set', `${userId2} → Level ${level}`); notify(d, userId2, 'Account level changed', 'An admin set your account to Level ' + level + '.', 'security') }
   })
+  const setUserLoanLimit: Ctx['setUserLoanLimit'] = (userId2, bdt) => mutate(d => {
+    const u = d.users.find(x => x.id === userId2); if (!u) return
+    if (bdt === null) delete u.loanLimitOverride; else u.loanLimitOverride = bdt
+    audit(d, 'admin', 'loanlimit.set', bdt === null ? userId2 + ' → level default' : userId2 + ' → ' + bdt + ' BDT')
+    notify(d, userId2, 'Loan limit updated', bdt === null ? 'Your loan limit now follows your account level.' : 'An admin set a personal loan limit on your account. Check the Loan section for your new limit.', 'info')
+  })
   const resetDemo = () => { const fresh = seedDB(); localStorage.setItem(KEY, JSON.stringify(fresh)); setDb(fresh) }
 
   const value: Ctx = {
@@ -742,7 +749,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
-    requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel,
+    requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
     twoFaPending, completeTwoFa, cancelTwoFa, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
