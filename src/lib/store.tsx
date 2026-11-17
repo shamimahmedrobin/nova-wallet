@@ -54,7 +54,9 @@ interface Ctx {
   clearFingerprint: () => void
   unlockWithPin: (pin: string) => string | null
   unlockWithFingerprint: () => Promise<string | null>
-  usePasswordInstead: () => void
+  unlockWithPassword: (password: string) => string | null
+  lockNow: () => void
+  signOut: () => void
   resetPassword: (email: string, pin: string, newPassword: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
   logout: () => void
@@ -111,10 +113,11 @@ export const useApp = () => { const c = useContext(AppCtx); if (!c) throw new Er
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(load)
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
-  const [locked, setLocked] = useState<boolean>(() => {
-    const sid = localStorage.getItem(SESSION)
-    return !!sid && (!!localStorage.getItem('nova.loginpin.' + sid) || !!localStorage.getItem('nova.webauthn.' + sid))
-  })
+  // A refresh or reopen NEVER locks: the saved session goes straight back into
+  // the app. Locking happens only via the Log out button or 5 idle minutes.
+  const [locked, setLocked] = useState(false)
+  const lockedRef = useRef(false)
+  useEffect(() => { lockedRef.current = locked }, [locked])
   const [, setQuickTick] = useState(0)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
   const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
@@ -141,7 +144,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToasts(x => x.filter(y => y.id !== id)), 4200)
   }, [])
   const dismissToast = useCallback((id: string) => setToasts(x => x.filter(y => y.id !== id)), [])
-  // ---- Security: sign out after 10 minutes of inactivity ----
+  // ---- Security: LOCK after 5 minutes of inactivity (session stays saved) ----
   const lastActiveRef = useRef(Date.now())
   useEffect(() => {
     if (!userId) return
@@ -150,18 +153,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const evs = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const
     evs.forEach(e => window.addEventListener(e, bump, { passive: true }))
     const iv = setInterval(() => {
-      if (Date.now() - lastActiveRef.current > 10 * 60 * 1000) {
-        const hasQuick = !!localStorage.getItem('nova.loginpin.' + userId) || !!localStorage.getItem('nova.webauthn.' + userId)
-        if (hasQuick) {
-          setLocked(true)
-          toast({ kind: 'error', title: 'Locked for security', body: 'Inactive for 10 minutes — unlock with your login PIN or fingerprint.' })
-        } else {
-          localStorage.removeItem(SESSION)
-          setUserId(null)
-          toast({ kind: 'error', title: 'Signed out for security', body: 'You were inactive for 10 minutes, so NovaWallet signed you out.' })
-        }
+      if (!lockedRef.current && Date.now() - lastActiveRef.current > 5 * 60 * 1000) {
+        lastActiveRef.current = Date.now()
+        setLocked(true)
+        toast({ kind: 'error', title: 'Locked for security', body: 'Inactive for 5 minutes — unlock with your PIN, fingerprint or password.' })
       }
-    }, 30000)
+    }, 20000)
     return () => { evs.forEach(e => window.removeEventListener(e, bump)); clearInterval(iv) }
   }, [userId, toast])
 
@@ -325,7 +322,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem(pinKey(user.id))
     if (!stored) return 'No login PIN is set on this device.'
     if (hashSecret(pin) !== stored) return recordFail(user.id, 'Incorrect login PIN.')
-    recordSuccess(user.id); setLocked(false)
+    recordSuccess(user.id); lastActiveRef.current = Date.now(); setLocked(false)
     return null
   }
   const unlockWithFingerprint: Ctx['unlockWithFingerprint'] = async () => {
@@ -341,11 +338,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         timeout: 60000,
       } } as any)
       if (!assertion) return 'Fingerprint verification was cancelled.'
-      setLocked(false)
+      lastActiveRef.current = Date.now(); setLocked(false)
       return null
     } catch { return 'Fingerprint verification failed or was cancelled.' }
   }
-  const usePasswordInstead = () => { setLocked(false); localStorage.removeItem(SESSION); setUserId(null) }
+  const unlockWithPassword: Ctx['unlockWithPassword'] = (password) => {
+    if (!user) return 'Not signed in'
+    const lk = lockError(user.id); if (lk) return lk
+    if (user.passwordHash !== hashSecret(password)) return recordFail(user.id, 'Wrong password. Please try again.')
+    recordSuccess(user.id); lastActiveRef.current = Date.now(); setLocked(false)
+    return null
+  }
+  const lockNow = () => { lastActiveRef.current = Date.now(); setLocked(true) }
+  const signOut = () => { setLocked(false); localStorage.removeItem(SESSION); setUserId(null) }
   const resetPassword: Ctx['resetPassword'] = (email, pin, newPassword) => {
     const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())
     if (!u) return 'No account found for that email.'
@@ -895,7 +900,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
-    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, usePasswordInstead, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
+    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }
