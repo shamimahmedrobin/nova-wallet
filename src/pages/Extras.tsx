@@ -112,6 +112,7 @@ export function EarnPage() {
     { to: '/earn/quiz', icon: '🧠', title: 'Daily Quiz', sub: usd(4) + ' per correct answer', badge: einfo.quizDay === todayL ? 'Played today' : 'Play now' },
   ]
   const w = walletOf(user.id)
+  const availUsd = w.available / db.settings.bdtPerUsd + (w.holdings.USDT ?? 0)
   const amt = Number(amount) || 0
   const amtBDT = Math.round(amt * db.settings.bdtPerUsd)
   const myStakes = db.stakes.filter(s => s.userId === user.id)
@@ -142,7 +143,7 @@ export function EarnPage() {
       </div>
       <h3 className="font-extrabold mb-3">Staking</h3>
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Available</p><p className="font-extrabold mt-1">{usd(w.available)}</p></Card>
+        <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Available</p><p className="font-extrabold mt-1">{fmtUSDT(availUsd)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Staked</p><p className="font-extrabold mt-1 text-violet-600">{usd(totalStaked)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Earned</p><p className="font-extrabold mt-1 text-emerald-500">{usd(totalEarned)}</p></Card>
       </div>

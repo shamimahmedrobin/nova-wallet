@@ -498,10 +498,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return 'Not signed in'
     if (badAmount(amount)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
-    if (amount > w.available) return 'Insufficient available balance.'
+    const rate = dbRef.current.settings.bdtPerUsd
+    // Stake from the same combined balance as Buy/Swap (and as Home's
+    // "Available"): the USDT holding first, the cash balance covers the rest.
+    const heldUsdt = w.holdings.USDT ?? 0
+    const usdtPart = Math.min(heldUsdt, amount / rate)
+    const cashPart = amount - Math.round(usdtPart * rate)
+    if (cashPart > w.available) return 'Insufficient balance. Add money first.'
     mutate(d => {
       const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.available -= amount; dw.locked += amount
+      dw.holdings.USDT = heldUsdt - usdtPart
+      dw.available -= cashPart; dw.locked += amount
       d.stakes.unshift({ id: uid('STK'), userId: user.id, amount, apy, termDays, startAt: nowISO(), status: 'active' })
       recordTx(d, { userId: user.id, category: 'earn', title: 'Staked in Earn (' + apy + '% APY)', amount, fee: 0, currency: 'BDT', status: 'completed' })
     })
