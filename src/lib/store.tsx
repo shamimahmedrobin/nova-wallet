@@ -17,6 +17,7 @@ function load(): DB {
       const db = JSON.parse(raw) as DB
       // migrate older saves: add account levels without wiping balances/history
       if (!db.levels) db.levels = DEFAULT_LEVELS
+      else db.levels = db.levels.map(l => ({ ...l, depositRequired: l.depositRequired ?? DEFAULT_LEVELS.find(d2 => d2.level === l.level)?.depositRequired ?? 0 }))
       if (!db.levelRequests) db.levelRequests = []
       if (!db.stakes) db.stakes = []
       if (!db.earnStates) db.earnStates = []
@@ -716,6 +717,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (toLevel !== user.level + 1) return 'You can only request the next level.'
     if (toLevel > 4) return 'You are already at the highest level.'
     if (dbRef.current.levelRequests.some(r => r.userId === user.id && r.status === 'pending')) return 'You already have a pending upgrade request.'
+    const depReq = dbRef.current.levels.find(l => l.level === toLevel)?.depositRequired ?? 0
+    if (depReq > 0) {
+      const deposited = dbRef.current.deposits.filter(x => x.userId === user.id && x.status === 'approved').reduce((s2, x) => s2 + x.amount, 0)
+      if (deposited < depReq) return 'Level ' + toLevel + ' requires total deposits of ' + fmtMoney(depReq) + '. You have deposited ' + fmtMoney(deposited) + ' so far — deposit ' + fmtMoney(depReq - deposited) + ' more from Add Money, then request again.'
+    }
     mutate(d => {
       d.levelRequests.unshift({ id: uid('LVR'), userId: user.id, fromLevel: user.level, toLevel, status: 'pending', createdAt: nowISO() })
       notify(d, user.id, 'Upgrade requested', 'Your request to reach Level ' + toLevel + ' is pending admin review.', 'security')

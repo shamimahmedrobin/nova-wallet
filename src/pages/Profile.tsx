@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, Moon, ScanFace, Send, ShieldCheck, Smartphone, Sun, Upload, UserRound } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
 import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
@@ -14,7 +14,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, theme, toggleTheme, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
@@ -108,13 +108,6 @@ export default function Profile() {
         ))}
       </Card>
 
-      <Card className="p-2 mb-4">
-        <button onClick={toggleTheme} className="w-full flex items-center gap-3 p-3.5 font-semibold text-[15px]">
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {t('theme')} — {theme === 'dark' ? t('dark') : t('light')}
-          <span className="ml-auto text-violet-600 text-sm font-bold">{t('toggle')}</span>
-        </button>
-      </Card>
-
       <Card className="p-2">
         {rows.map(([key, id, icon]) => (
           <button key={id} onClick={() => setModal(id)} className="w-full flex items-center gap-3 p-3.5 font-semibold text-[15px] hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-2xl text-left">
@@ -160,6 +153,8 @@ export default function Profile() {
             const isCurrent = l.level === user.level
             const isNext = l.level === user.level + 1
             const pending = db.levelRequests.some(r => r.userId === user.id && r.status === 'pending')
+            const myDep = db.deposits.filter(d => d.userId === user.id && d.status === 'approved').reduce((s2, d) => s2 + d.amount, 0)
+            const depShort = isNext && (l.depositRequired ?? 0) > myDep
             return (
               <div key={l.level} className={`rounded-2xl border-2 px-4 py-3.5 ${isCurrent ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>
                 <div className="flex items-center gap-3">
@@ -171,13 +166,20 @@ export default function Profile() {
                   <span>Loan limit: <b>{fmtUSDT(l.loanLimit / db.settings.bdtPerUsd)}</b></span><span>Fee discount: <b>{l.feeDiscountPct}%</b></span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-2">Requirement: {l.requirement}</p>
+                {isNext && (l.depositRequired ?? 0) > 0 && (
+                  <div className="mt-3 rounded-2xl bg-slate-100/80 dark:bg-slate-800/70 p-3.5">
+                    <div className="flex justify-between gap-2 text-xs font-bold"><span>💰 Deposit requirement</span><span>{fmtUSDT(myDep / db.settings.bdtPerUsd)} / {fmtUSDT(l.depositRequired / db.settings.bdtPerUsd)}</span></div>
+                    <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 mt-2 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-violet-600 to-cyan-500 transition-all" style={{ width: Math.min(100, Math.round(myDep / l.depositRequired * 100)) + '%' }} /></div>
+                    <p className="text-[11px] text-slate-500 mt-1.5">{depShort ? `Deposit ${fmtUSDT((l.depositRequired - myDep) / db.settings.bdtPerUsd)} more via Add Money to unlock this upgrade.` : '✅ Requirement met — you can request this upgrade.'}</p>
+                  </div>
+                )}
                 {isNext && l.level === 2 && user.kyc === 'unverified' && (
                   <div className="mt-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 p-3.5">
                     <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{t('kyc_need_level2')}</p>
                     <Btn variant="outline" className="w-full mt-2.5" onClick={() => setModal('kyc')}>{t('kyc_do_now')}</Btn>
                   </div>
                 )}
-                {isNext && !(l.level === 2 && user.kyc === 'unverified') && <Btn className="w-full mt-3" disabled={pending} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'Upgrade requested', body: 'An admin will review your request.' }) } }}>{pending ? 'Request pending…' : 'Request upgrade to Level ' + l.level}</Btn>}
+                {isNext && !(l.level === 2 && user.kyc === 'unverified') && <Btn className="w-full mt-3" disabled={pending || depShort} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'Upgrade requested', body: 'An admin will review your request.' }) } }}>{pending ? 'Request pending…' : depShort ? 'Deposit required first' : 'Request upgrade to Level ' + l.level}</Btn>}
               </div>
             )
           })}

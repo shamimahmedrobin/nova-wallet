@@ -52,6 +52,13 @@ export default function Admin() {
       pendingKyc: db.users.filter(u => u.kyc === 'pending'),
     }
   }, [db])
+  const tabBadges: Record<string, number> = {
+    finance: stats.pendingDeposits.length + stats.pendingWithdrawals.length,
+    users: stats.pendingKyc.length,
+    loans: stats.pendingLoans.length,
+    levels: pendingLevels,
+    support: db.tickets.filter(t => t.status === 'pending').length,
+  }
   const chartData = useMemo(() => {
     const days: Record<string, number> = {}
     db.txs.forEach(t => { const k = new Date(t.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); if (t.status === 'completed') days[k] = (days[k] ?? 0) + t.amount })
@@ -73,7 +80,7 @@ export default function Admin() {
           </div>
         </div>
         <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto no-scrollbar">
-          {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold ${tab === t.id ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}><t.icon size={14} /> {t.label}{t.id === 'levels' && pendingLevels > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{pendingLevels}</span>}</button>)}
+          {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold ${tab === t.id ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}><t.icon size={14} /> {t.label}{(tabBadges[t.id] ?? 0) > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{tabBadges[t.id]}</span>}</button>)}
         </div>
       </header>
 
@@ -283,6 +290,7 @@ export default function Admin() {
                       <Input label="Daily limit (USDT)" type="number" value={Math.round(f.dailyLimit / db.settings.bdtPerUsd * 100) / 100} onChange={e => upd('dailyLimit', Math.round(Number(e.target.value) * db.settings.bdtPerUsd))} />
                       <Input label="Monthly limit (USDT)" type="number" value={Math.round(f.monthlyLimit / db.settings.bdtPerUsd * 100) / 100} onChange={e => upd('monthlyLimit', Math.round(Number(e.target.value) * db.settings.bdtPerUsd))} />
                       <Input label="Loan limit (USDT)" type="number" value={Math.round(f.loanLimit / db.settings.bdtPerUsd * 100) / 100} onChange={e => upd('loanLimit', Math.round(Number(e.target.value) * db.settings.bdtPerUsd))} />
+                      <Input label="Required total deposit (USDT)" type="number" value={Math.round((f.depositRequired ?? 0) / db.settings.bdtPerUsd * 100) / 100} onChange={e => upd('depositRequired', Math.round(Number(e.target.value) * db.settings.bdtPerUsd))} />
                       <Input label="Fee discount %" type="number" value={f.feeDiscountPct} onChange={e => upd('feeDiscountPct', Number(e.target.value))} />
                     </div>
                     <Input label="Requirement" className="mt-3" value={f.requirement} onChange={e => upd('requirement', e.target.value)} />

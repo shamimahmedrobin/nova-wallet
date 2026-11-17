@@ -48,7 +48,7 @@ export interface NewsItem {
 }
 export interface LevelDef {
   level: number; name: string; tagline: string; dailyLimit: number; monthlyLimit: number
-  loanLimit: number; feeDiscountPct: number; requirement: string; gradient: string
+  loanLimit: number; depositRequired: number; feeDiscountPct: number; requirement: string; gradient: string
 }
 export interface LevelRequest {
   id: string; userId: string; fromLevel: number; toLevel: number
