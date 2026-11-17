@@ -9,6 +9,8 @@ import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
 
 const KEY = 'novawallet.db.v2'
 const SESSION = 'novawallet.session'
+const LASTSEEN = 'nova.lastseen'
+const IDLE_MS = 5 * 60 * 1000
 
 function load(): DB {
   try {
@@ -113,9 +115,14 @@ export const useApp = () => { const c = useContext(AppCtx); if (!c) throw new Er
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(load)
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
-  // A refresh or reopen NEVER locks: the saved session goes straight back into
-  // the app. Locking happens only via the Log out button or 5 idle minutes.
-  const [locked, setLocked] = useState(false)
+  // A quick refresh/reopen goes straight back in (no lock). But if the last
+  // visit ended 5+ minutes ago, the saved session starts LOCKED — this is what
+  // catches leaving the app or the phone screen locking.
+  const [locked, setLocked] = useState<boolean>(() => {
+    if (!localStorage.getItem(SESSION)) return false
+    const seen = Number(localStorage.getItem(LASTSEEN) ?? 0)
+    return seen > 0 && Date.now() - seen > IDLE_MS
+  })
   const lockedRef = useRef(false)
   useEffect(() => { lockedRef.current = locked }, [locked])
   const [, setQuickTick] = useState(0)
@@ -144,22 +151,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToasts(x => x.filter(y => y.id !== id)), 4200)
   }, [])
   const dismissToast = useCallback((id: string) => setToasts(x => x.filter(y => y.id !== id)), [])
-  // ---- Security: LOCK after 5 minutes of inactivity (session stays saved) ----
+  // ---- Security: LOCK after 5 minutes away or idle (session stays saved) ----
+  // The last-seen time is persisted, so the 5 minutes are measured across app
+  // switches, phone screen locks and even full page reloads — not just while
+  // this page happens to sit open in the foreground.
   const lastActiveRef = useRef(Date.now())
   useEffect(() => {
     if (!userId) return
     lastActiveRef.current = Date.now()
+    const stamp = () => { try { localStorage.setItem(LASTSEEN, String(Date.now())) } catch { /* ignore */ } }
+    stamp()
     const bump = () => { lastActiveRef.current = Date.now() }
     const evs = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const
     evs.forEach(e => window.addEventListener(e, bump, { passive: true }))
+    const lockAway = () => {
+      lastActiveRef.current = Date.now()
+      setLocked(true)
+      toast({ kind: 'error', title: 'Locked for security', body: 'Away for over 5 minutes — unlock with your PIN, fingerprint or password.' })
+    }
+    const onVis = () => {
+      if (document.hidden) { stamp(); return }
+      const seen = Number(localStorage.getItem(LASTSEEN) ?? 0)
+      if (!lockedRef.current && seen > 0 && Date.now() - seen > IDLE_MS) lockAway()
+      lastActiveRef.current = Date.now(); stamp()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('pagehide', stamp)
     const iv = setInterval(() => {
-      if (!lockedRef.current && Date.now() - lastActiveRef.current > 5 * 60 * 1000) {
+      if (!document.hidden) stamp()
+      if (!lockedRef.current && Date.now() - lastActiveRef.current > IDLE_MS) {
         lastActiveRef.current = Date.now()
         setLocked(true)
         toast({ kind: 'error', title: 'Locked for security', body: 'Inactive for 5 minutes — unlock with your PIN, fingerprint or password.' })
       }
     }, 20000)
-    return () => { evs.forEach(e => window.removeEventListener(e, bump)); clearInterval(iv) }
+    return () => { evs.forEach(e => window.removeEventListener(e, bump)); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', stamp); clearInterval(iv) }
   }, [userId, toast])
 
   const user = useMemo(() => db.users.find(u => u.id === userId) ?? null, [db, userId])
