@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
 import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
@@ -25,6 +25,24 @@ export default function Profile() {
     else if ((location.state as any)?.openSupport) { setModal('support'); navigate(location.pathname, { replace: true, state: null }) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  const [canInstall, setCanInstall] = useState(!!(window as any).__nwInstallPrompt)
+  const [appInstalled, setAppInstalled] = useState(() => window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true)
+  useEffect(() => {
+    const ready = () => setCanInstall(true)
+    const done = () => { setAppInstalled(true); setCanInstall(false) }
+    window.addEventListener('nw-install-ready', ready)
+    window.addEventListener('appinstalled', done)
+    return () => { window.removeEventListener('nw-install-ready', ready); window.removeEventListener('appinstalled', done) }
+  }, [])
+  const doInstall = async () => {
+    if (appInstalled) return toast({ kind: 'success', title: 'NovaWallet is already installed on this device.' })
+    const prompt = (window as any).__nwInstallPrompt
+    if (prompt) {
+      prompt.prompt()
+      const choice = await prompt.userChoice
+      if (choice?.outcome === 'accepted') { (window as any).__nwInstallPrompt = null; setCanInstall(false) }
+    } else setModal('install')
+  }
   const [edit, setEdit] = useState({ name: user?.name ?? '', phone: user?.phone ?? '' })
   const [pw, setPw] = useState({ old: '', next: '' })
   const [pin, setPin] = useState({ old: '', next: '' })
@@ -119,6 +137,13 @@ export default function Profile() {
             <ChevronRight size={17} className="ml-auto text-slate-300" />
           </button>
         ))}
+      </Card>
+
+      <Card className="p-2 mt-4">
+        <button onClick={doInstall} className="w-full flex items-center gap-3 p-3.5 font-semibold text-[15px] hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-2xl text-left">
+          <span className="text-violet-600"><Download size={18} /></span> Install App
+          <span className="ml-auto text-sm font-bold text-violet-600">{appInstalled ? 'Installed ✓' : canInstall ? 'Install' : 'How to install'}</span>
+        </button>
       </Card>
 
       <Card className="p-5 mt-4">
@@ -429,6 +454,15 @@ export default function Profile() {
             ))}
         </div>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
+      </Modal>
+      <Modal open={modal === 'install'} onClose={() => setModal(null)} title="Install NovaWallet">
+        <ModalDesc>NovaWallet works as a real app — no app store needed. It installs from this website and opens full-screen from your home screen or desktop.</ModalDesc>
+        <div className="space-y-2.5 text-sm">
+          <ModalRow><span>📱 <b>Android (Chrome):</b> tap <b>Install App</b> here, or Chrome menu ⋮ → <b>Install app / Add to Home screen</b>.</span></ModalRow>
+          <ModalRow><span>🍎 <b>iPhone (Safari):</b> tap the <b>Share</b> button → <b>Add to Home Screen</b> → <b>Add</b>.</span></ModalRow>
+          <ModalRow><span>💻 <b>Desktop (Chrome / Edge):</b> click the <b>install icon</b> at the right end of the address bar, or menu ⋮ → <b>Install NovaWallet</b>.</span></ModalRow>
+        </div>
+        <Btn className="w-full mt-4" onClick={() => { setModal(null); doInstall() }}>{canInstall ? 'Install now' : 'Got it'}</Btn>
       </Modal>
       <Modal open={modal === 'terms'} onClose={() => setModal(null)} title={t('p_terms')}>
         <div className="space-y-2.5">
