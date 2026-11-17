@@ -792,7 +792,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const adjustBalance: Ctx['adjustBalance'] = (userId2, amount, reason) => mutate(d => {
     const w = d.wallets.find(x => x.userId === userId2); if (!w) return
     w.available += amount
-    recordTx(d, { userId: userId2, category: 'adjustment', title: 'Admin adjustment', amount: Math.abs(amount), fee: 0, currency: 'BDT', status: 'completed', note: reason })
+    recordTx(d, { userId: userId2, category: 'adjustment', title: 'Admin adjustment', amount, fee: 0, currency: 'BDT', status: 'completed', note: reason })
     audit(d, 'admin', 'wallet.adjust', `${userId2} ${amount > 0 ? '+' : ''}৳${amount} — ${reason}`)
     notify(d, userId2, 'Wallet adjustment', 'An admin adjusted your balance by ৳' + amount.toLocaleString() + '. Reason: ' + reason, 'info')
   })

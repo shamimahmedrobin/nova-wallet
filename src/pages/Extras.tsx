@@ -6,8 +6,8 @@ import { useApp } from '../lib/store'
 import { withdrawMethods, CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
 import { ADS_PER_DAY, EARN_TASKS, SCRATCH_PER_DAY, SPINS_PER_DAY } from '../lib/earn'
 import { COIN_META, useMarket } from '../lib/market'
-import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select } from '../components/ui'
-import { fmtBDT, fmtDateTime, fmtPrice, fmtUSDT } from '../lib/utils'
+import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select, TxDirIcon } from '../components/ui'
+import { fmtBDT, fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
 import { PageHead, SuccessModal } from './Services'
 
 export function Level2GateModal({ open, onClose, feature }: { open: boolean; onClose: () => void; feature: string }) {
@@ -80,7 +80,7 @@ export function DirectWithdraw() {
       <h3 className="font-extrabold mt-6 mb-3">Direct withdrawal history</h3>
       {mine.length === 0 ? <Card><Empty title="No direct withdrawals yet" /></Card> : (
         <div className="space-y-2">{mine.map(x => (
-          <Card key={x.id} className="p-4 flex items-center gap-3"><div className="flex-1"><p className="font-bold">{x.title}</p><p className="text-xs text-slate-400">{x.id} · {fmtDateTime(x.createdAt)}</p></div><div className="text-right"><p className="font-bold">{fmtMoney(x.amount)}</p><Badge tone="green">completed</Badge></div></Card>
+          <Card key={x.id} className="p-4 flex items-center gap-3"><TxDirIcon dir={txDirection(x.category, x.amount)} /><div className="flex-1"><p className="font-bold">{x.title}</p><p className="text-xs text-slate-400">{x.id} · {fmtDateTime(x.createdAt)}</p></div><div className="text-right"><p className={`font-bold ${txAmountCls(txDirection(x.category, x.amount))}`}>{txSign(txDirection(x.category, x.amount))}{fmtMoney(Math.abs(x.amount))}</p><Badge tone="green">completed</Badge></div></Card>
         ))}</div>
       )}
       <Level2GateModal open={gate} onClose={() => setGate(false)} feature="Direct Withdraw" />

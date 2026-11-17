@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { gradientFor, initials } from '../lib/utils'
 
@@ -76,6 +76,14 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
 /** Uniform modal interior pieces — every modal in the app uses these so they all look the same. */
 export const ModalDesc = ({ children }: { children: React.ReactNode }) => (
   <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4">{children}</p>
+)
+/** Round direction icon for transaction rows: green down-left = money in, red up-right = money out, violet = swap. */
+export const TxDirIcon = ({ dir }: { dir: 'in' | 'out' | 'neutral' }) => (
+  dir === 'in'
+    ? <span className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0"><ArrowDownLeft size={17} /></span>
+    : dir === 'out'
+      ? <span className="w-9 h-9 rounded-full bg-rose-100 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0"><ArrowUpRight size={17} /></span>
+      : <span className="w-9 h-9 rounded-full bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0"><ArrowLeftRight size={17} /></span>
 )
 export const ModalRow = ({ children, active = false }: { children: React.ReactNode; active?: boolean }) => (
   <div className={`rounded-2xl border-2 px-4 py-3.5 ${active ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>{children}</div>

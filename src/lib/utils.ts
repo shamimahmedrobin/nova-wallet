@@ -22,6 +22,17 @@ export const fmtUSDT = (n: number, dec = 2) =>
   n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + ' USDT'
 export const priceDecimals = (p: number) => p >= 100 ? 0 : p >= 1 ? 2 : p >= 0.01 ? 4 : 8
 export const fmtPrice = (p: number) => fmtUSDT(p, priceDecimals(p))
+/** Money direction of a transaction for display: money IN shows green with a +, money OUT red with a -, swap stays neutral. */
+export const txDirection = (category: string, amount: number): 'in' | 'out' | 'neutral' => {
+  switch (category) {
+    case 'add_money': case 'receive': case 'referral': case 'loan_disbursement': case 'crypto_sell': case 'earn': return 'in'
+    case 'cash_out': case 'send': case 'loan_repayment': case 'crypto_buy': case 'direct_withdraw': return 'out'
+    case 'adjustment': return amount < 0 ? 'out' : 'in'
+    default: return 'neutral'
+  }
+}
+export const txAmountCls = (dir: 'in' | 'out' | 'neutral') => dir === 'in' ? 'text-emerald-600 dark:text-emerald-400' : dir === 'out' ? 'text-rose-600 dark:text-rose-400' : ''
+export const txSign = (dir: 'in' | 'out' | 'neutral') => dir === 'in' ? '+' : dir === 'out' ? '-' : ''
 export const fmtCrypto = (n: number, sym: string) =>
   n.toLocaleString('en-US', { maximumFractionDigits: sym === 'BTC' ? 6 : sym === 'ETH' ? 5 : 2 }) + ' ' + sym
 export const fmtDate = (iso: string) =>

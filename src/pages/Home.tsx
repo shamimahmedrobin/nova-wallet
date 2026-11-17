@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Banknote, Bitcoin, ChevronRight, Eye, EyeOff, Gift, HandCoins, Lock, PiggyBank, QrCode, Send, ShoppingCart, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket } from '../lib/market'
-import { fmtPrice, fmtUSDT } from '../lib/utils'
-import { Badge, Card, SkeletonRows, statusTone } from '../components/ui'
+import { fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
+import { Badge, Card, SkeletonRows, TxDirIcon, statusTone } from '../components/ui'
 
 const ACTIONS_RAW = [
   { to: '/add', labelKey: 'act_add', icon: ArrowDownToLine, g: 'from-emerald-500 to-teal-600' },
@@ -138,12 +138,13 @@ export default function Home() {
           <h2 className="font-extrabold text-slate-900 dark:text-white">{t('recent_transactions')}</h2>
           <Link to="/transactions" className="text-sm font-bold text-violet-600 flex items-center">{t('see_all')} <ChevronRight size={15} /></Link>
         </div>
-        {myTxs.length === 0 ? <p className="text-sm text-slate-500 py-4 text-center">{t('no_transactions_yet')}</p> : myTxs.map(t => (
+        {myTxs.length === 0 ? <p className="text-sm text-slate-500 py-4 text-center">{t('no_transactions_yet')}</p> : myTxs.map(t => { const dir = txDirection(t.category, t.amount); return (
           <div key={t.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
+            <TxDirIcon dir={dir} />
             <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate">{t.title}</p><p className="text-[11px] text-slate-400">{t.id} · {new Date(t.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p></div>
-            <div className="text-right"><p className="font-bold text-sm">{fmtMoney(t.amount)}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge></div>
+            <div className="text-right"><p className={`font-bold text-sm ${txAmountCls(dir)}`}>{txSign(dir)}{fmtMoney(Math.abs(t.amount))}</p><Badge tone={statusTone(t.status)}>{t.status}</Badge></div>
           </div>
-        ))}
+        ) })}
       </Card>
     </div>
   )
