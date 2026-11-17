@@ -14,7 +14,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, requestUpgrade, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, logout, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
@@ -48,6 +48,7 @@ export default function Profile() {
   const [pin, setPin] = useState({ old: '', next: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
+  const [pinEdit, setPinEdit] = useState(false); const [pinVal, setPinVal] = useState('')
   const [viewTicket, setViewTicket] = useState<string | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const [notifPrefs, setNotifPrefs] = useState({ tx: true, market: true, promo: false })
@@ -89,7 +90,7 @@ export default function Profile() {
   const w = walletOf(user.id)
   const rows: [string, string, any][] = [
     ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['p_pin', 'pin', <KeyRound size={18} />],
-    ['p_2fa', '2fa', <Smartphone size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <FileText size={18} />],
+    ['p_login_options', 'login', <KeyRound size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <FileText size={18} />],
     ['p_notif', 'notif', <Bell size={18} />], ['p_language', 'lang', <Globe size={18} />], ['p_currency', 'currency', <Coins size={18} />], ['p_support', 'support', <HelpCircle size={18} />],
     ['p_sessions', 'sessions', <Smartphone size={18} />], ['p_terms', 'terms', <FileText size={18} />],
   ]
@@ -130,7 +131,7 @@ export default function Profile() {
         {rows.map(([key, id, icon]) => (
           <button key={id} onClick={() => setModal(id)} className="w-full flex items-center gap-3 p-3.5 font-semibold text-[15px] hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-2xl text-left">
             <span className="text-violet-600">{icon}</span> {t(key)}
-            {id === '2fa' && <Badge tone={user.twoFA ? 'green' : 'slate'}>{user.twoFA ? t('on') : t('off')}</Badge>}
+            {id === 'login' && <Badge tone={(devicePinSet || fingerprintSet) ? 'green' : 'slate'}>{(devicePinSet || fingerprintSet) ? t('on') : t('off')}</Badge>}
             {id === 'kyc' && <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? t('verified') : t('non_kyc')}</Badge>}
             {id === 'lang' && <span className="ml-auto text-sm text-slate-400">{LANGUAGES.find(l => l.code === lang)?.native ?? 'English'}</span>}
             {id === 'currency' && <span className="ml-auto text-lg font-extrabold text-violet-600">{currency}{currencyIsAuto ? <span className="text-[10px] font-bold text-slate-400 align-middle"> · AUTO</span> : ''}</span>}
@@ -409,10 +410,38 @@ export default function Profile() {
           )
         })()}
       </Modal>
-      <Modal open={modal === '2fa'} onClose={() => setModal(null)} title={t('p_2fa')}>
-        <ModalDesc>When 2FA is on, sensitive actions (login on a new device, cash out, PIN change) need a second verification step in addition to your password.</ModalDesc>
-        <ModalRow><label className="flex items-center justify-between font-semibold text-sm">{t('p_2fa')}
-          <input type="checkbox" checked={user.twoFA} onChange={e => { updateProfile({ twoFA: e.target.checked }); toast({ kind: 'success', title: 'Two-factor ' + (e.target.checked ? 'enabled' : 'disabled') }) }} className="w-5 h-5 accent-violet-600" /></label></ModalRow>
+      <Modal open={modal === 'login'} onClose={() => setModal(null)} title={t('p_login_options')}>
+        <ModalDesc>Your login stays saved on this device. Choose how you unlock NovaWallet here — your password always works as a fallback.</ModalDesc>
+        <div className="space-y-2.5">
+          <ModalRow>
+            <span className="flex items-center justify-between gap-3"><span className="font-bold text-sm">🔑 Password</span><Badge tone="green">Always on</Badge></span>
+            <span className="block text-xs text-slate-500 mt-1">Full sign-in with your account email + password. Works on any device, any time.</span>
+          </ModalRow>
+          <ModalRow>
+            <span className="flex items-center justify-between gap-3"><span className="font-bold text-sm">🔢 Login PIN</span>{devicePinSet ? <Badge tone="green">Set on this device</Badge> : <Badge tone="slate">Not set</Badge>}</span>
+            <span className="block text-xs text-slate-500 mt-1">A 4-digit PIN saved only on this device — separate from your transaction PIN. If the app data is cleared or the app is uninstalled, you will set a new PIN here.</span>
+            {pinEdit ? (
+              <div className="flex gap-2 mt-3">
+                <div className="flex-1"><Input type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={pinVal} onChange={e => setPinVal(e.target.value)} /></div>
+                <Btn className="!py-2.5 self-end" onClick={() => { const e = setDevicePin(pinVal); if (e) return toast({ kind: 'error', title: e }); setPinEdit(false); setPinVal(''); toast({ kind: 'success', title: 'Login PIN saved on this device' }) }}>Save</Btn>
+              </div>
+            ) : (
+              <div className="flex gap-2 mt-3">
+                <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { setPinEdit(true); setPinVal('') }}>{devicePinSet ? 'Change PIN' : 'Set PIN'}</Btn>
+                {devicePinSet && <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => { clearDevicePin(); toast({ kind: 'success', title: 'Login PIN removed from this device' }) }}>Remove</Btn>}
+              </div>
+            )}
+          </ModalRow>
+          <ModalRow>
+            <span className="flex items-center justify-between gap-3"><span className="font-bold text-sm">👆 Fingerprint</span>{fingerprintSet ? <Badge tone="green">Set on this device</Badge> : <Badge tone="slate">Not set</Badge>}</span>
+            <span className="block text-xs text-slate-500 mt-1">{appInstalled ? 'Unlock with your fingerprint or face on this device — fast and secure.' : 'Fingerprint can only be set up inside the installed app. Install NovaWallet first, open the installed app, then come back here.'}</span>
+            <div className="flex gap-2 mt-3">
+              {!fingerprintSet && <Btn variant="outline" className="!py-2 !text-xs" onClick={async () => { const e = await setupFingerprint(); if (e) return toast({ kind: 'error', title: e }); toast({ kind: 'success', title: 'Fingerprint login is on' }) }}>Set up fingerprint</Btn>}
+              {fingerprintSet && <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => { clearFingerprint(); toast({ kind: 'success', title: 'Fingerprint removed from this device' }) }}>Remove</Btn>}
+              {!appInstalled && !fingerprintSet && <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => setModal('install')}>Install App</Btn>}
+            </div>
+          </ModalRow>
+        </div>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'lang'} onClose={() => setModal(null)} title={t('p_language')}>

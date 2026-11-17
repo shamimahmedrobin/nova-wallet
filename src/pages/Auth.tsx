@@ -6,16 +6,15 @@ import { Btn, Input } from '../components/ui'
 import { Logo } from '../components/Layout'
 
 export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landing' | 'login' | 'register' }) {
-  const { login, register, resetPassword, completeTwoFa, cancelTwoFa, toast, t } = useApp()
+  const { login, register, resetPassword, toast, t } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const refCode = new URLSearchParams(window.location.search).get('ref') ?? ''
   const [mode] = useState<'landing' | 'login' | 'register'>(refCode ? 'register' : initialMode)
   const [form, setForm] = useState({ name: '', username: '', email: '', phone: '', password: '', pin: '', referralCode: refCode })
   const [loginId, setLoginId] = useState(''); const [loginPw, setLoginPw] = useState('')
-  const [step, setStep] = useState<'auth' | 'forgot' | '2fa'>('auth')
+  const [step, setStep] = useState<'auth' | 'forgot'>('auth')
   const [fp, setFp] = useState({ email: '', pin: '', password: '' })
-  const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const set = (k: string) => (e: any) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -26,14 +25,8 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
   }
   const doLogin = (id = loginId, pw = loginPw) => {
     const e = login(id.trim().toLowerCase(), pw)
-    if (e === '2fa') { setErr(''); setCode(''); setStep('2fa'); return }
     if (e) { setErr(e); return }
     afterLogin(id)
-  }
-  const doVerify = () => {
-    const e = completeTwoFa(code)
-    if (e) { setErr(e); return }
-    afterLogin(loginId)
   }
   const doReset = () => {
     const e = resetPassword(fp.email, fp.pin, fp.password)
@@ -96,19 +89,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
             ))}
           </div>}
           {err && <div className="mb-4 rounded-2xl bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 px-4 py-3 text-sm font-semibold">{err}</div>}
-          {step === '2fa' ? (
-            <div className="space-y-4">
-              <div className="text-center">
-                <span className="inline-flex w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white items-center justify-center mb-2"><ShieldCheck size={26} /></span>
-                <p className="font-extrabold text-lg">Two-factor verification</p>
-                <p className="text-sm text-slate-500 mt-1">This account has 2FA on. Enter the 6-digit verification code to continue.</p>
-                <p className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-500/10 rounded-xl px-3 py-2 mt-3">Demo mode — your code is <span className="font-mono">123456</span></p>
-              </div>
-              <Input label="Verification code" inputMode="numeric" maxLength={6} placeholder="123456" value={code} onChange={e => setCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && doVerify()} />
-              <Btn className="w-full py-3.5" onClick={doVerify}>Verify & log in</Btn>
-              <button onClick={() => { cancelTwoFa(); setErr(''); setStep('auth') }} className="w-full text-center text-sm font-bold text-slate-500">← Back to login</button>
-            </div>
-          ) : step === 'forgot' ? (
+          {step === 'forgot' ? (
             <div className="space-y-4">
               <div>
                 <p className="font-extrabold text-lg">Reset your password</p>

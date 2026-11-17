@@ -14,6 +14,10 @@ import { DirectWithdraw, EarnPage, SwapPage, TradePage } from './pages/Extras'
 import { AdsPage, CheckinPage, QuizPage, ScratchPage, SpinPage, TasksPage } from './pages/EarnPages'
 import { NewsDetail, NewsList, Notifications, Transactions } from './pages/TransactionsNews'
 import Profile from './pages/Profile'
+import LockScreen from './pages/LockScreen'
+
+/** When the device is locked, cover the whole app with the unlock screen (routes stay mounted underneath). */
+function LockGate() { const { locked, user } = useApp(); return locked && user ? <LockScreen /> : null }
 
 /** New navigation (PUSH) opens at the top; browser Back/Forward (POP) restores the previous scroll spot. */
 function ScrollManager() {
@@ -58,6 +62,7 @@ export default function App() {
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
         <ScrollManager />
         <Toasts />
+        <LockGate />
         <Routes>
           <Route path="/" element={<Root />} />
           <Route path="/login" element={<AuthPage mode="login" />} />

@@ -44,9 +44,17 @@ interface Ctx {
   currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string; fmtAmount: (bdt: number) => string; toBDT: (amount: number) => number; fromBDT: (bdt: number) => number
   toasts: Toast[]; toast: (t: Omit<Toast, 'id'>) => void; dismissToast: (id: string) => void
   login: (idOrEmail: string, password: string) => string | null
-  twoFaPending: string | null
-  completeTwoFa: (code: string) => string | null
-  cancelTwoFa: () => void
+  locked: boolean
+  appInstalled: boolean
+  devicePinSet: boolean
+  fingerprintSet: boolean
+  setDevicePin: (pin: string) => string | null
+  clearDevicePin: () => void
+  setupFingerprint: () => Promise<string | null>
+  clearFingerprint: () => void
+  unlockWithPin: (pin: string) => string | null
+  unlockWithFingerprint: () => Promise<string | null>
+  usePasswordInstead: () => void
   resetPassword: (email: string, pin: string, newPassword: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
   logout: () => void
@@ -103,7 +111,11 @@ export const useApp = () => { const c = useContext(AppCtx); if (!c) throw new Er
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(load)
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
-  const [twoFaPending, setTwoFaPending] = useState<string | null>(null)
+  const [locked, setLocked] = useState<boolean>(() => {
+    const sid = localStorage.getItem(SESSION)
+    return !!sid && (!!localStorage.getItem('nova.loginpin.' + sid) || !!localStorage.getItem('nova.webauthn.' + sid))
+  })
+  const [, setQuickTick] = useState(0)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
   const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
   const [currencyPref, setCurrencyPref] = useState<string | null>(() => localStorage.getItem('nova.currency'))
@@ -139,9 +151,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     evs.forEach(e => window.addEventListener(e, bump, { passive: true }))
     const iv = setInterval(() => {
       if (Date.now() - lastActiveRef.current > 10 * 60 * 1000) {
-        localStorage.removeItem(SESSION)
-        setUserId(null)
-        toast({ kind: 'error', title: 'Signed out for security', body: 'You were inactive for 10 minutes, so NovaWallet signed you out.' })
+        const hasQuick = !!localStorage.getItem('nova.loginpin.' + userId) || !!localStorage.getItem('nova.webauthn.' + userId)
+        if (hasQuick) {
+          setLocked(true)
+          toast({ kind: 'error', title: 'Locked for security', body: 'Inactive for 10 minutes — unlock with your login PIN or fingerprint.' })
+        } else {
+          localStorage.removeItem(SESSION)
+          setUserId(null)
+          toast({ kind: 'error', title: 'Signed out for security', body: 'You were inactive for 10 minutes, so NovaWallet signed you out.' })
+        }
       }
     }, 30000)
     return () => { evs.forEach(e => window.removeEventListener(e, bump)); clearInterval(iv) }
@@ -261,21 +279,73 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (u.passwordHash !== hashSecret(password)) return recordFail(u.id, 'Wrong password. Please try again.')
     recordSuccess(u.id)
     if (u.status === 'suspended') return 'This account is suspended. Contact support.'
-    if (u.twoFA) { setTwoFaPending(u.id); return '2fa' }
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO() })
-    localStorage.setItem(SESSION, u.id); setUserId(u.id)
+    localStorage.setItem(SESSION, u.id); setUserId(u.id); setLocked(false)
     return null
   }
-  const completeTwoFa: Ctx['completeTwoFa'] = (code) => {
-    if (!twoFaPending) return 'No verification is in progress.'
-    const lk2 = lockError(twoFaPending); if (lk2) return lk2
-    if (code.trim() !== '123456') return recordFail(twoFaPending, 'Incorrect code. Please try again.')
-    const u = dbRef.current.users.find(x => x.id === twoFaPending); if (!u) { setTwoFaPending(null); return 'Account not found.' }
-    mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO(); notify(d, u.id, 'New sign-in', 'Your account was signed in with two-factor verification.', 'security') })
-    localStorage.setItem(SESSION, u.id); setUserId(u.id); setTwoFaPending(null)
+  // ---- Device quick login: PIN + fingerprint (WebAuthn), stored ONLY on this device ----
+  const pinKey = (id: string) => 'nova.loginpin.' + id
+  const fpKey = (id: string) => 'nova.webauthn.' + id
+  const appInstalled = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true
+  const devicePinSet = !!userId && !!localStorage.getItem(pinKey(userId))
+  const fingerprintSet = !!userId && !!localStorage.getItem(fpKey(userId))
+  const b64url = (buf: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const fromB64url = (s: string) => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/')); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer }
+  const setDevicePin: Ctx['setDevicePin'] = (pin) => {
+    if (!user) return 'Not signed in'
+    if (!/^\d{4}$/.test(pin)) return 'Login PIN must be exactly 4 digits.'
+    localStorage.setItem(pinKey(user.id), hashSecret(pin)); setQuickTick(x => x + 1)
+    mutate(d => notify(d, user.id, 'Login PIN set', 'Quick login with a device PIN is now on for this device.', 'security'))
     return null
   }
-  const cancelTwoFa: Ctx['cancelTwoFa'] = () => setTwoFaPending(null)
+  const clearDevicePin = () => { if (!userId) return; localStorage.removeItem(pinKey(userId)); setQuickTick(x => x + 1) }
+  const clearFingerprint = () => { if (!userId) return; localStorage.removeItem(fpKey(userId)); setQuickTick(x => x + 1) }
+  const setupFingerprint: Ctx['setupFingerprint'] = async () => {
+    if (!user) return 'Not signed in'
+    if (!appInstalled) return 'Fingerprint login needs the installed app. Install NovaWallet first (Profile \u2192 Install App), open the installed app, then set it up here.'
+    if (!window.PublicKeyCredential) return 'This device or browser does not support fingerprint login.'
+    try {
+      const cred = await navigator.credentials.create({ publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: 'NovaWallet', id: location.hostname },
+        user: { id: new TextEncoder().encode(user.id), name: user.email, displayName: user.name },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+        timeout: 60000,
+      } } as any) as PublicKeyCredential | null
+      if (!cred) return 'Fingerprint setup was cancelled.'
+      localStorage.setItem(fpKey(user.id), b64url(cred.rawId)); setQuickTick(x => x + 1)
+      mutate(d => notify(d, user.id, 'Fingerprint login on', 'Fingerprint unlock is now set up on this device.', 'security'))
+      return null
+    } catch { return 'Fingerprint setup failed or was cancelled. Please try again.' }
+  }
+  const unlockWithPin: Ctx['unlockWithPin'] = (pin) => {
+    if (!user) return 'Not signed in'
+    const lk = lockError(user.id); if (lk) return lk
+    const stored = localStorage.getItem(pinKey(user.id))
+    if (!stored) return 'No login PIN is set on this device.'
+    if (hashSecret(pin) !== stored) return recordFail(user.id, 'Incorrect login PIN.')
+    recordSuccess(user.id); setLocked(false)
+    return null
+  }
+  const unlockWithFingerprint: Ctx['unlockWithFingerprint'] = async () => {
+    if (!user) return 'Not signed in'
+    const credId = localStorage.getItem(fpKey(user.id))
+    if (!credId) return 'Fingerprint is not set up on this device.'
+    try {
+      const assertion = await navigator.credentials.get({ publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rpId: location.hostname,
+        allowCredentials: [{ type: 'public-key', id: fromB64url(credId) }],
+        userVerification: 'required',
+        timeout: 60000,
+      } } as any)
+      if (!assertion) return 'Fingerprint verification was cancelled.'
+      setLocked(false)
+      return null
+    } catch { return 'Fingerprint verification failed or was cancelled.' }
+  }
+  const usePasswordInstead = () => { setLocked(false); localStorage.removeItem(SESSION); setUserId(null) }
   const resetPassword: Ctx['resetPassword'] = (email, pin, newPassword) => {
     const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())
     if (!u) return 'No account found for that email.'
@@ -310,10 +380,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (referrer) notify(d, referrer.id, 'New referral', nu.name + ' joined with your referral code.', 'referral')
       notify(d, nu.id, 'Welcome to NovaWallet', 'Verify your KYC from your profile to unlock loans and higher limits.', 'info')
     })
-    localStorage.setItem(SESSION, nu.id); setUserId(nu.id)
+    localStorage.setItem(SESSION, nu.id); setUserId(nu.id); setLocked(false)
     return null
   }
-  const logout = () => { localStorage.removeItem(SESSION); setUserId(null) }
+  const logout = () => { localStorage.removeItem(SESSION); setUserId(null); setLocked(false) }
 
   const addDeposit: Ctx['addDeposit'] = (p) => {
     if (!user) return
@@ -825,7 +895,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
-    twoFaPending, completeTwoFa, cancelTwoFa, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
+    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, usePasswordInstead, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }
