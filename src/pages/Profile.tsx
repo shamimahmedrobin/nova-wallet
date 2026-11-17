@@ -44,6 +44,7 @@ export default function Profile() {
     } else setModal('install')
   }
   const [edit, setEdit] = useState({ name: user?.name ?? '', phone: user?.phone ?? '' })
+  const [editPhoto, setEditPhoto] = useState<string | undefined>(user?.photo)
   const [pw, setPw] = useState({ old: '', next: '' })
   const [pin, setPin] = useState({ old: '', next: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
@@ -97,7 +98,7 @@ export default function Profile() {
   return (
     <div className="anim-fade-up">
       <Card className="p-6 text-center mb-4">
-        <div className="flex justify-center"><Avatar name={user.name} size={84} /></div>
+        <div className="flex justify-center"><Avatar name={user.name} size={84} photo={user.photo} /></div>
         <h1 className="text-xl font-extrabold mt-3">{user.name}</h1>
         <p className="text-sm text-slate-500">@{user.username} · {user.email}</p>
         <p className="text-sm text-slate-500">{user.phone} · ID {user.id}</p>
@@ -212,13 +213,21 @@ export default function Profile() {
         </div>
       </Modal>
       <Modal open={modal === 'edit'} onClose={() => setModal(null)} title={t('p_edit')}>
-        <ModalDesc>Update your name and phone number. Your email and User ID can't be changed.</ModalDesc>
+        <ModalDesc>Update your photo, name and phone number. Your email and User ID can't be changed.</ModalDesc>
         <div className="space-y-4">
+          <div className="flex flex-col items-center gap-2.5">
+            <Avatar name={edit.name || user.name} size={84} photo={editPhoto} />
+            <div className="flex gap-2">
+              <label className="px-3.5 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-xs font-bold cursor-pointer inline-flex items-center gap-1.5"><Upload size={13} /> {editPhoto ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setEditPhoto(await fileToScaledDataUrl(f, 256)); e.target.value = '' }} /></label>
+              {editPhoto && <button onClick={() => setEditPhoto(undefined)} className="px-3.5 py-2 rounded-xl text-xs font-bold text-rose-500">Remove</button>}
+            </div>
+            <p className="text-[11px] text-slate-400 text-center">Your photo shows next to your name everywhere — when people send you money, on the leaderboard, and across the app.</p>
+          </div>
           <Input label={t('full_name')} value={edit.name} onChange={e => setEdit(s => ({ ...s, name: e.target.value }))} />
           <Input label={t('phone')} value={edit.phone} onChange={e => setEdit(s => ({ ...s, phone: e.target.value }))} />
           <Input label="Email" value={user.email} disabled />
         </div>
-        <ModalActions><Btn className="w-full py-3.5" onClick={() => { updateProfile(edit); setModal(null); toast({ kind: 'success', title: 'Profile updated' }) }}>{t('save_changes')}</Btn></ModalActions>
+        <ModalActions><Btn className="w-full py-3.5" onClick={() => { updateProfile({ ...edit, photo: editPhoto }); setModal(null); toast({ kind: 'success', title: 'Profile updated' }) }}>{t('save_changes')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'pw'} onClose={() => setModal(null)} title={t('p_password')}>
         <ModalDesc>Choose a strong new password. You'll use it with your email to log in.</ModalDesc>

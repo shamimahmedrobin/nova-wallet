@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Link, useParams } from 'react-router-dom'
-import { Bell, FileText, Search, X , CheckCheck, ChevronRight } from 'lucide-react'
+import { Bell, Copy, FileText, Search, X , CheckCheck, ChevronRight } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Badge, Btn, Card, Empty, Modal, NewsLogo, TxDirIcon, statusTone } from '../components/ui'
 import { fmtDate, fmtDateTime, txAmountCls, txDirection, txSign } from '../lib/utils'
@@ -12,7 +12,8 @@ const CATS = ['all', 'add_money', 'cash_out', 'send', 'receive', 'referral', 'lo
 const catLabel = (c: string) => c.replace(/_/g, ' ')
 
 export function Transactions() {
-  const { user, db, t, fmtMoney } = useApp()
+  const { user, db, t, fmtMoney, toast } = useApp()
+  const copyTxId = async (id: string) => { try { await navigator.clipboard.writeText(id); toast({ kind: 'success', title: 'Transaction ID copied', body: id }) } catch { toast({ kind: 'error', title: 'Copy failed', body: id }) } }
   const [q, setQ] = useState(''); const [cat, setCat] = useState('all'); const [status, setStatus] = useState('all')
   const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [sel, setSel] = useState<Tx | null>(null)
   const mine = useMemo(() => db.txs.filter(t => t.userId === user?.id)
@@ -86,7 +87,8 @@ export function Transactions() {
         {sel && (
           <div className="space-y-4">
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-2 text-sm">
-              {[['Transaction ID', sel.id], ['Title', sel.title], ['Category', catLabel(sel.category)], ['Fee', fmtMoney(sel.fee)], ['Currency', sel.currency], ['Status', sel.status], ['Method', sel.method ?? '—'], ['Counterparty', sel.counterparty ?? '—'], ['Note', sel.note ?? '—'], ['Date', fmtDateTime(sel.createdAt)]].map(([k, v]) => (
+              <div className="flex justify-between gap-4 items-center"><span className="text-slate-500">Transaction ID</span><span className="flex items-center gap-1.5"><span className="font-bold font-mono text-right">{sel.id}</span><button onClick={() => copyTxId(sel.id)} title="Copy Transaction ID" className="p-1.5 rounded-lg bg-violet-100 dark:bg-violet-500/15 text-violet-600"><Copy size={13} /></button></span></div>
+              {[['Title', sel.title], ['Category', catLabel(sel.category)], ['Fee', fmtMoney(sel.fee)], ['Currency', sel.currency], ['Status', sel.status], ['Method', sel.method ?? '—'], ['Counterparty', sel.counterparty ?? '—'], ['Note', sel.note ?? '—'], ['Date', fmtDateTime(sel.createdAt)]].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><span className="text-slate-500 capitalize">{k}</span><span className="font-bold text-right capitalize">{v}</span></div>
               ))}
               <div className="flex justify-between gap-4 border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Amount</span><span className={`font-extrabold text-right ${txAmountCls(txDirection(sel.category, sel.amount))}`}>{txSign(txDirection(sel.category, sel.amount))}{fmtMoney(Math.abs(sel.amount))}</span></div>

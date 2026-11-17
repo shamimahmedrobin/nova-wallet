@@ -123,8 +123,10 @@ export function NewsLogo({ coin, category, size = 64 }: { coin?: string; categor
       style={{ width: size, height: size, background: `linear-gradient(135deg, ${logo.bg}, ${logo.bg}bb)`, fontSize: size * 0.44 }}>{logo.glyph}</div>
   )
 }
-export const Avatar = ({ name, size = 40 }: { name: string; size?: number }) => (
-  <div className={`shrink-0 rounded-full bg-gradient-to-br ${gradientFor(name)} text-white flex items-center justify-center font-bold`} style={{ width: size, height: size, fontSize: size * 0.36 }}>{initials(name)}</div>
+export const Avatar = ({ name, size = 40, photo }: { name: string; size?: number; photo?: string }) => (
+  photo
+    ? <img src={photo} alt={name} className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
+    : <div className={`shrink-0 rounded-full bg-gradient-to-br ${gradientFor(name)} text-white flex items-center justify-center font-bold`} style={{ width: size, height: size, fontSize: size * 0.36 }}>{initials(name)}</div>
 )
 export const Empty = ({ title, body }: { title: string; body?: string }) => (
   <div className="py-10 text-center">

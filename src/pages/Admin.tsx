@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, Check, Copy, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, statusTone } from '../components/ui'
-import { fmtDateTime, fmtUSDT } from '../lib/utils'
+import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, TxDirIcon, statusTone } from '../components/ui'
+import { fmtDateTime, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
+import type { Tx } from '../lib/types'
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'finance', label: 'Deposits & Withdrawals', icon: Wallet },
+  { id: 'txs', label: 'Transactions', icon: ArrowLeftRight },
   { id: 'users', label: 'Users & KYC', icon: Users },
   { id: 'loans', label: 'Loans', icon: HandCoins },
   { id: 'referrals', label: 'Referrals', icon: Gift },
@@ -25,6 +27,10 @@ export default function Admin() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
   const [userQ, setUserQ] = useState('')
+  const [txQ, setTxQ] = useState(''); const [selTx, setSelTx] = useState<Tx | null>(null)
+  const copyTxId = async (id: string) => { try { await navigator.clipboard.writeText(id); toast({ kind: 'success', title: 'Transaction ID copied', body: id }) } catch { toast({ kind: 'error', title: 'Copy failed', body: id }) } }
+  const txq = txQ.trim().toLowerCase()
+  const filteredTxs = !txq ? db.txs : db.txs.filter(tx => tx.id.toLowerCase().includes(txq) || tx.title.toLowerCase().includes(txq) || (tx.counterparty ?? '').toLowerCase().includes(txq) || (db.users.find(u => u.id === tx.userId)?.name.toLowerCase().includes(txq) ?? false))
   const [selUserId, setSelUserId] = useState<string | null>(null)
   const [mAdjAmt, setMAdjAmt] = useState(''); const [mAdjReason, setMAdjReason] = useState(''); const [mLoanLimit, setMLoanLimit] = useState('')
   const openUser = (u: any) => { setSelUserId(u.id); setMAdjAmt(''); setMAdjReason(''); setMLoanLimit(u.loanLimitOverride ? String(Math.round(u.loanLimitOverride / db.settings.bdtPerUsd * 100) / 100) : '') }
@@ -150,7 +156,7 @@ export default function Admin() {
                 return (
                   <Card key={u.id} className="p-4">
                     <div className="flex flex-wrap items-center gap-3 cursor-pointer" onClick={() => openUser(u)} title="Click to manage this account">
-                      <Avatar name={u.name} />
+                      <Avatar name={u.name} photo={u.photo} />
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {usdt((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
                       <Badge tone={statusTone(u.kyc)}>KYC {u.kyc}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
                     </div>
@@ -303,7 +309,7 @@ export default function Admin() {
               <h3 className="font-extrabold mb-3">Set a user's level directly</h3>
               {db.users.filter(u => u.role === 'user').map(u => (
                 <Card key={u.id} className="p-3.5 mb-2 flex items-center gap-3">
-                  <Avatar name={u.name} size={36} />
+                  <Avatar name={u.name} size={36} photo={u.photo} />
                   <div className="flex-1 min-w-[120px]"><p className="font-bold text-sm">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · KYC {u.kyc}</p></div>
                   <select value={u.level} onChange={e => { setUserLevel(u.id, Number(e.target.value)); toast({ kind: 'success', title: u.name + ' → Level ' + e.target.value }) }} className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-bold">
                     {[1, 2, 3, 4].map(n => <option key={n} value={n}>Level {n}</option>)}
@@ -315,6 +321,29 @@ export default function Admin() {
         )}
 
         {tab === 'support' && <SupportChat />}
+        {tab === 'txs' && (
+          <div className="space-y-3">
+            <Card className="p-4">
+              <Input label="Search by Transaction ID" placeholder="Paste or type the Transaction ID, e.g. TXN-…" value={txQ} onChange={e => setTxQ(e.target.value)} />
+              <p className="text-xs text-slate-400 mt-2">Built for customer support — every transaction carries its own ID. Search also matches the customer name, title or counterparty. {filteredTxs.length} transaction(s) found.</p>
+            </Card>
+            {filteredTxs.length === 0 ? <Card><Empty title="No transactions match that search" /></Card> : filteredTxs.slice(0, 100).map(tx => { const tu = db.users.find(u => u.id === tx.userId); const dir = txDirection(tx.category, tx.amount); return (
+              <button key={tx.id} onClick={() => setSelTx(tx)} className="w-full text-left">
+                <Card className="p-4 hover:border-violet-300 transition">
+                  <div className="flex items-start gap-3">
+                    <TxDirIcon dir={dir} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold truncate">{tx.title}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{tu?.name ?? tx.userId} · {fmtDateTime(tx.createdAt)}</p>
+                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">{tx.id}</p>
+                    </div>
+                    <div className="text-right shrink-0"><p className={`font-extrabold ${txAmountCls(dir)}`}>{txSign(dir)}{usdt(Math.abs(tx.amount))}</p><div className="mt-1"><Badge tone={statusTone(tx.status)}>{tx.status}</Badge></div></div>
+                  </div>
+                </Card>
+              </button>
+            ) })}
+          </div>
+        )}
         {tab === 'audit' && (
           <div className="anim-fade-up space-y-2">
             {db.audit.map(a => (
@@ -364,6 +393,20 @@ export default function Admin() {
         )}
       </main>
 
+      <Modal open={!!selTx} onClose={() => setSelTx(null)} title="Transaction details">
+        {selTx && (() => { const tu = db.users.find(u => u.id === selTx.userId); const dir = txDirection(selTx.category, selTx.amount); return (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-4 items-center"><span className="text-slate-500">Transaction ID</span><span className="flex items-center gap-1.5"><span className="font-bold font-mono text-right">{selTx.id}</span><button onClick={() => copyTxId(selTx.id)} title="Copy Transaction ID" className="p-1.5 rounded-lg bg-violet-100 dark:bg-violet-500/15 text-violet-600"><Copy size={13} /></button></span></div>
+              {[['Customer', tu ? tu.name + ' · ' + tu.email : selTx.userId], ['Title', selTx.title], ['Category', selTx.category], ['Fee', usdt(selTx.fee)], ['Status', selTx.status], ['Method', selTx.method ?? '—'], ['Counterparty', selTx.counterparty ?? '—'], ['Note', selTx.note ?? '—'], ['Date', fmtDateTime(selTx.createdAt)]].map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-4"><span className="text-slate-500 capitalize">{k}</span><span className="font-bold text-right capitalize">{v}</span></div>
+              ))}
+              <div className="flex justify-between gap-4 border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Amount</span><span className={`font-extrabold text-right ${txAmountCls(dir)}`}>{txSign(dir)}{usdt(Math.abs(selTx.amount))}</span></div>
+            </div>
+            <Btn className="w-full" onClick={() => copyTxId(selTx.id)}><Copy size={15} /> Copy Transaction ID</Btn>
+          </div>
+        ) })()}
+      </Modal>
       <Modal open={!!selUser} onClose={() => setSelUserId(null)} title={selUser ? 'Manage — ' + selUser.name : ''}>
         {selUser && (() => {
           const lvlDef = db.levels.find(l => l.level === selUser.level)
@@ -472,7 +515,7 @@ function SupportChat() {
             <button key={x.id} onClick={() => setSel(x.id)} className="w-full text-left">
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <Avatar name={u?.name ?? '?'} />
+                  <Avatar name={u?.name ?? '?'} photo={u?.photo} />
                   <div className="flex-1 min-w-0">
                     <p className="font-bold truncate">{x.subject}</p>
                     <p className="text-xs text-slate-400 truncate">{u?.name} · @{u?.username} · {u?.email}</p>
@@ -489,7 +532,7 @@ function SupportChat() {
         {tk && (
           <div>
             <div className="flex items-center gap-3 flex-wrap mb-4">
-              <Avatar name={tku?.name ?? '?'} />
+              <Avatar name={tku?.name ?? '?'} photo={tku?.photo} />
               <div className="flex-1 min-w-0"><p className="font-extrabold truncate">{tku?.name}</p><p className="text-xs text-slate-400 truncate">@{tku?.username} · {tku?.email}</p></div>
               <Badge tone={SUP_TONE(tk.status)}>{tk.status}</Badge>
               {tk.status !== 'resolved' && <Btn className="!py-2 !text-xs !bg-emerald-500" onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }}>✓ Mark Resolved</Btn>}

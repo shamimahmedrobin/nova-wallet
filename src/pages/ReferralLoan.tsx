@@ -49,7 +49,7 @@ export function Referral() {
         {leaderboard.map((r, i) => (
           <div key={r.u.id} className="flex items-center gap-3 p-3">
             <span className={`w-7 text-center font-extrabold ${i === 0 ? 'text-amber-500' : 'text-slate-400'}`}>{i + 1}</span>
-            <Avatar name={r.u.name} size={36} />
+            <Avatar name={r.u.name} size={36} photo={r.u.photo} />
             <div className="flex-1"><p className="font-bold text-sm">{r.u.name}{r.u.id === user.id && ' (You)'}</p><p className="text-xs text-slate-400">{r.count} referrals</p></div>
             <span className="font-extrabold text-violet-600">{fmtMoney(r.earned)}</span>
           </div>
@@ -59,7 +59,7 @@ export function Referral() {
       <h3 className="font-extrabold mt-6 mb-3">My referrals</h3>
       {refs.length === 0 ? <Card><Empty title="No referrals yet" body="Share your link to start earning." /></Card> : (
         <div className="space-y-2">{refs.map(r => (
-          <Card key={r.id} className="p-4 flex items-center gap-3"><Avatar name={r.name} /><div className="flex-1"><p className="font-bold">{r.name}</p><p className="text-xs text-slate-400">Joined {fmtDateTime(r.createdAt)}</p></div><Badge tone={r.kyc === 'verified' ? 'green' : 'amber'}>{r.kyc === 'verified' ? 'Active' : r.kyc}</Badge></Card>
+          <Card key={r.id} className="p-4 flex items-center gap-3"><Avatar name={r.name} photo={r.photo} /><div className="flex-1"><p className="font-bold">{r.name}</p><p className="text-xs text-slate-400">Joined {fmtDateTime(r.createdAt)}</p></div><Badge tone={r.kyc === 'verified' ? 'green' : 'amber'}>{r.kyc === 'verified' ? 'Active' : r.kyc}</Badge></Card>
         ))}</div>
       )}
       <h3 className="font-extrabold mt-6 mb-3">Earnings history</h3>

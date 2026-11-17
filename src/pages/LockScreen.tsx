@@ -32,7 +32,7 @@ export default function LockScreen() {
         <div className="w-full max-w-sm py-8">
           <div className="flex justify-center mb-5"><Logo size={46} /></div>
           <div className="relative w-fit mx-auto mb-3">
-            <Avatar name={user.name} size={72} />
+            <Avatar name={user.name} size={72} photo={user.photo} />
             <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-violet-600 text-white flex items-center justify-center border-2 border-slate-50 dark:border-slate-950"><Lock size={12} /></span>
           </div>
           <p className="text-center font-extrabold text-2xl">Welcome back, {first} 👋</p>

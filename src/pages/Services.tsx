@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Copy, Download, Share2, Upload } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../lib/store'
-import { Badge, Btn, Card, Empty, Input, Modal, PinField, Select, statusTone , MaxBtn } from '../components/ui'
+import { Avatar, Badge, Btn, Card, Empty, Input, Modal, PinField, Select, statusTone , MaxBtn } from '../components/ui'
 import { fmtDateTime, fmtUSDT } from '../lib/utils'
 import type { User } from '../lib/types'
 
@@ -171,7 +171,7 @@ export function SendMoney() {
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
             {results.map(u => (
               <button key={u.id} onClick={() => setTo(u)} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-left">
-                <span className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 text-white flex items-center justify-center text-xs font-bold">{u.name.split(' ').map(x => x[0]).slice(0, 2).join('')}</span>
+                <Avatar name={u.name} size={36} photo={u.photo} />
                 <span><span className="block font-bold text-sm">{u.name}</span><span className="text-xs text-slate-400">@{u.username} · {u.id}</span></span>
               </button>
             ))}
@@ -179,7 +179,7 @@ export function SendMoney() {
         )}
         {to && (
           <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 p-4 flex items-center gap-3">
-            <span className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 text-white flex items-center justify-center font-bold">{to.name.split(' ').map(x => x[0]).slice(0, 2).join('')}</span>
+            <Avatar name={to.name} size={44} photo={to.photo} />
             <div><p className="font-bold">{to.name} {to.kyc === 'verified' && '✅'}</p><p className="text-xs text-slate-500">@{to.username} · {to.email} · {to.id}</p></div>
           </div>
         )}
