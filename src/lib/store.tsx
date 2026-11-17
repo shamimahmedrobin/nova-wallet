@@ -10,6 +10,7 @@ import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
 const KEY = 'novawallet.db.v2'
 const SESSION = 'novawallet.session'
 const LASTSEEN = 'nova.lastseen'
+const TABKEY = 'nova.tabopen'
 const IDLE_MS = 5 * 60 * 1000
 
 function load(): DB {
@@ -115,13 +116,15 @@ export const useApp = () => { const c = useContext(AppCtx); if (!c) throw new Er
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(load)
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
-  // A quick refresh/reopen goes straight back in (no lock). But if the last
-  // visit ended 5+ minutes ago, the saved session starts LOCKED — this is what
-  // catches leaving the app or the phone screen locking.
+  // A quick refresh inside the SAME tab goes straight back in (no lock). The
+  // saved session starts LOCKED when this is a fresh tab (the previous tab was
+  // closed — sessionStorage is per-tab) or when the last visit was 5+ min ago.
   const [locked, setLocked] = useState<boolean>(() => {
     if (!localStorage.getItem(SESSION)) return false
+    let newTab = false
+    try { newTab = !sessionStorage.getItem(TABKEY) } catch { newTab = false }
     const seen = Number(localStorage.getItem(LASTSEEN) ?? 0)
-    return seen > 0 && Date.now() - seen > IDLE_MS
+    return newTab || (seen > 0 && Date.now() - seen > IDLE_MS)
   })
   const lockedRef = useRef(false)
   useEffect(() => { lockedRef.current = locked }, [locked])
@@ -159,6 +162,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!userId) return
     lastActiveRef.current = Date.now()
+    try { sessionStorage.setItem(TABKEY, '1') } catch { /* ignore */ }
     const stamp = () => { try { localStorage.setItem(LASTSEEN, String(Date.now())) } catch { /* ignore */ } }
     stamp()
     const bump = () => { lastActiveRef.current = Date.now() }

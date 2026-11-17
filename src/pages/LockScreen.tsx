@@ -80,7 +80,7 @@ export default function LockScreen() {
           )}
           <p className="text-center text-[11px] text-slate-400 mt-2 leading-relaxed">Sign out removes the saved login from this device —<br />next time you'll get the full login form.</p>
 
-          <p className="text-center text-[11px] text-slate-400 mt-6 inline-flex items-center gap-1 w-full justify-center"><ShieldCheck size={12} /> NovaWallet locks after 5 minutes of inactivity.</p>
+          <p className="text-center text-[11px] text-slate-400 mt-6 inline-flex items-center gap-1 w-full justify-center"><ShieldCheck size={12} /> NovaWallet locks when the tab closes, or after 5 minutes away.</p>
         </div>
       </div>
     </div>
