@@ -119,6 +119,7 @@ export function seedDB(): DB {
       { id: 'LVR-101', userId: tanvir.id, fromLevel: 1, toLevel: 2, status: 'pending', createdAt: d(0, 12) },
     ], stakes: [], earnStates: [],
     watchlist: { [shamim.id]: ['BTC', 'ETH', 'SOL'] },
+    sec: {},
     referralEarnings: [
       { id: 're1', userId: shamim.id, fromUser: 'Arif Hossain', amount: 125, createdAt: d(7) },
       { id: 're2', userId: shamim.id, fromUser: 'Nusrat Jahan', amount: 80, createdAt: d(5) },

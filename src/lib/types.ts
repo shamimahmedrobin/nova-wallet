@@ -72,6 +72,6 @@ export interface DB {
   deposits: DepositReq[]; withdrawals: WithdrawReq[]; loans: Loan[]
   news: NewsItem[]; banners: Banner[]; notifications: Notif[]
   settings: Settings; audit: Audit[]; tickets: SupportTicket[]
-  levels: LevelDef[]; levelRequests: LevelRequest[]; stakes: Stake[]; earnStates: EarnState[]
+  levels: LevelDef[]; levelRequests: LevelRequest[]; stakes: Stake[]; earnStates: EarnState[]; sec: Record<string, { fails: number; lockedUntil: number }>
   watchlist: Record<string, string[]>; referralEarnings: { id: string; userId: string; fromUser: string; amount: number; createdAt: string }[]
 }

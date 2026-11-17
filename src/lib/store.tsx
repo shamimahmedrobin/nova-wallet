@@ -21,6 +21,7 @@ function load(): DB {
       if (!db.levelRequests) db.levelRequests = []
       if (!db.stakes) db.stakes = []
       if (!db.earnStates) db.earnStates = []
+      if (!db.sec) db.sec = {}
       if (!db.settings.payMethods) db.settings.payMethods = DEFAULT_PAY_METHODS
       db.tickets.forEach(tk => {
         if (!tk.messages) tk.messages = [{ id: tk.id + '-m1', from: 'user', text: tk.message ?? '', at: tk.createdAt }]
@@ -128,6 +129,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToasts(x => x.filter(y => y.id !== id)), 4200)
   }, [])
   const dismissToast = useCallback((id: string) => setToasts(x => x.filter(y => y.id !== id)), [])
+  // ---- Security: sign out after 10 minutes of inactivity ----
+  const lastActiveRef = useRef(Date.now())
+  useEffect(() => {
+    if (!userId) return
+    lastActiveRef.current = Date.now()
+    const bump = () => { lastActiveRef.current = Date.now() }
+    const evs = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const
+    evs.forEach(e => window.addEventListener(e, bump, { passive: true }))
+    const iv = setInterval(() => {
+      if (Date.now() - lastActiveRef.current > 10 * 60 * 1000) {
+        localStorage.removeItem(SESSION)
+        setUserId(null)
+        toast({ kind: 'error', title: 'Signed out for security', body: 'You were inactive for 10 minutes, so NovaWallet signed you out.' })
+      }
+    }, 30000)
+    return () => { evs.forEach(e => window.removeEventListener(e, bump)); clearInterval(iv) }
+  }, [userId, toast])
 
   const user = useMemo(() => db.users.find(u => u.id === userId) ?? null, [db, userId])
   const lang = user?.language || langPref
@@ -194,6 +212,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const mutate = (fn: (draft: DB) => void) => {
     setDb(prev => { const draft: DB = JSON.parse(JSON.stringify(prev)); fn(draft); return draft })
   }
+  // ---- Security: failed-attempt lockout (5 fails → 5-minute lock) + validation ----
+  const MAX_FAILS = 5
+  const LOCK_MS = 5 * 60 * 1000
+  const lockError = (id: string): string | null => {
+    const left = (dbRef.current.sec?.[id]?.lockedUntil ?? 0) - Date.now()
+    return left > 0 ? 'Too many failed attempts. This account is locked for ' + Math.ceil(left / 60000) + ' more minute(s). Please try again later.' : null
+  }
+  const recordFail = (id: string, base: string): string => {
+    const fails = (dbRef.current.sec?.[id]?.fails ?? 0) + 1
+    const locking = fails >= MAX_FAILS
+    mutate(d => {
+      if (!d.sec) d.sec = {}
+      d.sec[id] = locking ? { fails: 0, lockedUntil: Date.now() + LOCK_MS } : { fails, lockedUntil: 0 }
+      if (locking) notify(d, id, '🔒 Account temporarily locked', 'Too many wrong password/PIN attempts. Sign-in and PIN actions are locked for 5 minutes.', 'security')
+    })
+    return locking ? 'Too many failed attempts. This account is now locked for 5 minutes.' : base + ' (' + (MAX_FAILS - fails) + ' attempt(s) left before a 5-minute lock)'
+  }
+  const recordSuccess = (id: string) => mutate(d => { if (d.sec?.[id]) d.sec[id] = { fails: 0, lockedUntil: 0 } })
+  const MAX_AMOUNT = 100000000
+  const badAmount = (n: number) => !Number.isFinite(n) || n <= 0 || n > MAX_AMOUNT
+  const badQty = (n: number) => !Number.isFinite(n) || n <= 0
+  const TRX_RE = /^[A-Za-z0-9-]{6,64}$/
 
   const levelDefOf = (u: User) => dbRef.current.levels.find(l => l.level === (u.level ?? 1))
   const outgoingSum = (userId: string, period: 'day' | 'month') => {
@@ -217,7 +257,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login: Ctx['login'] = (idOrEmail, password) => {
     const u = dbRef.current.users.find(x => x.email === idOrEmail || x.username === idOrEmail)
     if (!u) return 'No account found for that email / username.'
-    if (u.passwordHash !== hashSecret(password)) return 'Wrong password. Please try again.'
+    const lk = lockError(u.id); if (lk) return lk
+    if (u.passwordHash !== hashSecret(password)) return recordFail(u.id, 'Wrong password. Please try again.')
+    recordSuccess(u.id)
     if (u.status === 'suspended') return 'This account is suspended. Contact support.'
     if (u.twoFA) { setTwoFaPending(u.id); return '2fa' }
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO() })
@@ -226,7 +268,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const completeTwoFa: Ctx['completeTwoFa'] = (code) => {
     if (!twoFaPending) return 'No verification is in progress.'
-    if (code.trim() !== '123456') return 'Incorrect code. Please try again.'
+    const lk2 = lockError(twoFaPending); if (lk2) return lk2
+    if (code.trim() !== '123456') return recordFail(twoFaPending, 'Incorrect code. Please try again.')
     const u = dbRef.current.users.find(x => x.id === twoFaPending); if (!u) { setTwoFaPending(null); return 'Account not found.' }
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO(); notify(d, u.id, 'New sign-in', 'Your account was signed in with two-factor verification.', 'security') })
     localStorage.setItem(SESSION, u.id); setUserId(u.id); setTwoFaPending(null)
@@ -236,7 +279,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const resetPassword: Ctx['resetPassword'] = (email, pin, newPassword) => {
     const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())
     if (!u) return 'No account found for that email.'
-    if (u.pinHash !== hashSecret(pin)) return 'Incorrect transaction PIN — identity could not be verified.'
+    const lk3 = lockError(u.id); if (lk3) return lk3
+    if (u.pinHash !== hashSecret(pin)) return recordFail(u.id, 'Incorrect transaction PIN — identity could not be verified.')
+    recordSuccess(u.id)
     if (newPassword.length < 6) return 'Password must be at least 6 characters.'
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.passwordHash = hashSecret(newPassword); notify(d, u.id, 'Password reset', 'Your password was reset using your transaction PIN. If this was not you, contact support immediately.', 'security') })
     return null
@@ -247,6 +292,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (cur.users.some(x => x.username === p.username)) return 'That username is taken.'
     if (p.referralCode && !cur.users.some(x => x.referralCode === p.referralCode)) return 'Referral code not found.'
     if (p.referralCode && cur.users.find(x => x.referralCode === p.referralCode)?.email === p.email) return 'You cannot refer yourself.'
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return 'Enter a valid email address.'
+    if (!/^[a-zA-Z0-9_.]{3,20}$/.test(p.username)) return 'Username must be 3–20 characters: letters, numbers, dot or underscore only.'
+    if (p.password.length < 6) return 'Password must be at least 6 characters.'
+    if (!/^\d{4}$/.test(p.pin)) return 'PIN must be exactly 4 digits.'
+    if (p.name.trim().length < 3) return 'Enter your full name.'
     const referrer = p.referralCode ? cur.users.find(x => x.referralCode === p.referralCode) : undefined
     const nu: User = {
       id: uid('USR'), name: p.name, username: p.username, email: p.email, phone: p.phone,
@@ -267,6 +317,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addDeposit: Ctx['addDeposit'] = (p) => {
     if (!user) return
+    if (badAmount(p.amount)) return
+    if (p.trxId && !TRX_RE.test(p.trxId.trim())) return
     mutate(d => {
       const dep = { id: uid('DEP'), userId: user.id, ...p, status: 'pending' as const, createdAt: nowISO() }
       d.deposits.unshift(dep)
@@ -302,7 +354,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const requestWithdraw: Ctx['requestWithdraw'] = (p) => {
     if (!user) return 'Not signed in'
-    if (user.pinHash !== hashSecret(p.pin)) return 'Incorrect transaction PIN.'
+    const lk = lockError(user.id); if (lk) return lk
+    if (user.pinHash !== hashSecret(p.pin)) return recordFail(user.id, 'Incorrect transaction PIN.')
+    recordSuccess(user.id)
+    if (badAmount(p.amount)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
     if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
     if (p.amount > w.available) return 'Insufficient available balance.'
@@ -319,6 +374,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const directWithdraw: Ctx['directWithdraw'] = (p) => {
     if (!user) return 'Not signed in'
     if (user.level < 2) return 'Direct Withdraw needs a Level 2 account. Please upgrade first.'
+    if (badAmount(p.amount)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
     if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
     if (p.amount > w.available) return 'Insufficient available balance.'
@@ -335,6 +391,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const stake: Ctx['stake'] = (amount, apy, termDays) => {
     if (!user) return 'Not signed in'
+    if (badAmount(amount)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
     if (amount > w.available) return 'Insufficient available balance.'
     mutate(d => {
@@ -362,6 +419,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const swap: Ctx['swap'] = (fromSym, toSym, amountFrom, prices) => {
     if (!user) return 'Not signed in'
     if (fromSym === toSym) return 'Choose two different assets.'
+    if (badQty(amountFrom)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
     const rate = dbRef.current.settings.bdtPerUsd
     const priceOf = (sym: string) => sym === 'BDT' ? 1 / rate : sym === 'USDT' ? 1 : (prices[sym] ?? 0)
@@ -399,7 +457,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const sendMoney: Ctx['sendMoney'] = (p) => {
     if (!user) return 'Not signed in'
-    if (user.pinHash !== hashSecret(p.pin)) return 'Incorrect transaction PIN.'
+    const lk = lockError(user.id); if (lk) return lk
+    if (user.pinHash !== hashSecret(p.pin)) return recordFail(user.id, 'Incorrect transaction PIN.')
+    recordSuccess(user.id)
+    if (badAmount(p.amount)) return 'Enter a valid amount.'
     if (p.toUserId === user.id) return 'You cannot send money to yourself.'
     const w = walletOf(user.id)
     const fee = Math.round(p.amount * feePctFor(dbRef.current.settings.sendFeePct, user) / 100 * 100) / 100
@@ -419,6 +480,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const buyCrypto: Ctx['buyCrypto'] = (symbol, amount, priceUsd) => {
     if (!user) return 'Not signed in'
+    if (badAmount(amount) || badQty(priceUsd)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
     const rate = dbRef.current.settings.bdtPerUsd
     // Buying USDT itself converts the BDT balance into USDT (the on-ramp);
@@ -446,6 +508,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const sellCrypto: Ctx['sellCrypto'] = (symbol, coinAmount, priceUsd) => {
     if (!user) return 'Not signed in'
+    if (badQty(coinAmount) || badQty(priceUsd)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
     if (coinAmount > (w.holdings[symbol] ?? 0)) return 'Insufficient ' + symbol + ' balance.'
     const rate = dbRef.current.settings.bdtPerUsd
@@ -470,6 +533,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const applyLoan: Ctx['applyLoan'] = (amount, months, info) => {
     if (!user) return
+    if (badAmount(amount)) return
     const { emi, total } = emiCalc(amount, dbRef.current.settings.loanRatePct, months)
     mutate(d => {
       d.loans.unshift({ id: uid('LOAN'), userId: user.id, amount, months, ratePct: d.settings.loanRatePct, emi: Math.round(emi), totalPayable: Math.round(total), paid: 0, status: 'pending', createdAt: nowISO(), ...info })
@@ -616,6 +680,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const repayLoan: Ctx['repayLoan'] = (loan, amount) => {
     if (!user) return 'Not signed in'
+    if (badAmount(amount)) return 'Enter a valid amount.'
     const w = walletOf(user.id)
     if (amount > w.available) return 'Insufficient balance.'
     const remaining = loan.totalPayable - loan.paid
@@ -659,12 +724,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateProfile: Ctx['updateProfile'] = (p) => { if (user) mutate(d => { Object.assign(d.users.find(u => u.id === user.id)!, p) }) }
   const changePassword: Ctx['changePassword'] = (oldPw, newPw) => {
     if (!user) return 'Not signed in'
-    if (user.passwordHash !== hashSecret(oldPw)) return 'Current password is incorrect.'
+    const lk = lockError(user.id); if (lk) return lk
+    if (user.passwordHash !== hashSecret(oldPw)) return recordFail(user.id, 'Current password is incorrect.')
+    recordSuccess(user.id)
     mutate(d => { d.users.find(u => u.id === user.id)!.passwordHash = hashSecret(newPw) }); return null
   }
   const changePin: Ctx['changePin'] = (oldPin, newPin) => {
     if (!user) return 'Not signed in'
-    if (user.pinHash !== hashSecret(oldPin)) return 'Current PIN is incorrect.'
+    const lk = lockError(user.id); if (lk) return lk
+    if (user.pinHash !== hashSecret(oldPin)) return recordFail(user.id, 'Current PIN is incorrect.')
+    recordSuccess(user.id)
     if (!/^\d{4}$/.test(newPin)) return 'PIN must be exactly 4 digits.'
     mutate(d => { d.users.find(u => u.id === user.id)!.pinHash = hashSecret(newPin) }); return null
   }
