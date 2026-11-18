@@ -641,6 +641,10 @@ export default function Profile() {
           <ModalRow><p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><b>Terms:</b> NovaWallet is a demo digital finance platform. Deposits and withdrawals are processed only after admin verification. Loans are subject to admin approval and KYC. Crypto prices are indicative market data, not a guarantee of executable price.</p></ModalRow>
           <ModalRow><p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><b>Privacy:</b> We store only the data needed to operate your wallet. Passwords and PINs are hashed. Financial movements are recorded in an immutable double-entry ledger for audit. We never sell personal data.</p></ModalRow>
         </div>
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <Btn variant="outline" className="py-3" onClick={() => { setModal(null); navigate('/terms') }}>Full Terms of Service</Btn>
+          <Btn variant="outline" className="py-3" onClick={() => { setModal(null); navigate('/privacy') }}>Full Privacy Policy</Btn>
+        </div>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
     </div>

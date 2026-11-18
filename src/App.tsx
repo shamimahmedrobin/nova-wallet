@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
 import { lazy, Suspense } from 'react'
 const Market = lazy(() => import('./pages/Market'))
@@ -15,9 +15,24 @@ import { AdsPage, CheckinPage, QuizPage, ScratchPage, SpinPage, TasksPage } from
 import { NewsDetail, NewsList, Notifications, Transactions } from './pages/TransactionsNews'
 import Profile from './pages/Profile'
 import LockScreen from './pages/LockScreen'
+import { PrivacyPage, TermsPage } from './pages/Legal'
 
-/** When the device is locked, cover the whole app with the unlock screen (routes stay mounted underneath). */
-function LockGate() { const { locked, user } = useApp(); return locked && user ? <LockScreen /> : null }
+/** When the device is locked, cover the whole app with the unlock screen. After a
+    successful UNLOCK the app always opens on Home — never back on the page that
+    happened to be open when it locked (e.g. Profile after tapping Log out). */
+function LockGate() {
+  const { locked, user } = useApp()
+  const navigate = useNavigate()
+  const wasLocked = useRef(false)
+  useEffect(() => {
+    if (locked) { wasLocked.current = true; return }
+    if (wasLocked.current && user) {
+      wasLocked.current = false
+      navigate(user.role === 'admin' ? '/admin' : '/home', { replace: true })
+    }
+  }, [locked, user, navigate])
+  return locked && user ? <LockScreen /> : null
+}
 
 /** New navigation (PUSH) opens at the top; browser Back/Forward (POP) restores the previous scroll spot. */
 function ScrollManager() {
@@ -67,6 +82,8 @@ export default function App() {
           <Route path="/" element={<Root />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route element={<Guard><Layout /></Guard>}>
             <Route path="/home" element={<Home />} />
             <Route path="/add" element={<AddMoney />} />

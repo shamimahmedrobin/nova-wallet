@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, CheckCircle2, CreditCard, Gift, Globe, HandCoins, Landmark, Repeat, Send, ShieldCheck, Smartphone, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Btn, Input, PinBoxes } from '../components/ui'
@@ -8,7 +8,6 @@ import { Logo } from '../components/Layout'
 export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landing' | 'login' | 'register' }) {
   const { login, register, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, toast, t } = useApp()
   const navigate = useNavigate()
-  const location = useLocation()
   const refCode = new URLSearchParams(window.location.search).get('ref') ?? ''
   const [mode] = useState<'landing' | 'login' | 'register'>(refCode ? 'register' : initialMode)
   const [form, setForm] = useState({ name: '', username: '', email: '', phone: '', password: '', pin: '', referralCode: refCode })
@@ -24,8 +23,9 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
 
   const afterLogin = (id: string) => {
     toast({ kind: 'success', title: 'Welcome back!' })
-    const from = (location.state as any)?.from as string | undefined
-    navigate(id.includes('admin') ? '/admin' : (from && from !== '/login' ? from : '/home'))
+    // Always land on Home after a fresh login — never restore the page that was
+    // open before the previous session ended.
+    navigate(id.includes('admin') ? '/admin' : '/home')
   }
   const doLogin = (id = loginId, pw = loginPw) => {
     const e = login(id.trim().toLowerCase(), pw)
@@ -160,6 +160,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
 
         <p className="mt-10 text-xs text-slate-400 flex items-center justify-center gap-1.5"><Repeat size={12} /> {t('market_note')}</p>
         <p className="mt-3 text-xs text-slate-400">{t('footer_note')} · support@novawallet.app</p>
+        <p className="mt-2 text-xs font-semibold"><Link to="/terms" className="text-violet-600 dark:text-violet-400 hover:underline">{t('join_terms_word')}</Link><span className="text-slate-300 dark:text-slate-600 mx-2">·</span><Link to="/privacy" className="text-violet-600 dark:text-violet-400 hover:underline">{t('join_privacy_word')}</Link></p>
       </section>
     </div>
   )
@@ -240,7 +241,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
               <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={form.pin} onChange={set('pin')} />
               <Input label={t('referral_code_opt')} placeholder="NOVA-XXXXX" value={form.referralCode} onChange={set('referralCode')} />
               <Btn className="w-full py-3.5" onClick={doRegister}>{t('create_account')}</Btn>
-              <p className="text-[11px] text-center text-slate-400">{t('join_terms')}</p>
+              <p className="text-[11px] text-center text-slate-400 leading-relaxed">{t('join_pre')} <Link to="/terms" target="_blank" rel="noreferrer" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_terms_word')}</Link> {t('join_and')} <Link to="/privacy" target="_blank" rel="noreferrer" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_privacy_word')}</Link>{t('join_post')}</p>
             </div>
           )}
         </div>

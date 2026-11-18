@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Home, Moon, Newspaper, ShieldCheck, Sun, User as UserIcon, Wallet, ArrowLeftRight } from 'lucide-react'
+import { Bell, Home, LogOut, Moon, Newspaper, ShieldCheck, Sun, User as UserIcon, Wallet, ArrowLeftRight } from 'lucide-react'
 import { useApp } from '../lib/store'
 
 const NAV = [
@@ -19,7 +19,7 @@ export function Logo({ size = 34 }: { size?: number }) {
   )
 }
 export default function Layout() {
-  const { user, db, theme, toggleTheme, t } = useApp()
+  const { user, db, theme, toggleTheme, t, lockNow } = useApp()
   const navigate = useNavigate()
   const unread = db.notifications.filter(n => n.userId === user?.id && !n.read).length
   return (
@@ -42,6 +42,9 @@ export default function Layout() {
         <button onClick={toggleTheme} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold bg-slate-100 dark:bg-slate-800">
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {theme === 'dark' ? t('light_mode') : t('dark_mode')}
         </button>
+        <button onClick={lockNow} className="mt-2 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition">
+          <LogOut size={18} /> {t('logout')}
+        </button>
       </aside>
 
       <div className="lg:pl-64">
@@ -54,6 +57,9 @@ export default function Layout() {
               <button onClick={() => navigate('/notifications')} className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">
                 <Bell size={18} />
                 {unread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{unread}</span>}
+              </button>
+              <button onClick={lockNow} title={t('logout')} aria-label={t('logout')} className="p-2.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500">
+                <LogOut size={18} />
               </button>
             </div>
           </div>

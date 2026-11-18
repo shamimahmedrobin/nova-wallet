@@ -11,6 +11,7 @@ const KEY = 'novawallet.db.v2'
 const SESSION = 'novawallet.session'
 const LASTSEEN = 'nova.lastseen'
 const TABKEY = 'nova.tabopen'
+const LOCKFLAG = 'nova.locked'
 const IDLE_MS = 5 * 60 * 1000
 
 function load(): DB {
@@ -119,11 +120,14 @@ export const useApp = () => { const c = useContext(AppCtx); if (!c) throw new Er
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(load)
   const [userId, setUserId] = useState<string | null>(() => localStorage.getItem(SESSION))
-  // A quick refresh inside the SAME tab goes straight back in (no lock). The
-  // saved session starts LOCKED when this is a fresh tab (the previous tab was
-  // closed — sessionStorage is per-tab) or when the last visit was 5+ min ago.
+  // A quick refresh inside the SAME tab goes straight back in (no lock) — UNLESS
+  // the app was explicitly locked (Log out, idle or away lock): that lock is
+  // PERSISTED (nova.locked), so refreshing on the lock screen can never bypass
+  // it. The saved session also starts LOCKED in a fresh tab (the previous tab
+  // was closed — sessionStorage is per-tab) or when the last visit was 5+ min ago.
   const [locked, setLocked] = useState<boolean>(() => {
     if (!localStorage.getItem(SESSION)) return false
+    try { if (localStorage.getItem(LOCKFLAG)) return true } catch { /* ignore */ }
     let newTab = false
     try { newTab = !sessionStorage.getItem(TABKEY) } catch { newTab = false }
     const seen = Number(localStorage.getItem(LASTSEEN) ?? 0)
@@ -131,6 +135,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   })
   const lockedRef = useRef(false)
   useEffect(() => { lockedRef.current = locked }, [locked])
+  // Persist every lock/unlock so a reload restores exactly the same state.
+  useEffect(() => {
+    try {
+      if (locked && userId) localStorage.setItem(LOCKFLAG, '1')
+      else localStorage.removeItem(LOCKFLAG)
+    } catch { /* ignore */ }
+  }, [locked, userId])
   const [, setQuickTick] = useState(0)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
   const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
