@@ -15,7 +15,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, lockNow, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, signOut, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
@@ -176,8 +176,8 @@ export default function Profile() {
       </Card>
 
       {user.role === 'admin' && <Btn className="w-full mt-4" onClick={() => navigate('/admin')}>{t('open_admin')}</Btn>}
-      <button onClick={() => confirm.confirm({ title: 'Log out?', body: 'Your login stays saved on this device — unlock again any time with your PIN, fingerprint or password. Use Sign out on the lock screen to remove the saved login completely.', confirmLabel: 'Log out', onConfirm: () => { lockNow() } })}
-        className="w-full mt-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 font-bold py-4 flex items-center justify-center gap-2"><LogOut size={18} /> {t('logout')}</button>
+      <button onClick={() => confirm.confirm({ title: 'Sign out?', body: 'You will be signed out completely and your saved login will be removed from this device. Next time you will need your email and password to sign in again.', confirmLabel: 'Sign out', onConfirm: () => { signOut() } })}
+        className="w-full mt-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 font-bold py-4 flex items-center justify-center gap-2"><LogOut size={18} /> {t('sign_out')}</button>
       {confirm.el}
 
       <Modal open={modal === 'levels'} onClose={() => setModal(null)} title={t('account_levels')}>
@@ -611,7 +611,7 @@ export default function Profile() {
               </div>
               <div className="rounded-2xl bg-slate-100/80 dark:bg-slate-800/70 px-4 py-3 mt-4 flex gap-2.5">
                 <Lock size={16} className="text-slate-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">PIN and fingerprint live <b>only on this device</b> — they are never uploaded. Log out any time from Profile; the lock screen will ask for one of these methods.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">PIN and fingerprint live <b>only on this device</b> — they are never uploaded. Lock the app any time from the top bar; the lock screen will ask for one of these methods.</p>
               </div>
               <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
             </>

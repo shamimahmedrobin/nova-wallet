@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Bell, Home, LogOut, Moon, Newspaper, ShieldCheck, Sun, User as UserIcon, Wallet, ArrowLeftRight } from 'lucide-react'
 import { useApp } from '../lib/store'
+import { useConfirm } from './ui'
 
 const NAV = [
   { to: '/home', key: 'nav_home', icon: Home, end: true },
@@ -21,6 +22,8 @@ export function Logo({ size = 34 }: { size?: number }) {
 export default function Layout() {
   const { user, db, theme, toggleTheme, t, lockNow } = useApp()
   const navigate = useNavigate()
+  const confirm = useConfirm()
+  const askLogout = () => confirm.confirm({ title: 'Log out?', body: 'Your login stays saved on this device — unlock again any time with your PIN, fingerprint or password.', confirmLabel: 'Log out', onConfirm: () => { lockNow() } })
   const unread = db.notifications.filter(n => n.userId === user?.id && !n.read).length
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
@@ -42,7 +45,7 @@ export default function Layout() {
         <button onClick={toggleTheme} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold bg-slate-100 dark:bg-slate-800">
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {theme === 'dark' ? t('light_mode') : t('dark_mode')}
         </button>
-        <button onClick={lockNow} className="mt-2 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition">
+        <button onClick={askLogout} className="mt-2 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition">
           <LogOut size={18} /> {t('logout')}
         </button>
       </aside>
@@ -58,7 +61,7 @@ export default function Layout() {
                 <Bell size={18} />
                 {unread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{unread}</span>}
               </button>
-              <button onClick={lockNow} title={t('logout')} aria-label={t('logout')} className="p-2.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500">
+              <button onClick={askLogout} title={t('logout')} aria-label={t('logout')} className="p-2.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500">
                 <LogOut size={18} />
               </button>
             </div>
@@ -72,6 +75,8 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {confirm.el}
 
       {/* Mobile bottom nav */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 pb-[env(safe-area-inset-bottom)]">
