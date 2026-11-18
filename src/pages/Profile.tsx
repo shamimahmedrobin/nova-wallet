@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Globe, HelpCircle, KeyRound, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, useConfirm } from '../components/ui'
+import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, PinBoxes, useConfirm } from '../components/ui'
+import { depositMethods } from '../lib/localPayments'
 import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
 import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
@@ -46,10 +47,10 @@ export default function Profile() {
   const [edit, setEdit] = useState({ name: user?.name ?? '', phone: user?.phone ?? '' })
   const [editPhoto, setEditPhoto] = useState<string | undefined>(user?.photo)
   const [pw, setPw] = useState({ old: '', next: '' })
-  const [pin, setPin] = useState({ old: '', next: '' })
+  const [pin, setPin] = useState({ old: '', next: '', confirm: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
-  const [pinEdit, setPinEdit] = useState(false); const [pinVal, setPinVal] = useState('')
+  const [pinEdit, setPinEdit] = useState(false); const [pinVal, setPinVal] = useState(''); const [pinValConfirm, setPinValConfirm] = useState('')
   const [viewTicket, setViewTicket] = useState<string | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const [notifPrefs, setNotifPrefs] = useState({ tx: true, market: true, promo: false })
@@ -90,8 +91,8 @@ export default function Profile() {
   if (!user) return null
   const w = walletOf(user.id)
   const rows: [string, string, any][] = [
-    ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['p_pin', 'pin', <KeyRound size={18} />],
-    ['p_login_options', 'login', <KeyRound size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <FileText size={18} />],
+    ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['p_pin', 'pin', <Hash size={18} />],
+    ['p_login_options', 'login', <Fingerprint size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <CreditCard size={18} />],
     ['p_notif', 'notif', <Bell size={18} />], ['p_language', 'lang', <Globe size={18} />], ['p_currency', 'currency', <Coins size={18} />], ['p_support', 'support', <HelpCircle size={18} />],
     ['p_sessions', 'sessions', <Smartphone size={18} />], ['p_terms', 'terms', <FileText size={18} />],
   ]
@@ -230,19 +231,43 @@ export default function Profile() {
         <ModalActions><Btn className="w-full py-3.5" onClick={() => { updateProfile({ ...edit, photo: editPhoto }); setModal(null); toast({ kind: 'success', title: 'Profile updated' }) }}>{t('save_changes')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'pw'} onClose={() => setModal(null)} title={t('p_password')}>
-        <ModalDesc>Choose a strong new password. You'll use it with your email to log in.</ModalDesc>
+        <div className="flex flex-col items-center text-center mb-5">
+          <span className="w-14 h-14 rounded-3xl bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-violet-600/25 mb-3"><KeyRound size={24} /></span>
+          <ModalDesc>Choose a strong new password. You'll use it with your email to log in — and it always works as your unlock fallback.</ModalDesc>
+        </div>
         <div className="space-y-4">
           <Input label="Current password" type="password" value={pw.old} onChange={e => setPw(s => ({ ...s, old: e.target.value }))} />
-          <Input label="New password (min 6)" type="password" value={pw.next} onChange={e => setPw(s => ({ ...s, next: e.target.value }))} />
-          <Btn className="w-full py-3.5" onClick={() => { if (pw.next.length < 6) return toast({ kind: 'error', title: 'New password too short' }); const e = changePassword(pw.old, pw.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'Password changed' }) } }}>{t('p_password')}</Btn>
+          <div>
+            <Input label="New password (min 6)" type="password" value={pw.next} onChange={e => setPw(s => ({ ...s, next: e.target.value }))} />
+            {pw.next && <div className="mt-2.5"><div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div className={`h-full rounded-full transition-all ${pw.next.length >= 10 ? 'bg-emerald-500 w-full' : pw.next.length >= 6 ? 'bg-amber-500 w-2/3' : 'bg-rose-500 w-1/3'}`} /></div><p className="text-[11px] font-semibold text-slate-400 mt-1.5">{pw.next.length >= 10 ? '💪 Strong password' : pw.next.length >= 6 ? '👍 Okay — longer is safer (10+ characters)' : 'Too short — use at least 6 characters'}</p></div>}
+          </div>
+          <Btn className="w-full py-3.5" onClick={() => { if (pw.next.length < 6) return toast({ kind: 'error', title: 'New password too short' }); const e = changePassword(pw.old, pw.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setPw({ old: '', next: '' }); toast({ kind: 'success', title: 'Password changed' }) } }}>{t('p_password')}</Btn>
         </div>
       </Modal>
       <Modal open={modal === 'pin'} onClose={() => setModal(null)} title={t('p_pin')}>
-        <ModalDesc>Your 4-digit PIN confirms sends and cash outs. PINs are stored hashed, never in plain text.</ModalDesc>
-        <div className="space-y-4">
-          <Input label="Current PIN" type="password" inputMode="numeric" maxLength={4} value={pin.old} onChange={e => setPin(s => ({ ...s, old: e.target.value }))} />
-          <Input label="New PIN (4 digits)" type="password" inputMode="numeric" maxLength={4} value={pin.next} onChange={e => setPin(s => ({ ...s, next: e.target.value }))} />
-          <Btn className="w-full py-3.5" onClick={() => { const e = changePin(pin.old, pin.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'PIN changed' }) } }}>{t('p_pin')}</Btn>
+        <div className="flex flex-col items-center text-center mb-2">
+          <span className="w-14 h-14 rounded-3xl bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-violet-600/25 mb-3"><Hash size={24} /></span>
+          <ModalDesc>Your 4-digit transaction PIN confirms sends and cash outs. Follow the three steps — it takes ten seconds.</ModalDesc>
+        </div>
+        <div className="flex items-center justify-center gap-2 mb-5 text-[11px] font-extrabold">
+          {[{ n: '1', l: 'Current PIN', done: pin.old.length === 4 }, { n: '2', l: 'New PIN', done: pin.next.length === 4 }, { n: '3', l: 'Confirm', done: pin.confirm.length === 4 && pin.confirm === pin.next }].map((st, i) => (
+            <span key={st.l} className="flex items-center gap-2">
+              {i > 0 && <span className="w-5 h-px bg-slate-300 dark:bg-slate-600" />}
+              <span className={`inline-flex items-center gap-1.5 ${st.done ? 'text-emerald-600' : 'text-slate-400'}`}><span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white ${st.done ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>{st.done ? '✓' : st.n}</span>{st.l}</span>
+            </span>
+          ))}
+        </div>
+        <div className="space-y-6">
+          <PinBoxes label="Step 1 · Current PIN" value={pin.old} onChange={v => setPin(s => ({ ...s, old: v }))} />
+          <PinBoxes label="Step 2 · New PIN" value={pin.next} onChange={v => setPin(s => ({ ...s, next: v }))} />
+          <PinBoxes label="Step 3 · Confirm new PIN" value={pin.confirm} onChange={v => setPin(s => ({ ...s, confirm: v }))} />
+          {pin.confirm.length === 4 && pin.next.length === 4 && pin.confirm !== pin.next && <p className="text-center text-sm font-bold text-rose-500">The new PIN and confirmation don't match yet.</p>}
+          {pin.confirm.length === 4 && pin.confirm === pin.next && pin.next.length === 4 && <p className="text-center text-sm font-bold text-emerald-600">✓ New PIN confirmed — you're ready to save.</p>}
+          <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 px-4 py-3 flex gap-2.5">
+            <ShieldCheck size={17} className="text-violet-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><b>Keep it private.</b> Never share your PIN with anyone — NovaWallet staff will never ask for it. Avoid birth years and easy sequences like 1234. PINs are stored hashed, never in plain text.</p>
+          </div>
+          <Btn className="w-full py-3.5" disabled={pin.old.length !== 4 || pin.next.length !== 4 || pin.confirm !== pin.next} onClick={() => { const e = changePin(pin.old, pin.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setPin({ old: '', next: '', confirm: '' }); toast({ kind: 'success', title: 'PIN changed', body: 'Use your new PIN for your next send or cash out.' }) } }}>{t('p_pin')}</Btn>
         </div>
       </Modal>
       <Modal open={modal === 'kyc'} onClose={() => setModal(null)} title={t('p_kyc')}>
@@ -336,12 +361,14 @@ export default function Profile() {
         )}
       </Modal>
       <Modal open={modal === 'methods'} onClose={() => setModal(null)} title={t('p_methods')}>
-        <ModalDesc>These are used as defaults for Add Money and Cash Out.</ModalDesc>
+        <ModalDesc>Your local payment methods for {currency} — shown automatically for your country, and used as defaults for Add Money and Cash Out.</ModalDesc>
         <div className="space-y-2.5">
-          {[['bKash', user.phone], ['Nagad', user.phone], ['Bank', 'BRAC Bank ····0001']].map(([k, v]) => (
-            <ModalRow key={k}><span className="flex justify-between items-center"><span className="font-bold text-sm">{k}</span><span className="font-mono text-sm">{v}</span></span></ModalRow>
+          {depositMethods(currency, db.settings.payMethods).map(m => (
+            <ModalRow key={m.label}><span className="flex justify-between items-center gap-3"><span className="font-bold text-sm shrink-0">{m.label}</span><span className="font-mono text-xs text-right break-all">{m.detail}</span></span></ModalRow>
           ))}
+          <ModalRow><span className="flex justify-between items-center gap-3"><span className="font-bold text-sm shrink-0">Your phone</span><span className="font-mono text-xs">{user.phone}</span></span></ModalRow>
         </div>
+        <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">Switch your currency in Profile → Currency and this list updates to that country's local methods.</p>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'notif'} onClose={() => setModal(null)} title={t('p_notif')}>
@@ -419,39 +446,75 @@ export default function Profile() {
           )
         })()}
       </Modal>
-      <Modal open={modal === 'login'} onClose={() => setModal(null)} title={t('p_login_options')}>
-        <ModalDesc>Your login stays saved on this device. Choose how you unlock NovaWallet here — your password always works as a fallback.</ModalDesc>
-        <div className="space-y-2.5">
-          <ModalRow>
-            <span className="flex items-center justify-between gap-3"><span className="font-bold text-sm">🔑 Password</span><Badge tone="green">Always on</Badge></span>
-            <span className="block text-xs text-slate-500 mt-1">Full sign-in with your account email + password. Works on any device, any time.</span>
-          </ModalRow>
-          <ModalRow>
-            <span className="flex items-center justify-between gap-3"><span className="font-bold text-sm">🔢 Login PIN</span>{devicePinSet ? <Badge tone="green">Set on this device</Badge> : <Badge tone="slate">Not set</Badge>}</span>
-            <span className="block text-xs text-slate-500 mt-1">A 4-digit PIN saved only on this device — separate from your transaction PIN. If the app data is cleared or the app is uninstalled, you will set a new PIN here.</span>
-            {pinEdit ? (
-              <div className="flex gap-2 mt-3">
-                <div className="flex-1"><Input type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={pinVal} onChange={e => setPinVal(e.target.value)} /></div>
-                <Btn className="!py-2.5 self-end" onClick={() => { const e = setDevicePin(pinVal); if (e) return toast({ kind: 'error', title: e }); setPinEdit(false); setPinVal(''); toast({ kind: 'success', title: 'Login PIN saved on this device' }) }}>Save</Btn>
+      <Modal open={modal === 'login'} onClose={() => { setModal(null); setPinEdit(false); setPinVal(''); setPinValConfirm('') }} title={t('p_login_options')}>
+        {(() => {
+          const methodsOn = 1 + (devicePinSet ? 1 : 0) + (fingerprintSet ? 1 : 0)
+          return (
+            <>
+              <div className="rounded-3xl bg-gradient-to-br from-violet-700 via-purple-700 to-indigo-800 text-white p-5 mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0"><ShieldCheck size={21} /></span>
+                  <div className="flex-1">
+                    <p className="font-extrabold text-sm">Your unlock security</p>
+                    <p className="text-xs text-white/75 mt-0.5">{methodsOn} of 3 ways to unlock are on for this device</p>
+                  </div>
+                  <span className="text-2xl font-extrabold">{methodsOn}/3</span>
+                </div>
+                <div className="h-2 rounded-full bg-white/20 mt-3.5 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all" style={{ width: (methodsOn / 3 * 100) + '%' }} /></div>
+                <p className="text-[11px] text-white/70 mt-2.5 leading-relaxed">Your login stays saved on this device. Unlock fast with PIN or fingerprint — your password always works as a fallback.</p>
               </div>
-            ) : (
-              <div className="flex gap-2 mt-3">
-                <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { setPinEdit(true); setPinVal('') }}>{devicePinSet ? 'Change PIN' : 'Set PIN'}</Btn>
-                {devicePinSet && <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => { clearDevicePin(); toast({ kind: 'success', title: 'Login PIN removed from this device' }) }}>Remove</Btn>}
+              <div className="space-y-3">
+                <div className="rounded-3xl border-2 border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-500/5 px-4 py-4">
+                  <div className="flex items-center gap-3">
+                    <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white flex items-center justify-center shrink-0"><KeyRound size={19} /></span>
+                    <div className="flex-1 min-w-0"><p className="font-extrabold text-sm">Password</p><p className="text-xs text-slate-500 mt-0.5">Full sign-in with email + password. Works on any device, any time.</p></div>
+                    <Badge tone="green">Always on</Badge>
+                  </div>
+                </div>
+                <div className={`rounded-3xl border-2 px-4 py-4 ${devicePinSet ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>
+                  <div className="flex items-center gap-3">
+                    <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white flex items-center justify-center shrink-0"><Hash size={19} /></span>
+                    <div className="flex-1 min-w-0"><p className="font-extrabold text-sm">Login PIN</p><p className="text-xs text-slate-500 mt-0.5">A 4-digit PIN saved only on this device — separate from your transaction PIN. Clearing app data or uninstalling means you set a new one here.</p></div>
+                    {devicePinSet ? <Badge tone="green">On</Badge> : <Badge tone="slate">Off</Badge>}
+                  </div>
+                  {pinEdit ? (
+                    <div className="mt-4 space-y-5">
+                      <PinBoxes label={devicePinSet ? 'New login PIN' : 'Choose a 4-digit login PIN'} value={pinVal} onChange={setPinVal} />
+                      <PinBoxes label="Confirm PIN" value={pinValConfirm} onChange={setPinValConfirm} />
+                      {pinValConfirm.length === 4 && pinVal.length === 4 && pinValConfirm !== pinVal && <p className="text-center text-sm font-bold text-rose-500">PINs don't match yet.</p>}
+                      <div className="flex gap-2">
+                        <Btn variant="ghost" className="flex-1 py-3" onClick={() => { setPinEdit(false); setPinVal(''); setPinValConfirm('') }}>Cancel</Btn>
+                        <Btn className="flex-1 py-3" disabled={pinVal.length !== 4 || pinValConfirm !== pinVal} onClick={() => { const e = setDevicePin(pinVal); if (e) return toast({ kind: 'error', title: e }); setPinEdit(false); setPinVal(''); setPinValConfirm(''); toast({ kind: 'success', title: 'Login PIN saved on this device', body: 'Next time you can unlock in seconds.' }) }}>Save PIN</Btn>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 mt-3.5">
+                      <Btn className="!py-2.5 flex-1" onClick={() => { setPinEdit(true); setPinVal(''); setPinValConfirm('') }}>{devicePinSet ? 'Change PIN' : 'Set up PIN — 10 seconds'}</Btn>
+                      {devicePinSet && <Btn variant="ghost" className="!py-2.5" onClick={() => { clearDevicePin(); toast({ kind: 'success', title: 'Login PIN removed from this device' }) }}>Remove</Btn>}
+                    </div>
+                  )}
+                </div>
+                <div className={`rounded-3xl border-2 px-4 py-4 ${fingerprintSet ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-500/10' : 'border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-800/50'}`}>
+                  <div className="flex items-center gap-3">
+                    <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center shrink-0"><Fingerprint size={20} /></span>
+                    <div className="flex-1 min-w-0"><p className="font-extrabold text-sm">Fingerprint / Face unlock</p><p className="text-xs text-slate-500 mt-0.5">{appInstalled ? 'The fastest way in — one touch, no typing. Your fingerprint never leaves this device.' : 'Available inside the installed app only. Install NovaWallet, open the installed app, then set it up here.'}</p></div>
+                    {fingerprintSet ? <Badge tone="green">On</Badge> : <Badge tone="slate">Off</Badge>}
+                  </div>
+                  <div className="flex gap-2 mt-3.5">
+                    {!fingerprintSet && appInstalled && <Btn className="!py-2.5 flex-1" onClick={async () => { const e = await setupFingerprint(); if (e) return toast({ kind: 'error', title: e }); toast({ kind: 'success', title: 'Fingerprint login is on', body: 'Unlock with one touch from now on.' }) }}><Fingerprint size={16} /> Set up fingerprint</Btn>}
+                    {!fingerprintSet && !appInstalled && <Btn className="!py-2.5 flex-1" onClick={() => setModal('install')}><Smartphone size={16} /> Install the app first</Btn>}
+                    {fingerprintSet && <Btn variant="ghost" className="!py-2.5 flex-1" onClick={() => { clearFingerprint(); toast({ kind: 'success', title: 'Fingerprint removed from this device' }) }}>Remove fingerprint</Btn>}
+                  </div>
+                </div>
               </div>
-            )}
-          </ModalRow>
-          <ModalRow>
-            <span className="flex items-center justify-between gap-3"><span className="font-bold text-sm">👆 Fingerprint</span>{fingerprintSet ? <Badge tone="green">Set on this device</Badge> : <Badge tone="slate">Not set</Badge>}</span>
-            <span className="block text-xs text-slate-500 mt-1">{appInstalled ? 'Unlock with your fingerprint or face on this device — fast and secure.' : 'Fingerprint can only be set up inside the installed app. Install NovaWallet first, open the installed app, then come back here.'}</span>
-            <div className="flex gap-2 mt-3">
-              {!fingerprintSet && <Btn variant="outline" className="!py-2 !text-xs" onClick={async () => { const e = await setupFingerprint(); if (e) return toast({ kind: 'error', title: e }); toast({ kind: 'success', title: 'Fingerprint login is on' }) }}>Set up fingerprint</Btn>}
-              {fingerprintSet && <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => { clearFingerprint(); toast({ kind: 'success', title: 'Fingerprint removed from this device' }) }}>Remove</Btn>}
-              {!appInstalled && !fingerprintSet && <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => setModal('install')}>Install App</Btn>}
-            </div>
-          </ModalRow>
-        </div>
-        <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
+              <div className="rounded-2xl bg-slate-100/80 dark:bg-slate-800/70 px-4 py-3 mt-4 flex gap-2.5">
+                <Lock size={16} className="text-slate-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">PIN and fingerprint live <b>only on this device</b> — they are never uploaded. Log out any time from Profile; the lock screen will ask for one of these methods.</p>
+              </div>
+              <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
+            </>
+          )
+        })()}
       </Modal>
       <Modal open={modal === 'lang'} onClose={() => setModal(null)} title={t('p_language')}>
         <ModalDesc>{t('language_choose')}</ModalDesc>
