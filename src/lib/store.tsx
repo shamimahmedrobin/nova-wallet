@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ADS_PER_DAY, CHECKIN_REWARDS, EARN_TASKS, QUIZ_PER_CORRECT, SCRATCH_PER_DAY, SCRATCH_PRIZES, SPINS_PER_DAY, WHEEL_PRIZES } from './earn'
-import type { DB, Loan, NewsItem, Tx, User , LoanInfo, EarnState } from './types'
+import type { DB, DepositReq, Loan, NewsItem, Tx, User , LoanInfo, EarnState } from './types'
 import { DEFAULT_LEVELS, DEFAULT_PAY_METHODS, seedDB } from './seed'
 import { translate } from './i18n'
 import { detectCurrency, FALLBACK_RATES } from './currencies'
@@ -84,8 +84,12 @@ interface Ctx {
   resetPasswordWithOtp: (email: string, otp: string, newPassword: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
   walletOf: (userId: string) => DB['wallets'][number]
-  addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string }) => void
+  addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string; methodId?: string; kind?: 'bank' | 'crypto'; verification?: 'manual' | 'auto' }) => void
   decideDeposit: (id: string, ok: boolean) => void
+  /** AUTOMATION SEAM: a connected provider (bank API, gateway callback or
+      SMS/webhook matcher) settles a pending deposit through the exact same
+      pipeline as an admin decision. providerRef is stored on the deposit. */
+  settleDepositExternal: (id: string, ok: boolean, providerRef?: string) => void
   requestWithdraw: (p: { method: string; amount: number; destination: string; pin: string }) => string | null
   directWithdraw: (p: { method: string; amount: number; destination: string }) => string | null
   stake: (amount: number, apy: number, termDays: number) => string | null
@@ -494,22 +498,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (badAmount(p.amount)) return
     if (p.trxId && !TRX_RE.test(p.trxId.trim())) return
     mutate(d => {
-      const dep = { id: uid('DEP'), userId: user.id, ...p, status: 'pending' as const, createdAt: nowISO() }
+      // Normalized reference = the match key any future automation (bank API,
+      // gateway callback, SMS/webhook matcher) will look deposits up by.
+      const reference = p.trxId.trim().toUpperCase()
+      const dep = { id: uid('DEP'), userId: user.id, method: p.method, amount: p.amount, trxId: p.trxId, receipt: p.receipt, methodId: p.methodId, kind: p.kind, verification: p.verification ?? 'manual', reference, status: 'pending' as const, createdAt: nowISO() }
       d.deposits.unshift(dep)
       recordTx(d, { userId: user.id, category: 'add_money', title: 'Add Money via ' + p.method, amount: p.amount, fee: 0, currency: 'BDT', status: 'pending', method: p.method })
-      notify(d, user.id, 'Deposit request submitted', 'Your ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + ' is pending admin review.', 'deposit')
+      notify(d, user.id, 'Deposit request submitted', 'Your ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + (dep.verification === 'auto' ? ' is queued for automatic verification — it settles as soon as the payment provider confirms it.' : ' is pending admin review.'), 'deposit')
     })
   }
-  const decideDeposit: Ctx['decideDeposit'] = (id, ok) => {
-    mutate(d => {
-      const dep = d.deposits.find(x => x.id === id); if (!dep || dep.status !== 'pending') return
+  // ONE settlement path for every deposit, whoever settles it — admin review
+  // today, a provider/automation tomorrow. Balances, the linked transaction,
+  // referral commission, audit and notifications all live here exactly once.
+  const applyDepositDecision = (d: DB, dep: DepositReq, ok: boolean, source: 'admin' | 'provider') => {
       dep.status = ok ? 'approved' : 'rejected'
       const w = d.wallets.find(x => x.userId === dep.userId)!
       const tx = d.txs.find(t => t.category === 'add_money' && t.userId === dep.userId && t.status === 'pending' && t.amount === dep.amount)
       if (tx) tx.status = ok ? 'completed' : 'rejected'
       if (ok) {
         w.available += dep.amount
-        audit(d, 'admin', 'deposit.approve', `Approved ${dep.id} ৳${dep.amount} for ${dep.userId}`)
+        audit(d, source, 'deposit.approve', `Approved ${dep.id} ৳${dep.amount} for ${dep.userId}`)
         // referral commission on first approved deposit
         const depUser = d.users.find(u => u.id === dep.userId)
         if (depUser?.referredBy) {
@@ -522,9 +530,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             notify(d, depUser.referredBy, 'Referral reward', 'You earned ৳' + commission + ' from ' + depUser.name + "'s deposit.", 'referral')
           }
         }
-      } else audit(d, 'admin', 'deposit.reject', `Rejected ${dep.id}`)
+      } else audit(d, source, 'deposit.reject', `Rejected ${dep.id}`)
       notify(d, dep.userId, ok ? 'Deposit approved' : 'Deposit rejected', ok ? '৳' + dep.amount.toLocaleString() + ' has been credited to your wallet.' : 'Your deposit request was rejected. Check the transaction ID and try again.', 'deposit')
-    })
+  }
+  const decideDeposit: Ctx['decideDeposit'] = (id, ok) => {
+    mutate(d => { const dep = d.deposits.find(x => x.id === id); if (!dep || dep.status !== 'pending') return; applyDepositDecision(d, dep, ok, 'admin') })
+  }
+  const settleDepositExternal: Ctx['settleDepositExternal'] = (id, ok, providerRef) => {
+    mutate(d => { const dep = d.deposits.find(x => x.id === id); if (!dep || dep.status !== 'pending') return; if (providerRef) dep.providerRef = providerRef; applyDepositDecision(d, dep, ok, 'provider') })
   }
   const requestWithdraw: Ctx['requestWithdraw'] = (p) => {
     if (!user) return 'Not signed in'
@@ -1001,7 +1014,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, walletOf,
-    addDeposit, decideDeposit, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
+    addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,

@@ -127,7 +127,7 @@ export default function Admin() {
               <h3 className="font-extrabold mb-3">Deposit requests</h3>
               {db.deposits.length === 0 ? <Card><Empty title="No deposit requests" /></Card> : db.deposits.map(d => (
                 <Card key={d.id} className="p-4 mb-2 flex flex-wrap items-center gap-3">
-                  <div className="flex-1 min-w-[180px]"><p className="font-bold">{usdt(d.amount)} · {d.method} — {nameOf(d.userId)}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId}{d.receipt ? ' · 📎 ' + d.receipt : ''} · {fmtDateTime(d.createdAt)}</p></div>
+                  <div className="flex-1 min-w-[180px]"><p className="font-bold">{usdt(d.amount)} · {d.method} — {nameOf(d.userId)}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId}{d.receipt ? ' · 📎 ' + d.receipt : ''} · {fmtDateTime(d.createdAt)}</p><p className="mt-1 flex gap-1.5 flex-wrap"><span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${d.verification === 'auto' ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{d.verification === 'auto' ? '⚡ AUTO-VERIFY' : '👤 MANUAL REVIEW'}</span>{d.providerRef && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">PROVIDER {d.providerRef}</span>}</p></div>
                   <Badge tone={statusTone(d.status)}>{d.status}</Badge>
                   {d.status === 'pending' && <><Btn variant="success" className="!py-2" onClick={() => { decideDeposit(d.id, true); toast({ kind: 'success', title: 'Deposit approved & credited' }) }}><Check size={15} /> Approve</Btn><Btn variant="danger" className="!py-2" onClick={() => { decideDeposit(d.id, false); toast({ kind: 'info', title: 'Deposit rejected' }) }}><X size={15} /> Reject</Btn></>}
                 </Card>
@@ -375,6 +375,11 @@ export default function Admin() {
                     <option value="bank">🏦 Bank account</option>
                     <option value="crypto">₿ Crypto wallet</option>
                   </Select>
+                  <Select label="Verification" value={pm.verification ?? 'manual'} onChange={(e: any) => setPm({ verification: e.target.value })}>
+                    <option value="manual">👤 Manual review — admin approves each deposit</option>
+                    <option value="auto">⚡ Auto-verify — settles automatically once a provider is connected</option>
+                  </Select>
+                  {(pm.verification ?? 'manual') === 'auto' && <p className="-mt-1 text-xs text-slate-400 leading-relaxed">Auto deposits are tagged and routed separately in the Finance queue with their normalized reference, ready for a bank API / gateway / SMS-webhook matcher. Until a provider is connected they still wait in the queue — nothing is auto-approved yet.</p>}
                   {pm.kind === 'bank' ? (
                     <div className="grid sm:grid-cols-2 gap-3.5">
                       <Input label="Bank name" placeholder="e.g. BRAC Bank" value={pm.label} onChange={e => setPm({ label: e.target.value })} />

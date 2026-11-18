@@ -7,7 +7,7 @@ import { Avatar, Badge, Btn, Card, CopyBtn, Empty, Input, Modal, PinField, Selec
 import { fmtDateTime, fmtUSDT } from '../lib/utils'
 import type { User } from '../lib/types'
 
-import { depositMethods, withdrawMethods, CRYPTO_NETWORK_LABELS, payMethodTitle, payMethodValue } from '../lib/localPayments'
+import { depositMethods, withdrawMethods, CRYPTO_NETWORK_LABELS, payMethodShortTitle, payMethodTitle, payMethodValue } from '../lib/localPayments'
 
 function PageHead({ title, sub }: { title: string; sub: string }) {
   return <div className="mb-5 anim-fade-up"><h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{title}</h1><p className="text-sm text-slate-500 mt-0.5">{sub}</p></div>
@@ -38,41 +38,51 @@ export function AddMoney() {
   const submit = () => {
     if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Enter an amount of at least ' + fmtMoney(10) })
     if (!isCrypto && trx.trim().length < 6) return toast({ kind: 'error', title: 'Enter the payment Transaction ID' })
-    addDeposit({ method: methodLabel, amount: amtBDT, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined })
+    addDeposit({ method: methodLabel, amount: amtBDT, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined, methodId: activeMethod.id, kind: activeMethod.kind, verification: activeMethod.verification ?? 'manual' })
     setLastAmt(amtBDT); setDone(true); setAmount(''); setTrx(''); setReceipt('')
   }
-  const detailRow = (label: string, value?: string, copy = false) => value ? (
-    <div key={label} className="flex items-center justify-between gap-3 py-1.5">
-      <span className="text-xs font-bold text-slate-400 uppercase tracking-wide shrink-0">{label}</span>
-      <span className="flex items-center gap-2 min-w-0">
-        <span className="font-mono font-bold text-[13px] text-slate-700 dark:text-slate-100 text-right break-all">{value}</span>
-        {copy && <CopyBtn value={value} />}
-      </span>
+  // Stacked rows: short label on top, value on its own full-width line below —
+  // long numbers/addresses can never collide with the label or wrap mid-word
+  // next to a button. Copyable values get their own value box with the Copy
+  // button pinned inside it.
+  const infoRow = (label: string, value?: string) => value ? (
+    <div key={label} className="py-2">
+      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+      <p className="font-bold text-[15px] text-slate-800 dark:text-slate-100 mt-0.5 leading-snug">{value}</p>
+    </div>
+  ) : null
+  const copyRow = (label: string, value?: string) => value ? (
+    <div key={label} className="py-2">
+      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">{label}</p>
+      <div className="flex items-start gap-2 rounded-2xl bg-white/80 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 px-3 py-2.5">
+        <span className="font-mono font-bold text-sm text-slate-800 dark:text-slate-100 break-all flex-1 leading-relaxed">{value}</span>
+        <CopyBtn value={value} />
+      </div>
     </div>
   ) : null
   return (
     <div>
       <PageHead title={t('add_title')} sub={t('add_sub')} />
       <Card className="p-5 space-y-4">
-        <Select label={t('payment_method')} value={activeMethod.id} onChange={(e: any) => setMethod(e.target.value)}>{depMethods.map(m => <option key={m.id} value={m.id}>{m.kind === 'crypto' ? '₿ ' : '🏦 '}{payMethodTitle(m)}</option>)}</Select>
+        <Select label={t('payment_method')} value={activeMethod.id} onChange={(e: any) => setMethod(e.target.value)}>{depMethods.map(m => <option key={m.id} value={m.id}>{m.kind === 'crypto' ? '₿ ' : '🏦 '}{payMethodShortTitle(m)}</option>)}</Select>
         <div className="rounded-3xl bg-gradient-to-b from-violet-50 to-white dark:from-violet-500/10 dark:to-slate-900 border border-violet-100 dark:border-violet-500/20 p-4">
           <p className="font-extrabold text-violet-700 dark:text-violet-300 flex items-center gap-2">{isCrypto ? '₿' : '🏦'} {isCrypto ? 'Send crypto to this wallet' : 'Send money to this account'}</p>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 mt-1.5">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 mt-1">
             {isCrypto ? (<>
-              {detailRow('Coin', activeMethod.label)}
-              {detailRow('Network', activeMethod.network)}
-              {detailRow('Wallet address', payMethodValue(activeMethod), true)}
+              {infoRow('Coin', activeMethod.label)}
+              {infoRow('Network', activeMethod.network)}
+              {copyRow('Address', payMethodValue(activeMethod))}
             </>) : (<>
-              {detailRow('Bank', activeMethod.label)}
-              {detailRow('Account name', activeMethod.accountName)}
-              {detailRow('Account number', payMethodValue(activeMethod), true)}
-              {detailRow('Routing No', activeMethod.routing, !!activeMethod.routing)}
-              {detailRow('SWIFT Code', activeMethod.swift, !!activeMethod.swift)}
-              {detailRow('Branch', activeMethod.branch)}
+              {infoRow('Bank', activeMethod.label)}
+              {infoRow('Account Name', activeMethod.accountName)}
+              {copyRow('Account No.', payMethodValue(activeMethod))}
+              {copyRow('Routing', activeMethod.routing)}
+              {copyRow('SWIFT', activeMethod.swift)}
+              {infoRow('Branch', activeMethod.branch)}
             </>)}
-            {!activeMethod.accountNumber && activeMethod.detail && detailRow('Details', activeMethod.detail, true)}
+            {!activeMethod.accountNumber && activeMethod.detail && copyRow('Details', activeMethod.detail)}
           </div>
-          <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">Tap <b>Copy</b> next to the {isCrypto ? 'wallet address' : 'account number'} so you paste it exactly. Then enter the amount and Transaction ID below — your deposit is credited after approval.</p>
+          <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">Copy the {isCrypto ? 'address' : 'account number'} exactly, then enter the amount + Transaction ID below. Credited after approval.</p>
         </div>
         <Input label={`Amount (${currency})`} type="number" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
         {currency !== 'BDT' && Number(amount) > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} will be credited after approval, at today's rate.</p>}
@@ -88,7 +98,7 @@ export function AddMoney() {
       {mine.length === 0 ? <Card><Empty title="No deposits yet" /></Card> : (
         <div className="space-y-2">{mine.map(d => (
           <Card key={d.id} className="p-4 flex items-center gap-3">
-            <div className="flex-1"><p className="font-bold">{fmtMoney(d.amount)} · {d.method}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId} · {fmtDateTime(d.createdAt)}</p></div>
+            <div className="flex-1"><p className="font-bold">{fmtMoney(d.amount)} · {d.method}</p><p className="text-xs text-slate-400">{d.id} · TrxID {d.trxId}{d.verification === 'auto' ? ' · ⚡ Auto-verify' : ''} · {fmtDateTime(d.createdAt)}</p></div>
             <Badge tone={statusTone(d.status)}>{d.status}</Badge>
           </Card>))}
         </div>

@@ -16,6 +16,13 @@ export function depositMethods(_currency?: string, adminMethods?: PayMethod[]): 
 /** Display title for a method: bank name, or "USDT · Tron (TRC20)" for crypto. */
 export const payMethodTitle = (m: PayMethod): string => m.kind === 'crypto' ? (m.network ? `${m.label} · ${m.network}` : m.label) : m.label
 
+/** Compact title for tight spaces (selects, list rows): "USDT (BEP20)". */
+export const payMethodShortTitle = (m: PayMethod): string => {
+  if (m.kind !== 'crypto' || !m.network) return m.label
+  const paren = m.network.match(/\(([^)]+)\)/)?.[1]
+  return paren ? `${m.label} (${paren})` : `${m.label} · ${m.network}`
+}
+
 /** The value a user sends to / copies: the account number or wallet address (falls back to legacy free-text details). */
 export const payMethodValue = (m: PayMethod): string => m.accountNumber ?? m.detail ?? ''
 

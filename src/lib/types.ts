@@ -25,6 +25,12 @@ export interface LedgerEntry { id: string; txId: string; account: string; debit:
 export interface DepositReq {
   id: string; userId: string; method: string; amount: number; trxId: string
   receipt?: string; status: 'pending' | 'approved' | 'rejected'; createdAt: string
+  /** Automation-ready routing data: which channel (PayMethod id + kind), how it
+      settles, and the normalized reference (trxId trimmed + uppercased) that a
+      future provider/matcher keys on. providerRef is filled by the provider
+      when it settles the deposit. */
+  methodId?: string; kind?: 'bank' | 'crypto'; verification?: 'manual' | 'auto'
+  reference?: string; providerRef?: string
 }
 export interface WithdrawReq {
   id: string; userId: string; method: string; amount: number; fee: number; destination: string
@@ -57,6 +63,10 @@ export interface PayMethod {
   network?: string
   /** Legacy free-text details (older entries). */
   detail?: string
+  /** How deposits on this channel settle: 'manual' = admin review (default);
+      'auto' = a connected provider (bank API / gateway callback / SMS-webhook
+      matcher) settles them through the same pipeline — see settleDepositExternal. */
+  verification?: 'manual' | 'auto'
 }
 export interface NewsItem {
   id: string; title: string; category: string; excerpt: string; body: string
