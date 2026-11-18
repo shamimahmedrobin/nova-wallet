@@ -15,7 +15,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, lockNow, updateProfile, changePassword, changePin, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, lockNow, updateProfile, changePassword, changePin, resetPassword, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
@@ -47,6 +47,7 @@ export default function Profile() {
   const [edit, setEdit] = useState({ name: user?.name ?? '', phone: user?.phone ?? '' })
   const [editPhoto, setEditPhoto] = useState<string | undefined>(user?.photo)
   const [pw, setPw] = useState({ old: '', next: '' })
+  const [fp, setFp] = useState({ email: user?.email ?? '', pin: '', next: '', confirm: '' })
   const [pin, setPin] = useState({ old: '', next: '', confirm: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
@@ -91,7 +92,7 @@ export default function Profile() {
   if (!user) return null
   const w = walletOf(user.id)
   const rows: [string, string, any][] = [
-    ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['p_pin', 'pin', <Hash size={18} />],
+    ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['forgot_password', 'forgot', <HelpCircle size={18} />], ['p_pin', 'pin', <Hash size={18} />],
     ['p_login_options', 'login', <Fingerprint size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <CreditCard size={18} />],
     ['p_notif', 'notif', <Bell size={18} />], ['p_language', 'lang', <Globe size={18} />], ['p_currency', 'currency', <Coins size={18} />], ['p_support', 'support', <HelpCircle size={18} />],
     ['p_sessions', 'sessions', <Smartphone size={18} />], ['p_terms', 'terms', <FileText size={18} />],
@@ -242,6 +243,29 @@ export default function Profile() {
             {pw.next && <div className="mt-2.5"><div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div className={`h-full rounded-full transition-all ${pw.next.length >= 10 ? 'bg-emerald-500 w-full' : pw.next.length >= 6 ? 'bg-amber-500 w-2/3' : 'bg-rose-500 w-1/3'}`} /></div><p className="text-[11px] font-semibold text-slate-400 mt-1.5">{pw.next.length >= 10 ? '💪 Strong password' : pw.next.length >= 6 ? '👍 Okay — longer is safer (10+ characters)' : 'Too short — use at least 6 characters'}</p></div>}
           </div>
           <Btn className="w-full py-3.5" onClick={() => { if (pw.next.length < 6) return toast({ kind: 'error', title: 'New password too short' }); const e = changePassword(pw.old, pw.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setPw({ old: '', next: '' }); toast({ kind: 'success', title: 'Password changed' }) } }}>{t('p_password')}</Btn>
+          <button onClick={() => setModal('forgot')} className="w-full text-center text-sm font-bold text-violet-600 py-1">Forgot your current password? Reset it instead →</button>
+        </div>
+      </Modal>
+      <Modal open={modal === 'forgot'} onClose={() => setModal(null)} title={t('forgot_password')}>
+        <div className="flex flex-col items-center text-center mb-5">
+          <span className="w-14 h-14 rounded-3xl bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-violet-600/25 mb-3"><HelpCircle size={24} /></span>
+          <ModalDesc>Forgot your password? Verify it's you with your account email and 4-digit transaction PIN, then choose a new password. It works right away — for login and for unlocking.</ModalDesc>
+        </div>
+        <div className="space-y-5">
+          <Input label="Account email" type="email" placeholder="you@email.com" value={fp.email} onChange={e => setFp(s => ({ ...s, email: e.target.value }))} />
+          <PinBoxes label="Transaction PIN — verify it's you" value={fp.pin} onChange={v => setFp(s => ({ ...s, pin: v }))} />
+          <div>
+            <Input label="New password (min 6)" type="password" placeholder="••••••••" value={fp.next} onChange={e => setFp(s => ({ ...s, next: e.target.value }))} />
+            {fp.next && <div className="mt-2.5"><div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div className={`h-full rounded-full transition-all ${fp.next.length >= 10 ? 'bg-emerald-500 w-full' : fp.next.length >= 6 ? 'bg-amber-500 w-2/3' : 'bg-rose-500 w-1/3'}`} /></div><p className="text-[11px] font-semibold text-slate-400 mt-1.5">{fp.next.length >= 10 ? '💪 Strong password' : fp.next.length >= 6 ? '👍 Okay — longer is safer (10+ characters)' : 'Too short — use at least 6 characters'}</p></div>}
+          </div>
+          <Input label="Confirm new password" type="password" placeholder="••••••••" value={fp.confirm} onChange={e => setFp(s => ({ ...s, confirm: e.target.value }))} />
+          {fp.confirm && fp.next && fp.confirm !== fp.next && <p className="text-center text-sm font-bold text-rose-500">The passwords don't match yet.</p>}
+          {fp.confirm && fp.confirm === fp.next && fp.next.length >= 6 && <p className="text-center text-sm font-bold text-emerald-600">✓ Passwords match — you're ready to reset.</p>}
+          <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 px-4 py-3 flex gap-2.5">
+            <ShieldCheck size={17} className="text-violet-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">For your safety, 5 wrong PIN attempts lock password reset for 5 minutes, and you'll get a security notification as soon as the password changes.</p>
+          </div>
+          <Btn className="w-full py-3.5" disabled={!fp.email.trim() || fp.pin.length !== 4 || fp.next.length < 6 || fp.confirm !== fp.next} onClick={() => { const e = resetPassword(fp.email, fp.pin, fp.next); if (e) return toast({ kind: 'error', title: e }); setModal(null); setFp({ email: user.email, pin: '', next: '', confirm: '' }); toast({ kind: 'success', title: 'Password reset complete', body: 'Use your new password the next time you log in or unlock.' }) }}>Reset password</Btn>
         </div>
       </Modal>
       <Modal open={modal === 'pin'} onClose={() => setModal(null)} title={t('p_pin')}>

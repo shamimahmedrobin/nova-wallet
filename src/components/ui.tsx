@@ -129,13 +129,13 @@ export const PinBoxes = ({ value, onChange, label, onEnter, shake = false }: { v
 )
 /** On-screen numeric keypad for the lock screen — big, thumb-friendly keys. */
 export const PinPad = ({ onDigit, onBackspace, leftCell }: { onDigit: (d: string) => void; onBackspace: () => void; leftCell?: React.ReactNode }) => (
-  <div className="grid grid-cols-3 gap-2 max-w-[280px] mx-auto">
+  <div className="grid grid-cols-3 gap-1.5 max-w-[264px] mx-auto">
     {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(d => (
-      <button key={d} type="button" onClick={() => onDigit(d)} className="h-14 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xl font-extrabold text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 active:bg-violet-50 dark:active:bg-violet-500/15 transition">{d}</button>
+      <button key={d} type="button" onClick={() => onDigit(d)} className="h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-lg font-extrabold text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 active:bg-violet-50 dark:active:bg-violet-500/15 transition">{d}</button>
     ))}
-    <span className="h-14 flex items-center justify-center">{leftCell}</span>
-    <button type="button" onClick={() => onDigit('0')} className="h-14 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xl font-extrabold text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 active:bg-violet-50 dark:active:bg-violet-500/15 transition">0</button>
-    <button type="button" aria-label="Delete last digit" onClick={onBackspace} className="h-14 rounded-2xl text-slate-500 dark:text-slate-400 text-xl font-bold active:scale-95 transition flex items-center justify-center">⌫</button>
+    <span className="h-12 flex items-center justify-center">{leftCell}</span>
+    <button type="button" onClick={() => onDigit('0')} className="h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-lg font-extrabold text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 active:bg-violet-50 dark:active:bg-violet-500/15 transition">0</button>
+    <button type="button" aria-label="Delete last digit" onClick={onBackspace} className="h-12 rounded-2xl text-slate-500 dark:text-slate-400 text-lg font-bold active:scale-95 transition flex items-center justify-center">⌫</button>
   </div>
 )
 export const PinField = ({ pin, setPin }: { pin: string; setPin: (v: string) => void }) => (
