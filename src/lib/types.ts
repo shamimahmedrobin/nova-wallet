@@ -11,6 +11,7 @@ export interface User {
   id: string; name: string; username: string; email: string; phone: string
   passwordHash: string; pinHash: string; role: Role; status: UserStatus; kyc: KycStatus
   referralCode: string; referredBy: string | null; twoFA: boolean; level: number; loanLimitOverride?: number
+  payMethods?: { id: string; type: 'bank' | 'crypto'; label: string; detail: string }[]
   language: string; currency?: string; photo?: string; kycDocType?: string; kycDocNumber?: string; kycDocPhoto?: string; kycFacePhoto?: string; kycSubmittedAt?: string; resetOtpHash?: string; resetOtpExpires?: number; createdAt: string; lastLogin: string
   sessions: { id: string; device: string; at: string; current: boolean }[]
 }

@@ -372,7 +372,7 @@ export default function Admin() {
                 <div className="space-y-2">
                   {(setForm.payMethods ?? []).map((pm, i) => (
                     <div key={pm.id} className="flex gap-2 items-start">
-                      <div className="w-[128px] shrink-0"><Input placeholder="Label (bKash)" value={pm.label} onChange={e => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} /></div>
+                      <div className="w-[128px] shrink-0"><Input placeholder="Label (Bank Transfer)" value={pm.label} onChange={e => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} /></div>
                       <div className="flex-1 min-w-0"><Input placeholder="Number / crypto address / account details" value={pm.detail} onChange={e => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).map((x, j) => j === i ? { ...x, detail: e.target.value } : x) }))} /></div>
                       <button onClick={() => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).filter((_, j) => j !== i) }))} className="px-2 py-3 text-rose-500 font-extrabold" aria-label="Remove payment option">✕</button>
                     </div>
@@ -383,7 +383,7 @@ export default function Admin() {
               <label className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 font-semibold text-sm">Maintenance mode
                 <input type="checkbox" checked={setForm.maintenance} onChange={e => setSetForm(s => ({ ...s, maintenance: e.target.checked }))} className="w-5 h-5 accent-violet-600" /></label>
               <Btn className="w-full" onClick={() => { updateSettings(setForm); toast({ kind: 'success', title: 'Settings saved' }) }}>Save settings</Btn>
-              <p className="text-xs text-slate-400">Payment methods supported: bKash, Nagad, Rocket, Bank Transfer, Crypto Deposit. Cryptocurrencies: BTC, ETH, USDT, BNB, SOL, XRP (CoinGecko market feed). Admin roles: Super Admin (full), Finance (approvals), Content (news/banners) — enforced via RLS in production.</p>
+              <p className="text-xs text-slate-400">Payment methods supported: Bank Transfer and Crypto Deposit — the same in every region. Cryptocurrencies: 32 coins with live market data. Admin roles: Super Admin (full), Finance (approvals), Content (news/banners) — enforced via RLS in production.</p>
             </Card>
             <Card className="p-5 mt-4">
               <h3 className="font-extrabold text-rose-600 mb-2">Danger zone</h3>

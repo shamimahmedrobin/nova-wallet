@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, PinBoxes, useConfirm } from '../components/ui'
-import { depositMethods } from '../lib/localPayments'
+import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, PinBoxes, Select, useConfirm } from '../components/ui'
+import { depositMethods, CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
 import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
 import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
@@ -15,7 +15,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, lockNow, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, lockNow, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
@@ -52,6 +52,7 @@ export default function Profile() {
   const [fpOtp, setFpOtp] = useState('')
   const [fpOtpDemo, setFpOtpDemo] = useState<string | null>(null)
   const [fpOtpVerified, setFpOtpVerified] = useState(false)
+  const [pmForm, setPmForm] = useState<{ show: boolean; type: 'bank' | 'crypto'; label: string; detail: string; network: string }>({ show: false, type: 'bank', label: '', detail: '', network: CRYPTO_NETWORK_LABELS[3] })
   const [pin, setPin] = useState({ old: '', next: '', confirm: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
@@ -96,9 +97,9 @@ export default function Profile() {
   if (!user) return null
   const w = walletOf(user.id)
   const rows: [string, string, any][] = [
-    ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['forgot_password', 'forgot', <HelpCircle size={18} />], ['p_pin', 'pin', <Hash size={18} />],
+    ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['p_pin', 'pin', <Hash size={18} />],
     ['p_login_options', 'login', <Fingerprint size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <CreditCard size={18} />],
-    ['p_notif', 'notif', <Bell size={18} />], ['p_language', 'lang', <Globe size={18} />], ['p_currency', 'currency', <Coins size={18} />], ['p_support', 'support', <HelpCircle size={18} />],
+    ['p_notif', 'notif', <Bell size={18} />], ['p_language', 'lang', <Globe size={18} />], ['p_currency', 'currency', <Coins size={18} />],
     ['p_sessions', 'sessions', <Smartphone size={18} />], ['p_terms', 'terms', <FileText size={18} />],
   ]
   return (
@@ -432,14 +433,44 @@ export default function Profile() {
         )}
       </Modal>
       <Modal open={modal === 'methods'} onClose={() => setModal(null)} title={t('p_methods')}>
-        <ModalDesc>Your local payment methods for {currency} — shown automatically for your country, and used as defaults for Add Money and Cash Out.</ModalDesc>
+        <ModalDesc>Bank Transfer and Crypto Deposit — the same two methods in every country. Link your own bank account or crypto wallet below so it's saved for quick use.</ModalDesc>
         <div className="space-y-2.5">
           {depositMethods(currency, db.settings.payMethods).map(m => (
             <ModalRow key={m.label}><span className="flex justify-between items-center gap-3"><span className="font-bold text-sm shrink-0">{m.label}</span><span className="font-mono text-xs text-right break-all">{m.detail}</span></span></ModalRow>
           ))}
           <ModalRow><span className="flex justify-between items-center gap-3"><span className="font-bold text-sm shrink-0">Your phone</span><span className="font-mono text-xs">{user.phone}</span></span></ModalRow>
         </div>
-        <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">Switch your currency in Profile → Currency and this list updates to that country's local methods.</p>
+        <p className="font-extrabold text-sm mt-5 mb-2.5">Your linked methods</p>
+        {(user.payMethods ?? []).length === 0 && !pmForm.show && <p className="text-sm text-slate-400">No methods linked yet — add your bank account or crypto wallet.</p>}
+        <div className="space-y-2.5">
+          {(user.payMethods ?? []).map(m => (
+            <ModalRow key={m.id}><span className="flex justify-between items-center gap-3">
+              <span className="min-w-0"><span className="block font-bold text-sm">{m.type === 'crypto' ? '₿ ' : '🏦 '}{m.label}</span><span className="block font-mono text-xs text-slate-400 break-all mt-0.5">{m.detail}</span></span>
+              <button onClick={() => { removeUserPayMethod(m.id); toast({ kind: 'info', title: 'Payment method removed' }) }} aria-label={'Remove ' + m.label} className="shrink-0 w-8 h-8 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 font-extrabold">✕</button>
+            </span></ModalRow>
+          ))}
+        </div>
+        {pmForm.show ? (
+          <div className="mt-4 rounded-3xl border-2 border-violet-200 dark:border-violet-500/30 bg-violet-50/60 dark:bg-violet-500/5 p-4 space-y-3.5">
+            <Select label="Method type" value={pmForm.type} onChange={(e: any) => setPmForm(f => ({ ...f, type: e.target.value }))}>
+              <option value="bank">🏦 Bank account</option>
+              <option value="crypto">₿ Crypto wallet</option>
+            </Select>
+            <Input label="Name / label" placeholder={pmForm.type === 'bank' ? 'e.g. My BRAC Bank account' : 'e.g. My Binance wallet'} value={pmForm.label} onChange={e => setPmForm(f => ({ ...f, label: e.target.value }))} />
+            {pmForm.type === 'crypto' && (
+              <Select label="Network / transfer system" value={pmForm.network} onChange={(e: any) => setPmForm(f => ({ ...f, network: e.target.value }))}>
+                {CRYPTO_NETWORK_LABELS.map(n => <option key={n}>{n}</option>)}
+              </Select>
+            )}
+            <Input label={pmForm.type === 'bank' ? 'Account number' : 'Wallet address'} placeholder={pmForm.type === 'bank' ? 'e.g. 1501200012345' : 'Paste your wallet address'} value={pmForm.detail} onChange={e => setPmForm(f => ({ ...f, detail: e.target.value }))} />
+            <div className="flex gap-2">
+              <Btn variant="ghost" className="flex-1 py-3" onClick={() => setPmForm(f => ({ ...f, show: false }))}>Cancel</Btn>
+              <Btn className="flex-1 py-3" disabled={!pmForm.label.trim() || !pmForm.detail.trim()} onClick={() => { addUserPayMethod(pmForm.type, pmForm.label, pmForm.type === 'crypto' ? pmForm.network + ' · ' + pmForm.detail : pmForm.detail); setPmForm({ show: false, type: 'bank', label: '', detail: '', network: CRYPTO_NETWORK_LABELS[3] }); toast({ kind: 'success', title: 'Payment method linked', body: 'It is saved to your profile.' }) }}>Save method</Btn>
+            </div>
+          </div>
+        ) : (
+          <Btn variant="outline" className="w-full py-3.5 mt-4" onClick={() => setPmForm(f => ({ ...f, show: true }))}>＋ Add payment method</Btn>
+        )}
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'notif'} onClose={() => setModal(null)} title={t('p_notif')}>

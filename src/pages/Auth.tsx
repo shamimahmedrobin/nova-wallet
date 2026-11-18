@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, CheckCircle2, CreditCard, Gift, Globe, HandCoins, Landmark, Repeat, Send, ShieldCheck, Smartphone, Sparkles, TrendingUp, Wallet } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, CheckCircle2, Gift, Globe, HandCoins, Landmark, Repeat, Send, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Btn, Input, PinBoxes } from '../components/ui'
 import { Logo } from '../components/Layout'
@@ -61,9 +61,8 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
     { icon: Gift, t: t('act_referral'), d: t('feat_ref_d') },
   ]
   const payWays = [
-    { icon: CreditCard, label: 'Card payments' }, { icon: Landmark, label: 'Bank transfer' },
-    { icon: Smartphone, label: 'Mobile money' }, { icon: Wallet, label: 'Local wallets' },
-    { icon: Globe, label: 'SEPA · SWIFT · UPI · Pix' }, { icon: Bitcoin, label: 'Crypto deposit' },
+    { icon: Landmark, label: 'Bank transfer' }, { icon: Bitcoin, label: 'Crypto deposit' },
+    { icon: Repeat, label: '16 crypto networks' }, { icon: Globe, label: 'Same in every country' },
   ]
   const stats: [string, string][] = [[t('stat_users_v'), t('stat_users')], [t('stat_fees_v'), t('stat_fees')], [t('stat_apy_v'), t('stat_apy')], [t('stat_speed_v'), t('stat_speed')]]
   const pillars = [
@@ -241,7 +240,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
               <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={form.pin} onChange={set('pin')} />
               <Input label={t('referral_code_opt')} placeholder="NOVA-XXXXX" value={form.referralCode} onChange={set('referralCode')} />
               <Btn className="w-full py-3.5" onClick={doRegister}>{t('create_account')}</Btn>
-              <p className="text-[11px] text-center text-slate-400 leading-relaxed">{t('join_pre')} <Link to="/terms" target="_blank" rel="noreferrer" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_terms_word')}</Link> {t('join_and')} <Link to="/privacy" target="_blank" rel="noreferrer" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_privacy_word')}</Link>{t('join_post')}</p>
+              <p className="text-[11px] text-center text-slate-400 leading-relaxed">{t('join_pre')} <Link to="/terms" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_terms_word')}</Link> {t('join_and')} <Link to="/privacy" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_privacy_word')}</Link>{t('join_post')}</p>
             </div>
           )}
         </div>

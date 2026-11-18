@@ -1,16 +1,21 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, FileText, ShieldCheck } from 'lucide-react'
 import { Logo } from '../components/Layout'
 
 const UPDATED = 'Last updated: 18 November 2026'
 
 function Shell({ icon, title, intro, children }: { icon: React.ReactNode; title: string; intro: string; children: React.ReactNode }) {
+  const navigate = useNavigate()
+  // Go back to wherever the reader came from (Register, landing or Profile) —
+  // never out of the app. Falls back to the home page when there is no
+  // in-app history (e.g. the page was opened from a fresh tab).
+  const goBack = () => { if (window.history.length > 1) navigate(-1); else navigate('/') }
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-violet-600/12 to-transparent" />
       <header className="relative max-w-3xl mx-auto px-4 pt-6 flex items-center justify-between">
         <Logo size={32} />
-        <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-bold text-violet-600 dark:text-violet-400"><ArrowLeft size={16} /> Back to NovaWallet</Link>
+        <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm font-bold text-violet-600 dark:text-violet-400"><ArrowLeft size={16} /> Back</button>
       </header>
       <main className="relative max-w-3xl mx-auto px-4 py-8 pb-16">
         <div className="flex items-center gap-3.5">
@@ -43,7 +48,7 @@ export function TermsPage() {
   return (
     <Shell icon={<FileText size={22} />} title="Terms of Service" intro="Welcome to NovaWallet. These Terms of Service (“Terms”) are the agreement between you and NovaWallet for using our wallet, payments and crypto platform. By creating an account or using NovaWallet, you agree to these Terms and to our Privacy Policy. If you do not agree, please do not use the service.">
       <Section n={1} title="About NovaWallet">
-        <p>NovaWallet is a digital finance platform that lets you hold a balance, add and withdraw money through local payment methods in your country, send money to other users, buy, sell and swap cryptocurrencies, apply for loans, and earn rewards and staking interest.</p>
+        <p>NovaWallet is a digital finance platform that lets you hold a balance, add and withdraw money by bank transfer or crypto — the same in every country — send money to other users, buy, sell and swap cryptocurrencies, apply for loans, and earn rewards and staking interest.</p>
         <p>NovaWallet currently runs in <b>demonstration (demo) mode</b>: balances, transactions and approvals shown in the app are simulated and are stored on your own device. Demo balances have no real monetary value and cannot be withdrawn as real money. Features, limits and these Terms will be updated when the production service launches.</p>
       </Section>
       <Section n={2} title="Your account">

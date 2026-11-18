@@ -27,6 +27,10 @@ function load(): DB {
       if (!db.earnStates) db.earnStates = []
       if (!db.sec) db.sec = {}
       if (!db.settings.payMethods) db.settings.payMethods = DEFAULT_PAY_METHODS
+      // payment methods are universal now (Bank + Crypto only): drop any old
+      // per-region rails (bKash, UPI, …) saved by earlier versions
+      db.settings.payMethods = db.settings.payMethods.filter(pm => /bank|crypto/i.test(pm.label))
+      if (!db.settings.payMethods.length) db.settings.payMethods = DEFAULT_PAY_METHODS
       db.tickets.forEach(tk => {
         if (!tk.messages) tk.messages = [{ id: tk.id + '-m1', from: 'user', text: tk.message ?? '', at: tk.createdAt }]
         if ((tk.status as any) === 'open') tk.status = 'pending'
@@ -62,6 +66,8 @@ interface Ctx {
   lockNow: () => void
   signOut: () => void
   resetPassword: (email: string, pin: string, newPassword: string) => string | null
+  addUserPayMethod: (type: 'bank' | 'crypto', label: string, detail: string) => void
+  removeUserPayMethod: (id: string) => void
   requestPasswordOtp: (email: string) => { error: string | null; otp: string | null }
   verifyPasswordOtp: (email: string, otp: string) => string | null
   resetPasswordWithOtp: (email: string, otp: string, newPassword: string) => string | null
@@ -434,6 +440,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     recordSuccess(u.id)
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.passwordHash = hashSecret(newPassword); delete du.resetOtpHash; delete du.resetOtpExpires; notify(d, u.id, 'Password reset', 'Your password was reset using an email verification code. If this was not you, contact support immediately.', 'security') })
     return null
+  }
+  // The user's OWN linked payment methods (their bank account / crypto wallet),
+  // managed from Profile → Linked payment methods.
+  const addUserPayMethod: Ctx['addUserPayMethod'] = (type, label, detail) => {
+    if (!user) return
+    mutate(d => { const du = d.users.find(x => x.id === user.id)!; du.payMethods = [...(du.payMethods ?? []), { id: uid('PM'), type, label: label.trim(), detail: detail.trim() }] })
+  }
+  const removeUserPayMethod: Ctx['removeUserPayMethod'] = (id) => {
+    if (!user) return
+    mutate(d => { const du = d.users.find(x => x.id === user.id)!; du.payMethods = (du.payMethods ?? []).filter(m => m.id !== id) })
   }
   const register: Ctx['register'] = (p) => {
     const cur = dbRef.current
@@ -981,7 +997,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
-    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
+    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }
