@@ -2,8 +2,8 @@ import type { DB, LevelDef, User } from './types'
 import { hashSecret } from './utils'
 
 export const DEFAULT_PAY_METHODS = [
-  { id: 'bank', label: 'Bank Transfer', detail: 'BRAC Bank · A/C 1501200000001 · NovaWallet' },
-  { id: 'crypto', label: 'Crypto Deposit', detail: 'USDT (TRC20): TNovaWalletAddressExample123456789' },
+  { id: 'bank', kind: 'bank' as const, label: 'BRAC Bank', accountName: 'NovaWallet', accountNumber: '1501200000001', routing: '060261234', swift: 'BRAKBDDH', branch: 'Sylhet Branch' },
+  { id: 'crypto', kind: 'crypto' as const, label: 'USDT', network: 'Tron (TRC20)', accountName: 'NovaWallet', accountNumber: 'TNovaWalletAddressExample123456789' },
 ]
 
 const d = (daysAgo: number, h = 10) => {

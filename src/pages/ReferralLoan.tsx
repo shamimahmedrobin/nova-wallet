@@ -3,7 +3,7 @@ import { Copy, HandCoins, Share2, Trophy } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, ModalDesc, ModalRow, Select } from '../components/ui'
 import { emiCalc, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
-import { depositMethods } from '../lib/localPayments'
+import { depositMethods, payMethodTitle, payMethodValue } from '../lib/localPayments'
 import { PageHead } from './Services'
 
 export function Referral() {
@@ -108,25 +108,26 @@ export function LoanPage() {
         {(() => {
           const loan = db.loans.find(l => l.id === feePay); if (!loan) return null
           const methods = depositMethods(currency, db.settings.payMethods)
-          const sel = methods.find(m => m.label === feeMethod) ?? methods[0]
+          const sel = methods.find(m => m.id === feeMethod) ?? methods[0]
           return (
             <div>
               <ModalDesc>Pay <b>{fmtMoney(loan.processingFee ?? 0)}</b> for loan {loan.id} using any option below — the same payment options as on the main website.</ModalDesc>
               <div className="space-y-2">
                 {methods.map(m => (
-                  <button key={m.label} onClick={() => setFeeMethod(m.label)} className="w-full text-left">
-                    <ModalRow><span className="flex items-center gap-2.5"><span className={`w-4 h-4 rounded-full border-2 shrink-0 ${sel.label === m.label ? 'bg-violet-600 border-violet-600' : 'border-slate-300 dark:border-slate-600'}`} /><span className="font-bold text-sm">{m.label}</span></span></ModalRow>
+                  <button key={m.id} onClick={() => setFeeMethod(m.id)} className="w-full text-left">
+                    <ModalRow><span className="flex items-center gap-2.5"><span className={`w-4 h-4 rounded-full border-2 shrink-0 ${sel.id === m.id ? 'bg-violet-600 border-violet-600' : 'border-slate-300 dark:border-slate-600'}`} /><span className="font-bold text-sm">{m.kind === 'crypto' ? '₿ ' : '🏦 '}{payMethodTitle(m)}</span></span></ModalRow>
                   </button>
                 ))}
               </div>
               {sel && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 mt-3">
                   <p className="text-[11px] text-slate-400 font-bold">SEND PAYMENT TO</p>
-                  <p className="font-mono font-bold break-all mt-0.5">{sel.detail}</p>
+                  <p className="font-mono font-bold break-all mt-0.5">{payMethodValue(sel)}</p>
+                  {sel.kind === 'bank' && (sel.routing || sel.swift) && <p className="text-xs text-slate-400 mt-1">{sel.routing ? 'Routing: ' + sel.routing : ''}{sel.routing && sel.swift ? ' · ' : ''}{sel.swift ? 'SWIFT: ' + sel.swift : ''}</p>}
                 </div>
               )}
               <div className="mt-4"><Input label="Your TrxID / sender number" value={feeRef} onChange={e => setFeeRef(e.target.value)} /></div>
-              <Btn className="w-full py-3.5 mt-4" onClick={() => { if (!feeRef.trim()) return toast({ kind: 'error', title: 'Enter the TrxID or sender number' }); submitLoanFee(loan.id, sel?.label ?? '', feeRef.trim()); setFeePay(null); toast({ kind: 'success', title: 'Payment submitted', body: 'The admin will confirm your payment shortly.' }) }}>Submit payment</Btn>
+              <Btn className="w-full py-3.5 mt-4" onClick={() => { if (!feeRef.trim()) return toast({ kind: 'error', title: 'Enter the TrxID or sender number' }); submitLoanFee(loan.id, sel ? payMethodTitle(sel) : '', feeRef.trim()); setFeePay(null); toast({ kind: 'success', title: 'Payment submitted', body: 'The admin will confirm your payment shortly.' }) }}>Submit payment</Btn>
             </div>
           )
         })()}

@@ -7,14 +7,34 @@ import { AppProvider, useApp } from './lib/store'
 import Layout from './components/Layout'
 import { Toasts } from './components/ui'
 import Auth from './pages/Auth'
-import Home from './pages/Home'
-import { AddMoney, CashOut, ReceiveMoney, SendMoney } from './pages/Services'
-import { LoanPage, Referral } from './pages/ReferralLoan'
-import { DirectWithdraw, EarnPage, SwapPage, TradePage } from './pages/Extras'
-import { AdsPage, CheckinPage, QuizPage, ScratchPage, SpinPage, TasksPage } from './pages/EarnPages'
-import { NewsDetail, NewsList, Notifications, Transactions } from './pages/TransactionsNews'
-import Profile from './pages/Profile'
 import LockScreen from './pages/LockScreen'
+// Page-level code splitting: each page module loads on first visit, so the
+// first paint only carries the landing/auth shell (Admin and Market were
+// already split). Named exports are adapted to lazy() default components.
+const lazyNamed = <T extends Record<string, any>>(load: () => Promise<T>, name: keyof T) =>
+  lazy(() => load().then(m => ({ default: m[name] })))
+const Home = lazyNamed(() => import('./pages/Home'), 'default')
+const AddMoney = lazyNamed(() => import('./pages/Services'), 'AddMoney')
+const CashOut = lazyNamed(() => import('./pages/Services'), 'CashOut')
+const ReceiveMoney = lazyNamed(() => import('./pages/Services'), 'ReceiveMoney')
+const SendMoney = lazyNamed(() => import('./pages/Services'), 'SendMoney')
+const LoanPage = lazyNamed(() => import('./pages/ReferralLoan'), 'LoanPage')
+const Referral = lazyNamed(() => import('./pages/ReferralLoan'), 'Referral')
+const DirectWithdraw = lazyNamed(() => import('./pages/Extras'), 'DirectWithdraw')
+const EarnPage = lazyNamed(() => import('./pages/Extras'), 'EarnPage')
+const SwapPage = lazyNamed(() => import('./pages/Extras'), 'SwapPage')
+const TradePage = lazyNamed(() => import('./pages/Extras'), 'TradePage')
+const AdsPage = lazyNamed(() => import('./pages/EarnPages'), 'AdsPage')
+const CheckinPage = lazyNamed(() => import('./pages/EarnPages'), 'CheckinPage')
+const QuizPage = lazyNamed(() => import('./pages/EarnPages'), 'QuizPage')
+const ScratchPage = lazyNamed(() => import('./pages/EarnPages'), 'ScratchPage')
+const SpinPage = lazyNamed(() => import('./pages/EarnPages'), 'SpinPage')
+const TasksPage = lazyNamed(() => import('./pages/EarnPages'), 'TasksPage')
+const NewsDetail = lazyNamed(() => import('./pages/TransactionsNews'), 'NewsDetail')
+const NewsList = lazyNamed(() => import('./pages/TransactionsNews'), 'NewsList')
+const Notifications = lazyNamed(() => import('./pages/TransactionsNews'), 'Notifications')
+const Transactions = lazyNamed(() => import('./pages/TransactionsNews'), 'Transactions')
+const Profile = lazyNamed(() => import('./pages/Profile'), 'default')
 import { PrivacyPage, TermsPage } from './pages/Legal'
 
 /** When the device is locked, cover the whole app with the unlock screen. After a
@@ -23,14 +43,19 @@ import { PrivacyPage, TermsPage } from './pages/Legal'
 function LockGate() {
   const { locked, user } = useApp()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const wasLocked = useRef(false)
   useEffect(() => {
     if (locked) { wasLocked.current = true; return }
     if (wasLocked.current && user) {
       wasLocked.current = false
-      navigate(user.role === 'admin' ? '/admin' : '/home', { replace: true })
+      // Public pages (Terms / Privacy) stay where they are after an unlock —
+      // only app pages reset to Home.
+      if (pathname !== '/terms' && pathname !== '/privacy') {
+        navigate(user.role === 'admin' ? '/admin' : '/home', { replace: true })
+      }
     }
-  }, [locked, user, navigate])
+  }, [locked, user, navigate, pathname])
   return locked && user ? <LockScreen /> : null
 }
 
@@ -78,6 +103,7 @@ export default function App() {
         <ScrollManager />
         <Toasts />
         <LockGate />
+        <Suspense fallback={<div className="p-10 text-center text-sm font-semibold text-slate-400">Loading…</div>}>
         <Routes>
           <Route path="/" element={<Root />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
@@ -112,6 +138,7 @@ export default function App() {
           <Route path="/admin" element={<Guard admin><Suspense fallback={<div className="p-8 text-center">Loading admin…</div>}><Admin /></Suspense></Guard>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AppProvider>
   )

@@ -1,22 +1,23 @@
 // Payment methods are deliberately UNIVERSAL (decided 2026-11-18): running a
 // separate wallet/rail per region is not feasible, so every user in every
-// region gets exactly the same two methods — Bank Transfer and Crypto Deposit
-// — for both deposits and withdrawals. An admin Settings entry with the same
-// label overrides the receiving detail shown.
+// region gets the same methods — bank accounts and crypto wallets, managed by
+// the admin in Admin → Payment Methods (bank entries carry routing / SWIFT /
+// branch; crypto entries carry coin + network + address). Withdrawal
+// destinations stay the two universal choices: Bank Account / Crypto Wallet.
 
-export interface LocalMethod { label: string; detail: string }
+import type { PayMethod } from './types'
+import { DEFAULT_PAY_METHODS } from './seed'
 
-const BANK_IN: LocalMethod = { label: 'Bank Transfer', detail: 'NovaWallet Bank · A/C 1501200000001' }
-const CRYPTO_IN: LocalMethod = { label: 'Crypto Deposit', detail: 'USDT (TRC20): TNovaWalletAddressExample123456789' }
-
-export function depositMethods(_currency?: string, adminMethods?: { label: string; detail: string }[]): LocalMethod[] {
-  const list = [BANK_IN, CRYPTO_IN]
-  if (!adminMethods?.length) return list
-  return list.map(m => {
-    const override = adminMethods.find(a => a.label.toLowerCase() === m.label.toLowerCase())
-    return override ? { ...m, detail: override.detail } : m
-  })
+export function depositMethods(_currency?: string, adminMethods?: PayMethod[]): PayMethod[] {
+  if (adminMethods?.length) return adminMethods
+  return DEFAULT_PAY_METHODS as PayMethod[]
 }
+
+/** Display title for a method: bank name, or "USDT · Tron (TRC20)" for crypto. */
+export const payMethodTitle = (m: PayMethod): string => m.kind === 'crypto' ? (m.network ? `${m.label} · ${m.network}` : m.label) : m.label
+
+/** The value a user sends to / copies: the account number or wallet address (falls back to legacy free-text details). */
+export const payMethodValue = (m: PayMethod): string => m.accountNumber ?? m.detail ?? ''
 
 export function withdrawMethods(_currency?: string): string[] {
   return ['Bank Account', 'Crypto Wallet']

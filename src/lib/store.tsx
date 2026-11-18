@@ -27,9 +27,20 @@ function load(): DB {
       if (!db.earnStates) db.earnStates = []
       if (!db.sec) db.sec = {}
       if (!db.settings.payMethods) db.settings.payMethods = DEFAULT_PAY_METHODS
-      // payment methods are universal now (Bank + Crypto only): drop any old
-      // per-region rails (bKash, UPI, …) saved by earlier versions
-      db.settings.payMethods = db.settings.payMethods.filter(pm => /bank|crypto/i.test(pm.label))
+      // normalize payment methods to the structured model (bank / crypto kinds);
+      // older saves carried free-text label+detail entries — infer the kind and
+      // pull the account number / address out of the old detail text where possible
+      db.settings.payMethods = db.settings.payMethods.map(pm => {
+        const kind = (pm as any).kind ?? (/crypto|usdt|btc|eth|tron|binance|wallet/i.test(pm.label) ? 'crypto' : 'bank')
+        const out: any = { ...pm, kind }
+        if (!out.accountNumber && out.detail) {
+          const m = kind === 'bank' ? out.detail.match(/A\/C\s*([0-9]+)/) : out.detail.match(/:\s*(\S+)$/)
+          if (m) out.accountNumber = m[1]
+        }
+        if (kind === 'crypto' && !out.network) { const nm = pm.label.match(/\(([^)]+)\)/) ?? (out.detail ?? '').match(/\(([^)]+)\)/); if (nm) out.network = nm[1] === 'TRC20' ? 'Tron (TRC20)' : nm[1] }
+        if (kind === 'crypto' && out.label === 'Crypto Deposit' && out.detail) { const cm = out.detail.match(/^(\S+)\s*\(/); if (cm) out.label = cm[1] }
+        return out
+      })
       if (!db.settings.payMethods.length) db.settings.payMethods = DEFAULT_PAY_METHODS
       db.tickets.forEach(tk => {
         if (!tk.messages) tk.messages = [{ id: tk.id + '-m1', from: 'user', text: tk.message ?? '', at: tk.createdAt }]
@@ -72,7 +83,6 @@ interface Ctx {
   verifyPasswordOtp: (email: string, otp: string) => string | null
   resetPasswordWithOtp: (email: string, otp: string, newPassword: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
-  logout: () => void
   walletOf: (userId: string) => DB['wallets'][number]
   addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string }) => void
   decideDeposit: (id: string, ok: boolean) => void
@@ -478,7 +488,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(SESSION, nu.id); setUserId(nu.id); setLocked(false)
     return null
   }
-  const logout = () => { localStorage.removeItem(SESSION); setUserId(null); setLocked(false) }
 
   const addDeposit: Ctx['addDeposit'] = (p) => {
     if (!user) return
@@ -991,7 +1000,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const resetDemo = () => { const fresh = seedDB(); localStorage.setItem(KEY, JSON.stringify(fresh)); setDb(fresh) }
 
   const value: Ctx = {
-    db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, logout, walletOf,
+    db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, walletOf,
     addDeposit, decideDeposit, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, PinBoxes, Select, useConfirm } from '../components/ui'
-import { depositMethods, CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
+import { depositMethods, CRYPTO_NETWORK_LABELS, payMethodTitle, payMethodValue } from '../lib/localPayments'
 import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
 import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
@@ -433,10 +433,10 @@ export default function Profile() {
         )}
       </Modal>
       <Modal open={modal === 'methods'} onClose={() => setModal(null)} title={t('p_methods')}>
-        <ModalDesc>Bank Transfer and Crypto Deposit — the same two methods in every country. Link your own bank account or crypto wallet below so it's saved for quick use.</ModalDesc>
+        <ModalDesc>Bank accounts and crypto wallets — the same in every country, managed by NovaWallet. Link your own bank account or crypto wallet below so it's saved for quick use.</ModalDesc>
         <div className="space-y-2.5">
           {depositMethods(currency, db.settings.payMethods).map(m => (
-            <ModalRow key={m.label}><span className="flex justify-between items-center gap-3"><span className="font-bold text-sm shrink-0">{m.label}</span><span className="font-mono text-xs text-right break-all">{m.detail}</span></span></ModalRow>
+            <ModalRow key={m.id}><span className="flex justify-between items-center gap-3"><span className="font-bold text-sm shrink-0">{m.kind === 'crypto' ? '₿ ' : '🏦 '}{payMethodTitle(m)}</span><span className="font-mono text-xs text-right break-all">{payMethodValue(m)}</span></span></ModalRow>
           ))}
           <ModalRow><span className="flex justify-between items-center gap-3"><span className="font-bold text-sm shrink-0">Your phone</span><span className="font-mono text-xs">{user.phone}</span></span></ModalRow>
         </div>

@@ -42,7 +42,22 @@ export interface Loan {
 export interface LoanInfo { applicantName: string; phone: string; whatsapp: string; nid: string; photo: string; guarantorName: string; guarantorPhone: string; idType: string; idPhoto: string }
 
 export interface EarnState { userId: string; day: string; lastCheckin: string; streak: number; ads: number; spins: number; scratches: number; tasksDone: string[]; quizDay: string }
-export interface PayMethod { id: string; label: string; detail: string }
+export interface PayMethod {
+  id: string
+  kind: 'bank' | 'crypto'
+  /** Bank name (e.g. "BRAC Bank") or coin name (e.g. "USDT"). */
+  label: string
+  accountName?: string
+  /** Bank account number, or the crypto wallet address. */
+  accountNumber?: string
+  routing?: string
+  swift?: string
+  branch?: string
+  /** Crypto only, e.g. "Tron (TRC20)". */
+  network?: string
+  /** Legacy free-text details (older entries). */
+  detail?: string
+}
 export interface NewsItem {
   id: string; title: string; category: string; excerpt: string; body: string
   source: string; date: string; featured: boolean; gradient: string; coin?: string

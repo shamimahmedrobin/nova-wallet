@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CheckCircle2, Info, X, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Check, CheckCircle2, Copy, Info, X, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { gradientFor, initials } from '../lib/utils'
 
@@ -23,6 +23,21 @@ export const Input = (props: React.InputHTMLAttributes<HTMLInputElement> & { lab
     <input {...props} className={`w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 px-4 py-3 text-[15px] text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition ${props.className ?? ''}`} />
   </label>
 )
+/** Small copy-to-clipboard button with a brief "Copied" state (clipboard API + fallback). */
+export const CopyBtn = ({ value, label = 'Copy' }: { value: string; label?: string }) => {
+  const [done, setDone] = useState(false)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value) } catch {
+      const ta = document.createElement('textarea'); ta.value = value; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy') } catch { /* ignore */ } ta.remove()
+    }
+    setDone(true); setTimeout(() => setDone(false), 1600)
+  }
+  return (
+    <button type="button" onClick={copy} aria-label={label + ': ' + value} className={`shrink-0 inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-[11px] font-extrabold transition active:scale-95 ${done ? 'bg-emerald-600 text-white' : 'bg-violet-600/10 text-violet-600 dark:text-violet-300 hover:bg-violet-600/20'}`}>
+      {done ? <Check size={13} /> : <Copy size={13} />} {done ? 'Copied' : label}
+    </button>
+  )
+}
 export const MaxBtn = ({ onClick }: { onClick: () => void }) => (
   <button type="button" onClick={onClick} aria-label="Use maximum amount"
     className="absolute right-2.5 bottom-[9px] z-10 px-2.5 py-1 rounded-lg bg-transparent text-violet-600 dark:text-violet-400 text-xs font-extrabold tracking-widest hover:bg-violet-600/10 active:scale-95 transition">MAX</button>

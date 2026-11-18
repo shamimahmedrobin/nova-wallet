@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowLeftRight, Check, Copy, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, Check, Copy, CreditCard, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, TxDirIcon, statusTone } from '../components/ui'
 import { fmtDateTime, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
-import type { Tx } from '../lib/types'
+import { CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
+import type { PayMethod, Tx } from '../lib/types'
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'support', label: 'Support Chat', icon: MessageCircle },
   { id: 'content', label: 'News & Banners', icon: Newspaper },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
+  { id: 'payments', label: 'Payment Methods', icon: CreditCard },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ] as const
 
@@ -39,6 +41,8 @@ export default function Admin() {
   const pendingLevels = db.levelRequests.filter(r => r.status === 'pending').length
   const [newsForm, setNewsForm] = useState<any>(null)
   const [setForm, setSetForm] = useState({ ...db.settings })
+  const [pmList, setPmList] = useState<PayMethod[] | null>(null)
+  useEffect(() => { if (tab === 'payments' && pmList === null) setPmList(db.settings.payMethods.map(m => ({ ...m }))) }, [tab, pmList, db.settings.payMethods])
   const [levelForms, setLevelForms] = useState<Record<number, any>>({})
   const [feeInputs, setFeeInputs] = useState<Record<string, string>>({})
 
@@ -353,6 +357,54 @@ export default function Admin() {
           </div>
         )}
 
+        {tab === 'payments' && pmList && (
+          <div className="anim-fade-up space-y-4">
+            <Card className="p-5">
+              <h3 className="font-extrabold">Payment Methods</h3>
+              <p className="text-sm text-slate-500 mt-1 leading-relaxed">The bank accounts and crypto wallets customers send money to. This one list is shown in <b>Add Money</b> (with copy buttons), in loan-fee payments and in Profile — the same in every country. Bank accounts can carry Routing No, SWIFT Code and branch; crypto entries carry the coin, network and wallet address.</p>
+            </Card>
+            {pmList.map((pm, i) => {
+              const setPm = (patch: Partial<PayMethod>) => setPmList(list => (list ?? []).map((x, j) => j === i ? { ...x, ...patch } : x))
+              return (
+                <Card key={pm.id} className="p-5 space-y-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold ${pm.kind === 'crypto' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' : 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'}`}>{pm.kind === 'crypto' ? '₿ Crypto wallet' : '🏦 Bank account'}</span>
+                    <button onClick={() => setPmList(list => (list ?? []).filter((_, j) => j !== i))} className="text-rose-500 font-extrabold text-sm">Remove ✕</button>
+                  </div>
+                  <Select label="Type" value={pm.kind} onChange={(e: any) => setPm({ kind: e.target.value })}>
+                    <option value="bank">🏦 Bank account</option>
+                    <option value="crypto">₿ Crypto wallet</option>
+                  </Select>
+                  {pm.kind === 'bank' ? (
+                    <div className="grid sm:grid-cols-2 gap-3.5">
+                      <Input label="Bank name" placeholder="e.g. BRAC Bank" value={pm.label} onChange={e => setPm({ label: e.target.value })} />
+                      <Input label="Account name / title" placeholder="e.g. NovaWallet" value={pm.accountName ?? ''} onChange={e => setPm({ accountName: e.target.value })} />
+                      <Input label="Account number" placeholder="e.g. 1501200000001" value={pm.accountNumber ?? ''} onChange={e => setPm({ accountNumber: e.target.value })} />
+                      <Input label="Branch" placeholder="e.g. Sylhet Branch" value={pm.branch ?? ''} onChange={e => setPm({ branch: e.target.value })} />
+                      <Input label="Routing No" placeholder="e.g. 060261234" value={pm.routing ?? ''} onChange={e => setPm({ routing: e.target.value })} />
+                      <Input label="SWIFT Code" placeholder="e.g. BRAKBDDH" value={pm.swift ?? ''} onChange={e => setPm({ swift: e.target.value })} />
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 gap-3.5">
+                      <Input label="Coin / asset" placeholder="e.g. USDT" value={pm.label} onChange={e => setPm({ label: e.target.value })} />
+                      <Select label="Network / transfer system" value={pm.network ?? CRYPTO_NETWORK_LABELS[3]} onChange={(e: any) => setPm({ network: e.target.value })}>
+                        {CRYPTO_NETWORK_LABELS.map(n => <option key={n}>{n}</option>)}
+                      </Select>
+                      <Input label="Wallet name (optional)" placeholder="e.g. NovaWallet" value={pm.accountName ?? ''} onChange={e => setPm({ accountName: e.target.value })} />
+                      <Input label="Wallet address" placeholder="Paste the receiving address" value={pm.accountNumber ?? ''} onChange={e => setPm({ accountNumber: e.target.value })} />
+                    </div>
+                  )}
+                </Card>
+              )
+            })}
+            <div className="flex flex-wrap gap-2">
+              <Btn variant="outline" className="!py-2.5 !text-sm" onClick={() => setPmList(list => [...(list ?? []), { id: 'pm' + Date.now(), kind: 'bank', label: '', accountName: '', accountNumber: '', routing: '', swift: '', branch: '' }])}>＋ Add bank account</Btn>
+              <Btn variant="outline" className="!py-2.5 !text-sm" onClick={() => setPmList(list => [...(list ?? []), { id: 'pm' + Date.now(), kind: 'crypto', label: 'USDT', network: CRYPTO_NETWORK_LABELS[3], accountName: '', accountNumber: '' }])}>＋ Add crypto wallet</Btn>
+            </div>
+            <Btn className="w-full py-3.5" onClick={() => { updateSettings({ payMethods: pmList.filter(m => m.label.trim()) }); toast({ kind: 'success', title: 'Payment methods saved', body: 'Add Money now shows the updated accounts.' }) }}>Save payment methods</Btn>
+          </div>
+        )}
+
         {tab === 'settings' && (
           <div className="anim-fade-up">
             <Card className="p-5 space-y-4">
@@ -367,18 +419,9 @@ export default function Admin() {
                 <Input label="Min loan (USDT)" type="number" value={Math.round(setForm.minLoan / setForm.bdtPerUsd * 100) / 100} onChange={e => setSetForm(s => ({ ...s, minLoan: Math.round(Number(e.target.value) * s.bdtPerUsd) }))} />
                 <Input label="Max loan / limit (USDT)" type="number" value={Math.round(setForm.maxLoan / setForm.bdtPerUsd * 100) / 100} onChange={e => setSetForm(s => ({ ...s, maxLoan: Math.round(Number(e.target.value) * s.bdtPerUsd), loanLimit: Math.round(Number(e.target.value) * s.bdtPerUsd) }))} />
               </div>
-              <div>
-                <p className="font-extrabold text-sm mb-1">Payment options <span className="text-slate-400 font-semibold">(one shared list — shown in Add Money on the website and in loan-fee payments)</span></p>
-                <div className="space-y-2">
-                  {(setForm.payMethods ?? []).map((pm, i) => (
-                    <div key={pm.id} className="flex gap-2 items-start">
-                      <div className="w-[128px] shrink-0"><Input placeholder="Label (Bank Transfer)" value={pm.label} onChange={e => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} /></div>
-                      <div className="flex-1 min-w-0"><Input placeholder="Number / crypto address / account details" value={pm.detail} onChange={e => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).map((x, j) => j === i ? { ...x, detail: e.target.value } : x) }))} /></div>
-                      <button onClick={() => setSetForm(sx => ({ ...sx, payMethods: (sx.payMethods ?? []).filter((_, j) => j !== i) }))} className="px-2 py-3 text-rose-500 font-extrabold" aria-label="Remove payment option">✕</button>
-                    </div>
-                  ))}
-                </div>
-                <Btn variant="outline" className="!py-2 !text-xs mt-2" onClick={() => setSetForm(sx => ({ ...sx, payMethods: [...(sx.payMethods ?? []), { id: 'pm' + Date.now(), label: '', detail: '' }] }))}>+ Add payment option</Btn>
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-sm font-semibold">💳 Payment methods (bank accounts & crypto wallets) are managed in their own tab.</p>
+                <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setTab('payments')}>Open Payment Methods</Btn>
               </div>
               <label className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 font-semibold text-sm">Maintenance mode
                 <input type="checkbox" checked={setForm.maintenance} onChange={e => setSetForm(s => ({ ...s, maintenance: e.target.checked }))} className="w-5 h-5 accent-violet-600" /></label>
