@@ -105,39 +105,46 @@ export function Confirm({ open, onClose, onConfirm, title, body, confirmLabel = 
     </Modal>
   )
 }
-/** Attractive 4-box PIN entry: tap the boxes and type — filled boxes light up one by one. */
-export const PinBoxes = ({ value, onChange, label, onEnter, shake = false }: { value: string; onChange: (v: string) => void; label?: string; onEnter?: () => void; shake?: boolean }) => (
+/** Attractive box PIN/OTP entry: tap the boxes and type — filled boxes light up one by one. `length` 4 = PIN, 6 = email OTP (digits shown). */
+export const PinBoxes = ({ value, onChange, label, onEnter, shake = false, length = 4, showDigits = false }: { value: string; onChange: (v: string) => void; label?: string; onEnter?: () => void; shake?: boolean; length?: number; showDigits?: boolean }) => (
   <div>
     {label && <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide text-center">{label}</span>}
     <label className={`relative block cursor-text ${shake ? 'animate-[nw-shake_.35s_ease]' : ''}`}>
-      <span className="flex justify-center gap-3">
-        {[0, 1, 2, 3].map(i => (
-          <span key={i} className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${value.length === i ? 'border-violet-500 ring-4 ring-violet-500/15 scale-[1.03]' : value.length > i ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70'}`}>
-            {value.length > i && <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500" />}
+      <span className="flex justify-center gap-2.5">
+        {Array.from({ length }).map((_, i) => (
+          <span key={i} className={`${length > 4 ? 'w-11 h-12 text-lg' : 'w-14 h-14'} rounded-2xl border-2 flex items-center justify-center transition-all font-extrabold text-slate-800 dark:text-slate-100 ${value.length === i ? 'border-violet-500 ring-4 ring-violet-500/15 scale-[1.03]' : value.length > i ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70'}`}>
+            {value.length > i && (showDigits ? value[i] : <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500" />)}
           </span>
         ))}
       </span>
-      <input type="password" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={value} aria-label={label ?? 'PIN'}
-        onChange={e => onChange(e.target.value.replace(/\D/g, '').slice(0, 4))}
+      <input type={showDigits ? 'text' : 'password'} inputMode="numeric" autoComplete="one-time-code" maxLength={length} value={value} aria-label={label ?? 'PIN'}
+        onChange={e => onChange(e.target.value.replace(/\D/g, '').slice(0, length))}
         onKeyDown={e => e.key === 'Enter' && onEnter?.()}
         className="absolute inset-0 w-full h-full opacity-0 cursor-text" />
     </label>
     <span className="flex justify-center gap-1.5 mt-3">
-      {[0, 1, 2, 3].map(i => <span key={i} className={`h-1.5 rounded-full transition-all ${value.length > i ? 'w-6 bg-gradient-to-r from-violet-600 to-cyan-500' : 'w-3 bg-slate-200 dark:bg-slate-700'}`} />)}
+      {Array.from({ length }).map((_, i) => <span key={i} className={`h-1.5 rounded-full transition-all ${value.length > i ? 'w-6 bg-gradient-to-r from-violet-600 to-cyan-500' : 'w-3 bg-slate-200 dark:bg-slate-700'}`} />)}
     </span>
   </div>
 )
 /** On-screen numeric keypad for the lock screen — big, thumb-friendly keys. */
-export const PinPad = ({ onDigit, onBackspace, leftCell }: { onDigit: (d: string) => void; onBackspace: () => void; leftCell?: React.ReactNode }) => (
-  <div className="grid grid-cols-3 gap-1.5 max-w-[264px] mx-auto">
-    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(d => (
-      <button key={d} type="button" onClick={() => onDigit(d)} className="h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-lg font-extrabold text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 active:bg-violet-50 dark:active:bg-violet-500/15 transition">{d}</button>
-    ))}
-    <span className="h-12 flex items-center justify-center">{leftCell}</span>
-    <button type="button" onClick={() => onDigit('0')} className="h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-lg font-extrabold text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 active:bg-violet-50 dark:active:bg-violet-500/15 transition">0</button>
-    <button type="button" aria-label="Delete last digit" onClick={onBackspace} className="h-12 rounded-2xl text-slate-500 dark:text-slate-400 text-lg font-bold active:scale-95 transition flex items-center justify-center">⌫</button>
-  </div>
-)
+export const PinPad = ({ onDigit, onBackspace, leftCell }: { onDigit: (d: string) => void; onBackspace: () => void; leftCell?: React.ReactNode }) => {
+  const letters: Record<string, string> = { '2': 'ABC', '3': 'DEF', '4': 'GHI', '5': 'JKL', '6': 'MNO', '7': 'PQRS', '8': 'TUV', '9': 'WXYZ' }
+  const keyCls = "h-12 rounded-2xl bg-gradient-to-b from-white to-slate-100 dark:from-slate-800 dark:to-slate-900 border border-slate-200/90 dark:border-slate-700/70 shadow-[0_2px_10px_rgba(15,23,42,0.08)] active:scale-95 active:border-violet-400 active:shadow-[0_0_0_4px_rgba(139,92,246,0.15)] transition flex flex-col items-center justify-center leading-none"
+  return (
+    <div className="grid grid-cols-3 gap-1.5 max-w-[264px] mx-auto">
+      {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(d => (
+        <button key={d} type="button" onClick={() => onDigit(d)} className={keyCls}>
+          <span className="text-lg font-extrabold text-slate-800 dark:text-slate-100">{d}</span>
+          {letters[d] && <span className="text-[7.5px] font-bold tracking-[.18em] text-slate-400 mt-0.5">{letters[d]}</span>}
+        </button>
+      ))}
+      <span className="h-12 flex items-center justify-center">{leftCell}</span>
+      <button type="button" onClick={() => onDigit('0')} className={keyCls}><span className="text-lg font-extrabold text-slate-800 dark:text-slate-100">0</span></button>
+      <button type="button" aria-label="Delete last digit" onClick={onBackspace} className="h-12 rounded-2xl text-slate-500 dark:text-slate-400 text-lg font-bold active:scale-95 transition flex items-center justify-center">⌫</button>
+    </div>
+  )
+}
 export const PinField = ({ pin, setPin }: { pin: string; setPin: (v: string) => void }) => (
   <Input label="Transaction PIN" type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={pin}
     onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} />

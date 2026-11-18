@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, CheckCircle2, CreditCard, Gift, Globe, HandCoins, Landmark, Repeat, Send, ShieldCheck, Smartphone, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Btn, Input } from '../components/ui'
+import { Btn, Input, PinBoxes } from '../components/ui'
 import { Logo } from '../components/Layout'
 
 export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landing' | 'login' | 'register' }) {
-  const { login, register, resetPassword, toast, t } = useApp()
+  const { login, register, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, toast, t } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const refCode = new URLSearchParams(window.location.search).get('ref') ?? ''
@@ -15,6 +15,10 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
   const [loginId, setLoginId] = useState(''); const [loginPw, setLoginPw] = useState('')
   const [step, setStep] = useState<'auth' | 'forgot'>('auth')
   const [fp, setFp] = useState({ email: '', pin: '', password: '' })
+  const [fpMethod, setFpMethod] = useState<'email' | 'pin'>('email')
+  const [fpOtp, setFpOtp] = useState('')
+  const [fpOtpDemo, setFpOtpDemo] = useState<string | null>(null)
+  const [fpOtpVerified, setFpOtpVerified] = useState(false)
   const [err, setErr] = useState('')
   const set = (k: string) => (e: any) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -33,6 +37,12 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
     if (e) { setErr(e); return }
     toast({ kind: 'success', title: 'Password reset', body: 'Log in with your new password.' })
     setLoginId(fp.email); setLoginPw(''); setErr(''); setStep('auth')
+  }
+  const doResetOtp = () => {
+    const e = resetPasswordWithOtp(fp.email, fpOtp, fp.password)
+    if (e) { setErr(e); return }
+    toast({ kind: 'success', title: 'Password reset', body: 'Log in with your new password.' })
+    setLoginId(fp.email); setLoginPw(''); setErr(''); setStep('auth'); setFpOtp(''); setFpOtpDemo(null); setFpOtpVerified(false)
   }
   const doRegister = () => {
     if (form.password.length < 6) return setErr('Password must be at least 6 characters.')
@@ -168,12 +178,44 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
             <div className="space-y-4">
               <div>
                 <p className="font-extrabold text-lg">Reset your password</p>
-                <p className="text-sm text-slate-500 mt-1">Verify your identity with your account email and 4-digit transaction PIN, then choose a new password.</p>
+                <p className="text-sm text-slate-500 mt-1">Choose how to verify it's you, then pick a new password.</p>
               </div>
-              <Input label="Email" type="email" placeholder="you@email.com" value={fp.email} onChange={e => setFp(f => ({ ...f, email: e.target.value }))} />
-              <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={fp.pin} onChange={e => setFp(f => ({ ...f, pin: e.target.value }))} />
-              <Input label="New password (min 6 characters)" type="password" placeholder="••••••••" value={fp.password} onChange={e => setFp(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === 'Enter' && doReset()} />
-              <Btn className="w-full py-3.5" onClick={doReset}>Reset password</Btn>
+              <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">
+                {([['email', '✉️ With Email'], ['pin', '🔢 With PIN']] as const).map(([m, l]) => (
+                  <button key={m} onClick={() => { setFpMethod(m); setErr('') }} className={`py-2.5 rounded-xl text-sm font-bold transition ${fpMethod === m ? 'bg-white dark:bg-slate-900 shadow text-violet-600' : 'text-slate-500'}`}>{l}</button>
+                ))}
+              </div>
+              {fpMethod === 'pin' ? (
+                <>
+                  <Input label="Email" type="email" placeholder="you@email.com" value={fp.email} onChange={e => setFp(f => ({ ...f, email: e.target.value }))} />
+                  <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={fp.pin} onChange={e => setFp(f => ({ ...f, pin: e.target.value }))} />
+                  <Input label="New password (min 6 characters)" type="password" placeholder="••••••••" value={fp.password} onChange={e => setFp(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === 'Enter' && doReset()} />
+                  <Btn className="w-full py-3.5" onClick={doReset}>Reset password</Btn>
+                </>
+              ) : !fpOtpDemo ? (
+                <>
+                  <Input label="Email" type="email" placeholder="you@email.com" value={fp.email} onChange={e => setFp(f => ({ ...f, email: e.target.value }))} />
+                  <p className="text-sm text-slate-500 leading-relaxed">We'll send a <b>6-digit verification code</b> to this email address. Enter the code to prove it's you.</p>
+                  <Btn className="w-full py-3.5" disabled={!fp.email.trim()} onClick={() => { const r = requestPasswordOtp(fp.email); if (r.error) { setErr(r.error); return } setErr(''); setFpOtpDemo(r.otp); setFpOtp(''); setFpOtpVerified(false) }}>Send 6-digit code</Btn>
+                </>
+              ) : !fpOtpVerified ? (
+                <>
+                  <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/70 dark:border-emerald-500/20 px-4 py-3.5 text-center">
+                    <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">📩 We've sent a 6-digit code to <b>{fp.email}</b>. It expires in 10 minutes.</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">Don't see it in your inbox? Please check your <b>spam or junk folder</b> — sometimes it lands there.</p>
+                    <p className="text-xs font-bold text-violet-600 dark:text-violet-300 mt-2.5">Demo mode — your code is shown here: <span className="font-mono text-base tracking-[.3em]">{fpOtpDemo}</span></p>
+                  </div>
+                  <PinBoxes label="Enter the 6-digit code" length={6} showDigits value={fpOtp} onChange={setFpOtp} />
+                  <Btn className="w-full py-3.5" disabled={fpOtp.length !== 6} onClick={() => { const e = verifyPasswordOtp(fp.email, fpOtp); if (e) { setErr(e); return } setErr(''); setFpOtpVerified(true) }}>Verify code</Btn>
+                  <button onClick={() => { const r = requestPasswordOtp(fp.email); if (r.error) { setErr(r.error); return } setFpOtpDemo(r.otp); setFpOtp('') }} className="w-full text-center text-sm font-bold text-violet-600">Didn't get it? Resend code</button>
+                </>
+              ) : (
+                <>
+                  <p className="text-center text-sm font-bold text-emerald-600">✓ Email verified — choose your new password.</p>
+                  <Input label="New password (min 6 characters)" type="password" placeholder="••••••••" value={fp.password} onChange={e => setFp(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === 'Enter' && doResetOtp()} />
+                  <Btn className="w-full py-3.5" onClick={doResetOtp}>Reset password</Btn>
+                </>
+              )}
               <button onClick={() => { setErr(''); setStep('auth') }} className="w-full text-center text-sm font-bold text-slate-500">← Back to login</button>
             </div>
           ) : mode === 'login' ? (

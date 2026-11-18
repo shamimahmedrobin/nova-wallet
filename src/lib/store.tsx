@@ -61,6 +61,9 @@ interface Ctx {
   lockNow: () => void
   signOut: () => void
   resetPassword: (email: string, pin: string, newPassword: string) => string | null
+  requestPasswordOtp: (email: string) => { error: string | null; otp: string | null }
+  verifyPasswordOtp: (email: string, otp: string) => string | null
+  resetPasswordWithOtp: (email: string, otp: string, newPassword: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
   logout: () => void
   walletOf: (userId: string) => DB['wallets'][number]
@@ -389,6 +392,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     recordSuccess(u.id)
     if (newPassword.length < 6) return 'Password must be at least 6 characters.'
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.passwordHash = hashSecret(newPassword); notify(d, u.id, 'Password reset', 'Your password was reset using your transaction PIN. If this was not you, contact support immediately.', 'security') })
+    return null
+  }
+  // Email-OTP password reset. DEMO delivery: the OTP is returned so the UI can
+  // show it on screen — when SMTP is connected, requestPasswordOtp should send
+  // it by email instead and stop returning it. The OTP itself is stored hashed
+  // with a 10-minute expiry, and wrong guesses share the 5-fail / 5-min lockout.
+  const requestPasswordOtp: Ctx['requestPasswordOtp'] = (email) => {
+    const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())
+    if (!u) return { error: 'No account found for that email.', otp: null }
+    const lk = lockError(u.id); if (lk) return { error: lk, otp: null }
+    const otp = String(Math.floor(100000 + Math.random() * 900000))
+    mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.resetOtpHash = hashSecret(otp); du.resetOtpExpires = Date.now() + 10 * 60 * 1000 })
+    return { error: null, otp }
+  }
+  const verifyPasswordOtp: Ctx['verifyPasswordOtp'] = (email, otp) => {
+    const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())
+    if (!u) return 'No account found for that email.'
+    const lk = lockError(u.id); if (lk) return lk
+    if (!u.resetOtpHash || !u.resetOtpExpires) return 'No code was requested for this email yet. Tap “Send code” first.'
+    if (Date.now() > u.resetOtpExpires) return 'That code has expired. Please request a new one.'
+    if (u.resetOtpHash !== hashSecret(otp.trim())) return recordFail(u.id, 'Incorrect code — please check and try again.')
+    return null
+  }
+  const resetPasswordWithOtp: Ctx['resetPasswordWithOtp'] = (email, otp, newPassword) => {
+    const bad = verifyPasswordOtp(email, otp)
+    if (bad) return bad
+    if (newPassword.length < 6) return 'Password must be at least 6 characters.'
+    const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())!
+    recordSuccess(u.id)
+    mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.passwordHash = hashSecret(newPassword); delete du.resetOtpHash; delete du.resetOtpExpires; notify(d, u.id, 'Password reset', 'Your password was reset using an email verification code. If this was not you, contact support immediately.', 'security') })
     return null
   }
   const register: Ctx['register'] = (p) => {
@@ -937,7 +970,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
-    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
+    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }
