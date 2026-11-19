@@ -39,3 +39,18 @@ self.addEventListener('fetch', (e) => {
     )
   }
 })
+
+// Notification click: focus the running app and open the exact section the
+// notification points at (data.url), or open the app if it is not running.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close()
+  const target = (e.notification.data && e.notification.data.url) || self.registration.scope
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if ('focus' in c) { c.focus(); if ('navigate' in c) c.navigate(target); return }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target)
+    })
+  )
+})

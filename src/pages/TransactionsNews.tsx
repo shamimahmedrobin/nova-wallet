@@ -169,6 +169,9 @@ const NOTIF_ROUTES: Record<string, { to: string; state?: any }> = {
   withdraw: { to: '/transactions' },
   receive: { to: '/transactions' },
   referral: { to: '/referral' },
+  earn: { to: '/earn' },
+  trade: { to: '/transactions' },
+  upgrade: { to: '/profile' },
   security: { to: '/profile' },
   kyc: { to: '/profile' },
   info: { to: '/home' },
@@ -180,6 +183,12 @@ export function Notifications() {
   const unread = mine.filter(n => !n.read).length
   const open = (n: typeof mine[number]) => {
     markRead(n.id)
+    // An exact deep link stored on the notification wins (Admin tab / user modal links).
+    if (n.link) {
+      if (n.link.startsWith('/admin') && user?.role !== 'admin') { navigate('/home'); return }
+      navigate(n.link)
+      return
+    }
     const r = NOTIF_ROUTES[n.kind] ?? { to: '/home' }
     navigate(r.to, r.state ? { state: r.state } : undefined)
   }

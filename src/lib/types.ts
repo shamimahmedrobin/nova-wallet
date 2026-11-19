@@ -81,7 +81,7 @@ export interface LevelRequest {
   status: 'pending' | 'approved' | 'rejected'; createdAt: string
 }
 export interface Banner { id: string; title: string; subtitle: string; gradient: string; active: boolean }
-export interface Notif { id: string; userId: string; title: string; body: string; kind: string; read: boolean; createdAt: string }
+export interface Notif { id: string; userId: string; title: string; body: string; kind: string; read: boolean; createdAt: string; /** Exact deep link (route, may carry ?tab= / ?user= for Admin) — wins over the kind-based route when set. */ link?: string }
 export interface Settings {
   sendFeePct: number; cashoutFeePct: number; referralPct: number
   loanRatePct: number; minLoan: number; maxLoan: number; loanLimit: number
@@ -92,7 +92,7 @@ export interface Audit { id: string; actor: string; action: string; detail: stri
 export interface ChatMsg { id: string; from: 'user' | 'admin'; text: string; at: string }
 export interface SupportTicket { id: string; userId: string; subject: string; message?: string; status: 'pending' | 'processing' | 'resolved'; createdAt: string; updatedAt: string; messages: ChatMsg[] }
 
-export interface Stake { id: string; userId: string; amount: number; apy: number; termDays: number; startAt: string; status: 'active' | 'closed' }
+export interface Stake { id: string; userId: string; amount: number; apy: number; termDays: number; startAt: string; status: 'active' | 'closed'; /** Set once the 'stake matured' notification has been sent. */ maturedNotified?: boolean }
 export interface DB {
   users: User[]; wallets: Wallet[]; txs: Tx[]; ledger: LedgerEntry[]
   deposits: DepositReq[]; withdrawals: WithdrawReq[]; loans: Loan[]

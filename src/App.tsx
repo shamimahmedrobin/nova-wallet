@@ -59,6 +59,56 @@ function LockGate() {
   return locked && user ? <LockScreen /> : null
 }
 
+/** OS-level notifications: ask permission once the user is signed in, and mirror
+    NEW in-app notifications to the system tray while the app sits in the
+    background. Clicking one focuses the app and opens the exact section. */
+const SYS_ROUTES: Record<string, string> = {
+  loan: '/loan', support: '/profile', transaction: '/transactions', deposit: '/transactions',
+  withdraw: '/transactions', receive: '/transactions', referral: '/referral', security: '/profile',
+  kyc: '/profile', upgrade: '/profile', earn: '/earn', trade: '/transactions', info: '/home',
+}
+function SystemNotifier() {
+  const { user, db } = useApp()
+  const navigate = useNavigate()
+  const known = useRef<Set<string> | null>(null)
+  const lastUser = useRef<string | null>(null)
+  // 1) Permission — requested when the app is opened with a signed-in account.
+  useEffect(() => {
+    if (!user) return
+    try {
+      if (!('Notification' in window) || Notification.permission !== 'default') return
+      if (sessionStorage.getItem('nova.notifAsked')) return
+      sessionStorage.setItem('nova.notifAsked', '1')
+      Notification.requestPermission().catch(() => {})
+    } catch { /* unsupported — in-app notifications still work */ }
+  }, [user])
+  // 2) Mirror new notifications to the OS while the tab is in the background.
+  useEffect(() => {
+    if (!user) { known.current = null; lastUser.current = null; return }
+    if (lastUser.current !== user.id) { lastUser.current = user.id; known.current = null }
+    const mine = db.notifications.filter(n => n.userId === user.id)
+    if (known.current === null) { known.current = new Set(mine.map(n => n.id)); return }
+    const fresh = mine.filter(n => !known.current!.has(n.id) && !n.read)
+    fresh.forEach(n => known.current!.add(n.id))
+    if (!fresh.length) return
+    try {
+      if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return
+    } catch { return }
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+    fresh.slice(0, 3).forEach(n => {
+      const rel = n.link ?? SYS_ROUTES[n.kind] ?? '/home'
+      const url = window.location.origin + base + rel
+      const opts: NotificationOptions = { body: n.body, tag: n.id, icon: base + '/icons/icon-192.png', data: { url } }
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(reg => reg.showNotification(n.title, opts)).catch(() => { try { new Notification(n.title, opts) } catch { /* ignore */ } })
+      } else {
+        try { const sn = new Notification(n.title, opts); sn.onclick = () => { window.focus(); navigate(rel) } } catch { /* ignore */ }
+      }
+    })
+  }, [user, db.notifications, navigate])
+  return null
+}
+
 /** New navigation (PUSH) opens at the top; browser Back/Forward (POP) restores the previous scroll spot. */
 function ScrollManager() {
   const { key } = useLocation()
@@ -103,6 +153,7 @@ export default function App() {
         <ScrollManager />
         <Toasts />
         <LockGate />
+        <SystemNotifier />
         <Suspense fallback={<div className="p-10 text-center text-sm font-semibold text-slate-400">Loading…</div>}>
         <Routes>
           <Route path="/" element={<Root />} />

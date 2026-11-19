@@ -279,8 +279,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userId])
   const walletOf = useCallback((id: string) => dbRef.current.wallets.find(w => w.userId === id)!, [])
 
-  const notify = (draft: DB, userId2: string, title: string, body: string, kind: string) => {
-    draft.notifications.unshift({ id: rid(), userId: userId2, title, body, kind, read: false, createdAt: nowISO() })
+  const notify = (draft: DB, userId2: string, title: string, body: string, kind: string, link?: string) => {
+    draft.notifications.unshift({ id: rid(), userId: userId2, title, body, kind, read: false, createdAt: nowISO(), link })
+  }
+  /** Fan a notification out to every admin account, deep-linked into the exact Admin tab. */
+  const notifyAdmins = (draft: DB, title: string, body: string, kind: string, link?: string) => {
+    draft.users.filter(u => u.role === 'admin').forEach(a => notify(draft, a.id, title, body, kind, link))
   }
   const audit = (draft: DB, actor: string, action: string, detail: string) => {
     draft.audit.unshift({ id: rid(), actor, action, detail, createdAt: nowISO() })
@@ -298,6 +302,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const mutate = (fn: (draft: DB) => void) => {
     setDb(prev => { const draft: DB = JSON.parse(JSON.stringify(prev)); fn(draft); return draft })
   }
+  // ---- Stake maturity: notify ONCE when a fixed-term stake reaches its term ----
+  useEffect(() => {
+    if (!userId) return
+    const due = db.stakes.filter(st => st.userId === userId && st.status === 'active' && st.termDays > 0 && !st.maturedNotified && Date.now() >= new Date(st.startAt).getTime() + st.termDays * 86_400_000)
+    if (!due.length) return
+    mutate(d => {
+      due.forEach(x => {
+        const st = d.stakes.find(y => y.id === x.id); if (!st || st.maturedNotified) return
+        st.maturedNotified = true
+        const interest = Math.round(st.amount * st.apy / 100 * st.termDays / 365)
+        notify(d, userId, '🎉 Stake matured', 'Your ' + st.termDays + '-day stake of ৳' + st.amount.toLocaleString() + ' has matured (interest ≈ ৳' + interest.toLocaleString() + '). You can unstake it now from Earn.', 'earn', '/earn')
+      })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, db.stakes])
   // ---- Security: failed-attempt lockout (5 fails → 5-minute lock) + validation ----
   const MAX_FAILS = 5
   const LOCK_MS = 5 * 60 * 1000
@@ -494,6 +513,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     mutate(d => {
       d.users.push(nu); d.wallets.push({ userId: nu.id, available: 0, locked: 0, holdings: {} })
       if (referrer) notify(d, referrer.id, 'New referral', nu.name + ' joined with your referral code.', 'referral')
+      notifyAdmins(d, '👤 New user registered', nu.name + ' (' + nu.email + ') just created an account.', 'info', '/admin?tab=users&user=' + nu.id)
       notify(d, nu.id, 'Welcome to NovaWallet', 'Verify your KYC from your profile to unlock loans and higher limits.', 'info')
     })
     localStorage.setItem(SESSION, nu.id); setUserId(nu.id); setLocked(false)
@@ -511,6 +531,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const dep = { id: uid('DEP'), userId: user.id, method: p.method, amount: p.amount, trxId: p.trxId, receipt: p.receipt, methodId: p.methodId, kind: p.kind, verification: p.verification ?? 'manual', reference, status: 'pending' as const, createdAt: nowISO() }
       d.deposits.unshift(dep)
       recordTx(d, { userId: user.id, category: 'add_money', title: 'Add Money via ' + p.method, amount: p.amount, fee: 0, currency: 'BDT', status: 'pending', method: p.method })
+      notifyAdmins(d, '💰 New deposit request', user.name + ' requested a ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + ' — review it in Finance.', 'deposit', '/admin?tab=finance')
       notify(d, user.id, 'Deposit request submitted', 'Your ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + (dep.verification === 'auto' ? ' is queued for automatic verification — it settles as soon as the payment provider confirms it.' : ' is pending admin review.'), 'deposit')
     })
   }
@@ -562,6 +583,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dw.available -= p.amount; dw.locked += p.amount
       d.withdrawals.unshift({ id: uid('WDR'), userId: user.id, method: p.method, amount: p.amount, fee, destination: p.destination, status: 'pending', createdAt: nowISO() })
       recordTx(d, { userId: user.id, category: 'cash_out', title: 'Cash Out to ' + p.method, amount: p.amount, fee, currency: 'BDT', status: 'pending', method: p.method })
+      notifyAdmins(d, '💸 New cash out request', user.name + ' requested a cash out of ৳' + p.amount.toLocaleString() + ' to ' + p.destination + ' — review it in Finance.', 'withdraw', '/admin?tab=finance')
+      notify(d, user.id, 'Cash out requested', 'Your cash out of ৳' + p.amount.toLocaleString() + ' is pending admin review.', 'withdraw')
     })
     return null
   }
@@ -600,6 +623,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dw.available -= cashPart; dw.locked += amount
       d.stakes.unshift({ id: uid('STK'), userId: user.id, amount, apy, termDays, startAt: nowISO(), status: 'active' })
       recordTx(d, { userId: user.id, category: 'earn', title: 'Staked in Earn (' + apy + '% APY)', amount, fee: 0, currency: 'BDT', status: 'completed' })
+      notify(d, user.id, '🌱 Stake started', 'You staked ৳' + amount.toLocaleString() + ' at ' + apy + '% APY (' + (termDays === 0 ? 'Flexible — unstake anytime' : termDays + ' days, locked until ' + new Date(Date.now() + termDays * 86_400_000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + ').', 'earn', '/earn')
     })
     return null
   }
@@ -621,6 +645,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dw.locked -= st.amount; dw.available += st.amount + interest
       d.stakes.find(x => x.id === stakeId)!.status = 'closed'
       recordTx(d, { userId: user.id, category: 'earn', title: 'Earn unstaked + interest', amount: st.amount + interest, fee: 0, currency: 'BDT', status: 'completed', note: 'Interest earned: ' + interest + ' BDT over ' + days.toFixed(2) + ' days' })
+      notify(d, user.id, '💰 Unstaked', 'Your stake of ৳' + st.amount.toLocaleString() + ' plus ৳' + interest.toLocaleString() + ' interest is back in your available balance.', 'earn', '/earn')
     })
     return null
   }
@@ -746,6 +771,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     mutate(d => {
       d.loans.unshift({ id: uid('LOAN'), userId: user.id, amount, months, ratePct: d.settings.loanRatePct, emi: Math.round(emi), totalPayable: Math.round(total), paid: 0, status: 'pending', createdAt: nowISO(), ...info })
       notify(d, user.id, 'Loan application submitted', 'Your loan application is under admin review. No loan is approved automatically.', 'loan')
+      notifyAdmins(d, '📄 New loan application', user.name + ' applied for a loan of ৳' + amount.toLocaleString() + ' over ' + months + ' months — review it in Loans.', 'loan', '/admin?tab=loans')
     })
   }
   const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
@@ -863,7 +889,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     mutate(d => {
       const loan = d.loans.find(x => x.id === loanId && x.userId === user.id); if (!loan) return
       loan.feeStatus = 'submitted'; loan.feeMethod = method; loan.feeTxRef = ref
-      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Processing fee payment submitted', user.name + ' submitted a fee payment for ' + loanId + ' via ' + method + ' (ref: ' + ref + ').', 'loan'))
+      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Processing fee payment submitted', user.name + ' submitted a fee payment for ' + loanId + ' via ' + method + ' (ref: ' + ref + ').', 'loan', '/admin?tab=loans'))
     })
   }
   const confirmLoanFee: Ctx['confirmLoanFee'] = (loanId) => {
@@ -911,6 +937,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (p.facePhoto) u.kycFacePhoto = p.facePhoto
       u.kycSubmittedAt = nowISO()
       notify(d, user.id, 'KYC submitted', 'Your documents and face scan were submitted for admin approval.', 'security')
+      notifyAdmins(d, '🪪 New KYC submission', user.name + ' submitted KYC documents (' + p.docType + ') — review them in Users.', 'kyc', '/admin?tab=users&user=' + user.id)
     })
   }
   const decideKyc: Ctx['decideKyc'] = (userId2, ok) => mutate(d => {
@@ -1049,7 +1076,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return
     mutate(d => {
       d.tickets.unshift({ id: uid('TKT'), userId: user.id, subject, status: 'pending', createdAt: nowISO(), updatedAt: nowISO(), messages: [{ id: uid('MSG'), from: 'user', text: message, at: nowISO() }] })
-      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'New support chat', user.name + ' opened a support chat: ' + subject, 'support'))
+      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'New support chat', user.name + ' opened a support chat: ' + subject, 'support', '/admin?tab=support'))
     })
   }
   const replyTicket: Ctx['replyTicket'] = (ticketId, text, as) => {
@@ -1061,7 +1088,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tk.updatedAt = nowISO()
       if (from === 'admin' && tk.status === 'pending') tk.status = 'processing'
       if (from === 'admin') notify(d, tk.userId, 'Support replied', 'The support team replied to your chat: ' + tk.subject, 'support')
-      else d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Support chat reply', user.name + ' replied in: ' + tk.subject, 'support'))
+      else d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Support chat reply', user.name + ' replied in: ' + tk.subject, 'support', '/admin?tab=support'))
     })
   }
   const resolveTicket: Ctx['resolveTicket'] = (ticketId) => {
@@ -1085,6 +1112,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     mutate(d => {
       d.levelRequests.unshift({ id: uid('LVR'), userId: user.id, fromLevel: user.level, toLevel, status: 'pending', createdAt: nowISO() })
       notify(d, user.id, 'Upgrade requested', 'Your request to reach Level ' + toLevel + ' is pending admin review.', 'security')
+      notifyAdmins(d, '⬆️ Level upgrade request', user.name + ' requested Level ' + toLevel + ' — review it in Levels.', 'upgrade', '/admin?tab=levels')
     })
     return null
   }

@@ -44,6 +44,17 @@ export default function Admin() {
   const openUser = (u: any) => { setSelUserId(u.id); setMAdjAmt(''); setMAdjTitle('Charge'); setMAdjNote(''); setMAdjDir('add'); setMTradeAmt(''); setMSide('buy'); setMSym('BTC'); setMClearArm(false); setMLoanLimit(u.loanLimitOverride ? String(Math.round(u.loanLimitOverride / db.settings.bdtPerUsd * 100) / 100) : '') }
   const selUser = selUserId ? db.users.find(x => x.id === selUserId) ?? null : null
   const selWallet = selUser ? db.wallets.find(x => x.userId === selUser.id) : null
+  // Deep links from notifications: /admin?tab=finance|loans|levels|users|support — and
+  // ?user=<id> opens that customer's Manage modal straight away (KYC / new-user alerts).
+  useEffect(() => {
+    let q: URLSearchParams
+    try { q = new URLSearchParams(window.location.search) } catch { return }
+    const t = q.get('tab')
+    if (t && TABS.some(x => x.id === t)) setTab(t)
+    const uidParam = q.get('user')
+    if (uidParam) { const du = db.users.find(x => x.id === uidParam); if (du) openUser(du) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const pendingLevels = db.levelRequests.filter(r => r.status === 'pending').length
   const [newsForm, setNewsForm] = useState<any>(null)
   const [setForm, setSetForm] = useState({ ...db.settings })
