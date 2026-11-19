@@ -23,7 +23,11 @@ const ACTIONS_RAW = [
 export default function Home() {
   const { user, db, walletOf, t, fmtMoney, fmtAmount, currency } = useApp()
   const navigate = useNavigate()
-  const { coins, loading, isLive } = useMarket()
+  // Live balance: while the user holds crypto, prices (and therefore the
+  // balance card) refresh every 10 seconds; otherwise every 60s is plenty.
+  const wEarly = user ? walletOf(user.id) : null
+  const holdsCrypto = !!wEarly && Object.entries(wEarly.holdings).some(([s, a]) => s !== 'USDT' && a > 0)
+  const { coins, loading, isLive } = useMarket(holdsCrypto ? 10_000 : 60_000)
   const [hide, setHide] = useState(false)
   const [bd, setBd] = useState<null | 'available' | 'locked' | 'crypto'>(null)
   const [bannerIdx, setBannerIdx] = useState(0)

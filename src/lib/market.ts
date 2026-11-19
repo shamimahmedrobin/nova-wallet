@@ -80,8 +80,8 @@ const FALLBACK: Coin[] = [
 ]
 
 let cache: { at: number; coins: Coin[] } | null = null
-export async function fetchMarket(): Promise<Coin[]> {
-  if (cache && Date.now() - cache.at < 60_000) return cache.coins
+export async function fetchMarket(force = false): Promise<Coin[]> {
+  if (!force && cache && Date.now() - cache.at < 60_000) return cache.coins
   try {
     const ids = Object.values(COIN_META).map(m => m.gecko).join(',')
     const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&sparkline=true&price_change_percentage=24h`)
@@ -98,7 +98,9 @@ export async function fetchMarket(): Promise<Coin[]> {
     cache = { at: Date.now(), coins }
     return coins
   } catch {
-    return FALLBACK
+    // A failed refresh keeps the last live prices instead of flipping the
+    // whole app to fallback numbers (matters for the 10s balance polling).
+    return cache?.coins ?? FALLBACK
   }
 }
 export function useMarket(refreshMs = 60_000) {
@@ -106,8 +108,8 @@ export function useMarket(refreshMs = 60_000) {
   const [loading, setLoading] = useState(!cache)
   useEffect(() => {
     let alive = true
-    const load = async () => { const c = await fetchMarket(); if (alive) { setCoins(c); setLoading(false) } }
-    load(); const t = setInterval(load, refreshMs)
+    const load = async (force = false) => { const c = await fetchMarket(force); if (alive) { setCoins(c); setLoading(false) } }
+    load(); const t = setInterval(() => load(true), refreshMs)
     return () => { alive = false; clearInterval(t) }
   }, [refreshMs])
   return { coins, loading, isLive: coins[0]?.live ?? false }

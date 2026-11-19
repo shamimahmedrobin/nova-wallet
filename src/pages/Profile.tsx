@@ -17,7 +17,8 @@ const SUPPORT_CHANNELS = [
 ]
 export default function Profile() {
   const { user, db, walletOf, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, signOut, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
-  const { coins } = useMarket()
+  const wEarlyP = db.wallets.find(x => x.userId === user?.id)
+  const { coins } = useMarket(wEarlyP && Object.entries(wEarlyP.holdings).some(([s, a]) => s !== 'USDT' && a > 0) ? 10_000 : 60_000)
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()

@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowLeftRight, Check, Copy, CreditCard, LayoutDashboard, Me
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, TxDirIcon, statusTone } from '../components/ui'
-import { fmtDateTime, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
+import { fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
+import { COIN_META, useMarket } from '../lib/market'
 import { CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
 import type { PayMethod, Tx } from '../lib/types'
 
@@ -24,8 +25,10 @@ const TABS = [
 ] as const
 
 export default function Admin() {
-  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit } = useApp()
+  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked } = useApp()
   const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
+  const { coins } = useMarket(30_000)
+  const priceOfA = (sym: string) => sym === 'USDT' ? 1 : coins.find(c => c.symbol === sym)?.priceUsd ?? 0
   const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
   const [userQ, setUserQ] = useState('')
@@ -34,8 +37,11 @@ export default function Admin() {
   const txq = txQ.trim().toLowerCase()
   const filteredTxs = !txq ? db.txs : db.txs.filter(tx => tx.id.toLowerCase().includes(txq) || tx.title.toLowerCase().includes(txq) || (tx.counterparty ?? '').toLowerCase().includes(txq) || (db.users.find(u => u.id === tx.userId)?.name.toLowerCase().includes(txq) ?? false))
   const [selUserId, setSelUserId] = useState<string | null>(null)
-  const [mAdjAmt, setMAdjAmt] = useState(''); const [mAdjReason, setMAdjReason] = useState(''); const [mLoanLimit, setMLoanLimit] = useState('')
-  const openUser = (u: any) => { setSelUserId(u.id); setMAdjAmt(''); setMAdjReason(''); setMLoanLimit(u.loanLimitOverride ? String(Math.round(u.loanLimitOverride / db.settings.bdtPerUsd * 100) / 100) : '') }
+  const [mAdjAmt, setMAdjAmt] = useState(''); const [mLoanLimit, setMLoanLimit] = useState('')
+  const [mAdjDir, setMAdjDir] = useState<'add' | 'deduct'>('add'); const [mAdjTitle, setMAdjTitle] = useState('Charge'); const [mAdjNote, setMAdjNote] = useState('')
+  const [mSym, setMSym] = useState('BTC'); const [mSide, setMSide] = useState<'buy' | 'sell'>('buy'); const [mTradeAmt, setMTradeAmt] = useState('')
+  const [mClearArm, setMClearArm] = useState(false)
+  const openUser = (u: any) => { setSelUserId(u.id); setMAdjAmt(''); setMAdjTitle('Charge'); setMAdjNote(''); setMAdjDir('add'); setMTradeAmt(''); setMSide('buy'); setMSym('BTC'); setMClearArm(false); setMLoanLimit(u.loanLimitOverride ? String(Math.round(u.loanLimitOverride / db.settings.bdtPerUsd * 100) / 100) : '') }
   const selUser = selUserId ? db.users.find(x => x.id === selUserId) ?? null : null
   const selWallet = selUser ? db.wallets.find(x => x.userId === selUser.id) : null
   const pendingLevels = db.levelRequests.filter(r => r.status === 'pending').length
@@ -459,16 +465,43 @@ export default function Admin() {
         {selUser && (() => {
           const lvlDef = db.levels.find(l => l.level === selUser.level)
           const pendingReq = db.levelRequests.find(r => r.userId === selUser.id && r.status === 'pending')
+          const sw = selWallet
+          const holdings = Object.entries(sw?.holdings ?? {}).filter(([, a]) => a > 0)
+          const cryptoValueBdt = holdings.reduce((sum, [sym, a]) => sum + a * priceOfA(sym) * db.settings.bdtPerUsd, 0)
+          const stakes = db.stakes.filter(st => st.userId === selUser.id && st.status === 'active')
+          const pendWd = db.withdrawals.filter(x => x.userId === selUser.id && x.status === 'pending')
+          const stmt = db.txs.filter(t => t.userId === selUser.id).slice(0, 10)
+          const ADJ_TITLES = ['Charge', 'Complaint', 'Hold', 'Refund', 'Bonus', 'Compensation', 'Correction']
+          const tradePrice = priceOfA(mSym)
+          const sellHolding = sw?.holdings[mSym] ?? 0
           return (
             <div className="space-y-5">
+              {/* Summary */}
               <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm space-y-1.5">
                 <div className="flex justify-between gap-3"><span className="text-slate-500">User ID</span><span className="font-bold">{selUser.id}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-slate-500">Email</span><span className="font-bold">{selUser.email}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Phone</span><span className="font-bold">{selUser.phone}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Joined</span><span className="font-bold">{fmtDateTime(selUser.createdAt)}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-slate-500">KYC / Status</span><span className="font-bold capitalize">{selUser.kyc} · {selUser.status}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Available</span><span className="font-bold">{usdt(selWallet?.available ?? 0)}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Locked</span><span className="font-bold">{usdt(selWallet?.locked ?? 0)}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">USDT holding</span><span className="font-bold">{fmtUSDT(selWallet?.holdings.USDT ?? 0)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Available (cash)</span><span className="font-bold">{usdt(sw?.available ?? 0)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Locked</span><span className="font-bold">{usdt(sw?.locked ?? 0)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Crypto value (live)</span><span className="font-bold">{usdt(cryptoValueBdt)}</span></div>
+                {holdings.length > 0 && (
+                  <div className="pt-1.5 space-y-1">
+                    {holdings.map(([sym, a]) => (
+                      <div key={sym} className="flex justify-between gap-3 text-xs"><span className="text-slate-500">{sym} holding</span><span className="font-bold">{a} {sym} · {fmtUSDT(a * priceOfA(sym))}</span></div>
+                    ))}
+                  </div>
+                )}
               </div>
+              {selUser.role === 'user' && (
+                <div className="flex flex-wrap gap-2">
+                  {selUser.status !== 'frozen' ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Unfreeze</Btn>}
+                  {selUser.status !== 'suspended' ? <Btn variant="danger" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'suspended')}>Suspend</Btn> : <Btn variant="success" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Activate</Btn>}
+                  {selUser.kyc === 'pending' && <><Btn variant="success" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, false)}>Reject KYC</Btn></>}
+                </div>
+              )}
+              {/* Level */}
               <div>
                 <p className="font-extrabold text-sm mb-2">Account level</p>
                 <select value={selUser.level} onChange={e => { setUserLevel(selUser.id, Number(e.target.value)); toast({ kind: 'success', title: selUser.name + ' → Level ' + e.target.value }) }} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm font-bold">
@@ -482,15 +515,77 @@ export default function Admin() {
                   </div>
                 )}
               </div>
-              <div>
-                <p className="font-extrabold text-sm mb-2">Adjust balance (audited)</p>
-                <div className="space-y-3">
-                  <Input label="Amount (+/- USDT)" type="number" value={mAdjAmt} onChange={e => setMAdjAmt(e.target.value)} />
-                  <Input label="Reason (required)" value={mAdjReason} onChange={e => setMAdjReason(e.target.value)} />
-                  <Btn className="w-full" onClick={() => { const a = Number(mAdjAmt); if (!a) return toast({ kind: 'error', title: 'Enter an amount' }); if (!mAdjReason.trim()) return toast({ kind: 'error', title: 'Reason required for audit' }); adjustBalance(selUser.id, Math.round(a * db.settings.bdtPerUsd), mAdjReason.trim()); setMAdjAmt(''); setMAdjReason(''); toast({ kind: 'success', title: 'Adjustment recorded' }) }}>Apply adjustment</Btn>
+              {/* Titled balance adjustment */}
+              <div className="rounded-3xl border-2 border-slate-200/80 dark:border-slate-700/60 p-4">
+                <p className="font-extrabold text-sm">Adjust balance <span className="text-slate-400 font-semibold">— shows in the statement with your title</span></p>
+                <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mt-3">
+                  {([['add', '＋ Add money'], ['deduct', '− Deduct']] as const).map(([d, l]) => (
+                    <button key={d} onClick={() => setMAdjDir(d)} className={`py-2 rounded-xl text-sm font-bold transition ${mAdjDir === d ? 'bg-white dark:bg-slate-900 shadow ' + (d === 'add' ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-500'}`}>{l}</button>
+                  ))}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1.5">Positive adds, negative deducts. Writes a ledger entry + audit log.</p>
+                <p className="text-xs font-bold text-slate-400 mt-3.5 mb-1.5">TITLE (appears in the customer's statement)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ADJ_TITLES.map(tl => (
+                    <button key={tl} onClick={() => setMAdjTitle(tl)} className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition ${mAdjTitle === tl ? 'bg-violet-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>{tl}</button>
+                  ))}
+                </div>
+                <div className="space-y-3 mt-3">
+                  <Input label="…or a custom title" value={mAdjTitle} onChange={e => setMAdjTitle(e.target.value)} />
+                  <Input label={'Amount (USDT) — ' + (mAdjDir === 'add' ? 'added to Available' : 'deducted from Available')} type="number" value={mAdjAmt} onChange={e => setMAdjAmt(e.target.value)} />
+                  <Input label="Note (optional)" placeholder="e.g. Support ticket #123 — service charge" value={mAdjNote} onChange={e => setMAdjNote(e.target.value)} />
+                  <Btn className="w-full" onClick={() => { const a = Number(mAdjAmt); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter an amount' }); if (!mAdjTitle.trim()) return toast({ kind: 'error', title: 'A title is required — it appears in the statement' }); if (mAdjDir === 'deduct' && Math.round(a * db.settings.bdtPerUsd) > (sw?.available ?? 0)) return toast({ kind: 'error', title: 'Deduction exceeds the available balance' }); adjustBalance(selUser.id, (mAdjDir === 'add' ? 1 : -1) * Math.round(a * db.settings.bdtPerUsd), mAdjTitle.trim(), mAdjNote.trim() || undefined); setMAdjAmt(''); setMAdjNote(''); toast({ kind: 'success', title: 'Recorded in the statement as “' + mAdjTitle.trim() + '”' }) }}>Apply — statement title: {mAdjTitle.trim() || '…'}</Btn>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">Writes a statement entry with this exact title + an audit log line, and notifies the customer.</p>
               </div>
+              {/* Support crypto trade */}
+              <div className="rounded-3xl border-2 border-slate-200/80 dark:border-slate-700/60 p-4">
+                <p className="font-extrabold text-sm">Crypto buy / sell <span className="text-slate-400 font-semibold">— on the customer's behalf</span></p>
+                <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mt-3">
+                  {([['buy', 'Buy'], ['sell', 'Sell']] as const).map(([sd, l]) => (
+                    <button key={sd} onClick={() => setMSide(sd)} className={`py-2 rounded-xl text-sm font-bold transition ${mSide === sd ? 'bg-white dark:bg-slate-900 shadow ' + (sd === 'buy' ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-500'}`}>{l}</button>
+                  ))}
+                </div>
+                <div className="space-y-3 mt-3">
+                  <Select label="Coin" value={mSym} onChange={(e: any) => setMSym(e.target.value)}>
+                    {Object.keys(COIN_META).map(sym => <option key={sym} value={sym}>{sym} — {COIN_META[sym].name}</option>)}
+                  </Select>
+                  <p className="text-xs text-slate-400 -mt-1">Live price: <b className="text-slate-600 dark:text-slate-200">{mSym === 'USDT' ? '$1.00 (pegged)' : fmtPrice(tradePrice)}</b> · Customer holds <b className="text-slate-600 dark:text-slate-200">{sellHolding} {mSym}</b></p>
+                  <div className="relative">
+                    <Input label={mSide === 'buy' ? 'Spend (USDT)' : 'Amount (' + mSym + ')'} type="number" value={mTradeAmt} onChange={e => setMTradeAmt(e.target.value)} />
+                    {mSide === 'sell' && sellHolding > 0 && <button onClick={() => setMTradeAmt(String(sellHolding))} className="absolute right-3 top-[34px] text-xs font-extrabold text-violet-600">MAX</button>}
+                  </div>
+                  {mSide === 'buy' && Number(mTradeAmt) > 0 && tradePrice > 0 && <p className="text-xs font-bold text-emerald-600 -mt-1">≈ receives {(Number(mTradeAmt) / tradePrice).toFixed(6)} {mSym}</p>}
+                  {mSide === 'sell' && Number(mTradeAmt) > 0 && <p className="text-xs font-bold text-rose-500 -mt-1">≈ receives {fmtUSDT(Number(mTradeAmt) * tradePrice)} {mSym === 'USDT' ? '(to cash balance)' : '(to USDT holding)'}</p>}
+                  <Btn className="w-full" onClick={() => { const a = Number(mTradeAmt); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter an amount' }); const err = mSide === 'buy' ? adminBuyCrypto(selUser.id, mSym, a, tradePrice) : adminSellCrypto(selUser.id, mSym, a, tradePrice); if (err) return toast({ kind: 'error', title: err }); setMTradeAmt(''); toast({ kind: 'success', title: (mSide === 'buy' ? 'Bought ' : 'Sold ') + mSym + ' for ' + selUser.name }) }}>{mSide === 'buy' ? 'Buy' : 'Sell'} {mSym} for customer</Btn>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">Uses the customer's own balances (USDT holding first, cash covers the rest — same as their own trades). Audited + the customer is notified.</p>
+              </div>
+              {/* Locked manager */}
+              <div className="rounded-3xl border-2 border-slate-200/80 dark:border-slate-700/60 p-4">
+                <p className="font-extrabold text-sm">Locked holdings <span className="text-slate-400 font-semibold">— total {usdt(sw?.locked ?? 0)}</span></p>
+                <div className="space-y-2 mt-3">
+                  {stakes.map(st => (
+                    <div key={st.id} className="flex items-center gap-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-3.5 py-2.5">
+                      <span className="flex-1 min-w-0 text-sm"><b>🌱 Stake</b> <span className="text-slate-400 text-xs block">{st.apy}% APY · {st.termDays === 0 ? 'Flexible' : st.termDays + ' days'} · since {fmtDateTime(st.startAt)}</span></span>
+                      <b className="text-sm">{usdt(st.amount)}</b>
+                      <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => { adminReleaseStake(selUser.id, st.id); toast({ kind: 'success', title: 'Stake released to Available' }) }}>Release</Btn>
+                    </div>
+                  ))}
+                  {pendWd.map(x => (
+                    <div key={x.id} className="flex items-center gap-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-3.5 py-2.5">
+                      <span className="flex-1 min-w-0 text-sm"><b>⏳ Cash Out pending</b> <span className="text-slate-400 text-xs block">{x.method} → {x.destination} · approve/reject it in Finance</span></span>
+                      <b className="text-sm">{usdt(x.amount)}</b>
+                    </div>
+                  ))}
+                  {stakes.length === 0 && pendWd.length === 0 && (sw?.locked ?? 0) === 0 && <p className="text-sm text-slate-400">Nothing locked for this customer.</p>}
+                  {stakes.length === 0 && pendWd.length === 0 && (sw?.locked ?? 0) > 0 && <p className="text-sm text-slate-400">This locked amount has no stake or cash-out record (legacy/other hold) — Clear all releases it.</p>}
+                </div>
+                {(sw?.locked ?? 0) > 0 && (
+                  <Btn variant="danger" className="w-full mt-3" onClick={() => { if (!mClearArm) { setMClearArm(true); setTimeout(() => setMClearArm(false), 4000); return } adminClearLocked(selUser.id); setMClearArm(false); toast({ kind: 'success', title: 'All locked holdings cleared to Available' }) }}>{mClearArm ? '⚠️ Tap again to confirm — release ALL ' + usdt(sw?.locked ?? 0) + '?' : 'Clear ALL locked holdings'}</Btn>
+                )}
+                <p className="text-[11px] text-slate-400 mt-1.5">Clear-all closes every stake (no interest on a bulk clear — release stakes one by one above to pay interest), cancels pending cash outs, and moves the whole locked amount to Available. Audited + notified.</p>
+              </div>
+              {/* Loan limit */}
               <div>
                 <p className="font-extrabold text-sm mb-2">Loan limit</p>
                 <p className="text-xs text-slate-400 mb-2">Level {selUser.level} default: <b>{usdt(lvlDef?.loanLimit ?? 0)}</b> · Current: <b>{selUser.loanLimitOverride ? usdt(selUser.loanLimitOverride) + ' (custom)' : 'level default'}</b></p>
@@ -499,6 +594,21 @@ export default function Admin() {
                   <Btn className="!py-3" onClick={() => { const a = Number(mLoanLimit); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter a loan limit' }); setUserLoanLimit(selUser.id, Math.round(a * db.settings.bdtPerUsd)); toast({ kind: 'success', title: 'Loan limit updated' }) }}>Save</Btn>
                 </div>
                 {selUser.loanLimitOverride ? <Btn variant="ghost" className="!py-1.5 !text-xs mt-1" onClick={() => { setUserLoanLimit(selUser.id, null); setMLoanLimit(''); toast({ kind: 'success', title: 'Loan limit reset to level default' }) }}>Reset to level default</Btn> : null}
+              </div>
+              {/* Statement */}
+              <div>
+                <p className="font-extrabold text-sm mb-2">Statement <span className="text-slate-400 font-semibold">— latest activity (also in Transactions tab)</span></p>
+                {stmt.length === 0 ? <p className="text-sm text-slate-400">No transactions yet.</p> : (
+                  <div className="rounded-2xl border border-slate-200/70 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+                    {stmt.map(tx => { const dir = txDirection(tx.category, tx.amount); return (
+                      <button key={tx.id} onClick={() => copyTxId(tx.id)} title="Copy transaction ID" className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left">
+                        <TxDirIcon dir={dir} />
+                        <span className="flex-1 min-w-0"><span className="block font-bold text-[13px] truncate">{tx.title}</span><span className="block text-[11px] text-slate-400 truncate">{tx.id} · {fmtDateTime(tx.createdAt)}{tx.note ? ' · ' + tx.note : ''}</span></span>
+                        <span className="text-right"><span className={`block font-extrabold text-[13px] ${txAmountCls(dir)}`}>{txSign(dir)}{usdt(Math.abs(tx.amount))}</span><Badge tone={statusTone(tx.status)}>{tx.status}</Badge></span>
+                      </button>
+                    ) })}
+                  </div>
+                )}
               </div>
             </div>
           )

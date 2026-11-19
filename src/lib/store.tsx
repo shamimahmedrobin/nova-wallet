@@ -114,7 +114,14 @@ interface Ctx {
   repayLoan: (loan: Loan, amount: number) => string | null
   submitKyc: (p: { docType: string; docNumber: string; docPhoto?: string; facePhoto?: string }) => void; decideKyc: (userId: string, ok: boolean) => void
   setUserStatus: (userId: string, status: User['status']) => void
-  adjustBalance: (userId: string, amount: number, reason: string) => void
+  adjustBalance: (userId: string, amount: number, title: string, note?: string) => void
+  /** Support-desk trading on a customer's account (audited, user notified). */
+  adminBuyCrypto: (userId: string, symbol: string, usdtAmount: number, priceUsd: number) => string | null
+  adminSellCrypto: (userId: string, symbol: string, coinAmount: number, priceUsd: number) => string | null
+  /** Release one active stake early (principal + accrued interest), support action. */
+  adminReleaseStake: (userId: string, stakeId: string) => void
+  /** Clear ALL locked holdings: closes stakes, cancels pending cash outs, releases the rest to Available. */
+  adminClearLocked: (userId: string) => void
   updateProfile: (p: Partial<User>) => void
   changePassword: (oldPw: string, newPw: string) => string | null
   changePin: (oldPin: string, newPin: string) => string | null
@@ -908,12 +915,95 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setUserStatus: Ctx['setUserStatus'] = (userId2, status) => mutate(d => {
     const u = d.users.find(x => x.id === userId2); if (u) { u.status = status; audit(d, 'admin', 'user.' + status, userId2) }
   })
-  const adjustBalance: Ctx['adjustBalance'] = (userId2, amount, reason) => mutate(d => {
+  const adjustBalance: Ctx['adjustBalance'] = (userId2, amount, title, note) => mutate(d => {
     const w = d.wallets.find(x => x.userId === userId2); if (!w) return
     w.available += amount
-    recordTx(d, { userId: userId2, category: 'adjustment', title: 'Admin adjustment', amount, fee: 0, currency: 'BDT', status: 'completed', note: reason })
-    audit(d, 'admin', 'wallet.adjust', `${userId2} ${amount > 0 ? '+' : ''}৳${amount} — ${reason}`)
-    notify(d, userId2, 'Wallet adjustment', 'An admin adjusted your balance by ৳' + amount.toLocaleString() + '. Reason: ' + reason, 'info')
+    // The admin-given title (Charge, Complaint, Hold, Refund…) IS the statement
+    // title — it shows verbatim in the customer's Transactions and in the
+    // Admin panel's Transactions tab / user statement.
+    recordTx(d, { userId: userId2, category: 'adjustment', title: title || 'Admin adjustment', amount, fee: 0, currency: 'BDT', status: 'completed', note })
+    audit(d, 'admin', 'wallet.adjust', `${userId2} ${amount > 0 ? '+' : ''}৳${amount} — ${title}${note ? ' · ' + note : ''}`)
+    notify(d, userId2, title || 'Wallet adjustment', 'Your balance was adjusted by ৳' + amount.toLocaleString() + (note ? '. ' + note : ''), 'info')
+  })
+  const adminBuyCrypto: Ctx['adminBuyCrypto'] = (userId2, symbol, usdtAmount, priceUsd) => {
+    if (badAmount(usdtAmount) || badQty(priceUsd)) return 'Enter a valid amount.'
+    const w = dbRef.current.wallets.find(x => x.userId === userId2); if (!w) return 'Wallet not found.'
+    const rate = dbRef.current.settings.bdtPerUsd
+    if (symbol === 'USDT') {
+      const cost = Math.round(usdtAmount * rate)
+      if (cost > w.available) return 'Insufficient cash balance for this buy.'
+      mutate(d => {
+        const dw = d.wallets.find(x => x.userId === userId2)!
+        dw.available -= cost; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + usdtAmount
+        recordTx(d, { userId: userId2, category: 'crypto_buy', title: 'Bought USDT (support)', amount: cost, fee: 0, currency: 'USDT', status: 'completed', note: usdtAmount.toFixed(2) + ' USDT @ 1.00 · executed by admin support' })
+        audit(d, 'admin', 'trade.buy', `${userId2} USDT ${usdtAmount}`)
+        notify(d, userId2, 'Support trade executed', 'Support bought ' + usdtAmount.toFixed(2) + ' USDT for your account.', 'trade')
+      })
+      return null
+    }
+    const heldUsdt = w.holdings.USDT ?? 0
+    const shortfall = Math.max(0, usdtAmount - heldUsdt)
+    if (shortfall * rate > w.available) return 'Insufficient balance (USDT holding + cash) for this buy.'
+    const coins = usdtAmount / priceUsd
+    mutate(d => {
+      const dw = d.wallets.find(x => x.userId === userId2)!
+      dw.holdings.USDT = heldUsdt - Math.min(usdtAmount, heldUsdt); dw.available -= Math.round(shortfall * rate); dw.holdings[symbol] = (dw.holdings[symbol] ?? 0) + coins
+      recordTx(d, { userId: userId2, category: 'crypto_buy', title: 'Bought ' + symbol + ' (support)', amount: Math.round(usdtAmount * rate), fee: 0, currency: symbol, status: 'completed', note: coins.toFixed(6) + ' ' + symbol + ' @ ' + priceUsd + ' USDT · executed by admin support' })
+      audit(d, 'admin', 'trade.buy', `${userId2} ${symbol} ${usdtAmount} USDT @ ${priceUsd}`)
+      notify(d, userId2, 'Support trade executed', 'Support bought ' + coins.toFixed(6) + ' ' + symbol + ' for your account.', 'trade')
+    })
+    return null
+  }
+  const adminSellCrypto: Ctx['adminSellCrypto'] = (userId2, symbol, coinAmount, priceUsd) => {
+    if (badQty(coinAmount) || badQty(priceUsd)) return 'Enter a valid amount.'
+    const w = dbRef.current.wallets.find(x => x.userId === userId2); if (!w) return 'Wallet not found.'
+    if (coinAmount > (w.holdings[symbol] ?? 0)) return 'Insufficient ' + symbol + ' holding.'
+    const rate = dbRef.current.settings.bdtPerUsd
+    mutate(d => {
+      const dw = d.wallets.find(x => x.userId === userId2)!
+      if (symbol === 'USDT') {
+        const bdt = Math.round(coinAmount * rate)
+        dw.holdings.USDT = (dw.holdings.USDT ?? 0) - coinAmount; dw.available += bdt
+        recordTx(d, { userId: userId2, category: 'crypto_sell', title: 'Sold USDT (support)', amount: bdt, fee: 0, currency: 'USDT', status: 'completed', note: coinAmount + ' USDT @ 1.00 · executed by admin support' })
+      } else {
+        const usdt = coinAmount * priceUsd
+        dw.holdings[symbol] -= coinAmount; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + usdt
+        recordTx(d, { userId: userId2, category: 'crypto_sell', title: 'Sold ' + symbol + ' (support)', amount: Math.round(usdt * rate), fee: 0, currency: symbol, status: 'completed', note: coinAmount + ' ' + symbol + ' @ ' + priceUsd + ' USDT · executed by admin support' })
+      }
+      audit(d, 'admin', 'trade.sell', `${userId2} ${symbol} ${coinAmount} @ ${priceUsd}`)
+      notify(d, userId2, 'Support trade executed', 'Support sold ' + coinAmount + ' ' + symbol + ' from your account.', 'trade')
+    })
+    return null
+  }
+  const adminReleaseStake: Ctx['adminReleaseStake'] = (userId2, stakeId) => mutate(d => {
+    const st = d.stakes.find(x => x.id === stakeId && x.userId === userId2); if (!st || st.status !== 'active') return
+    const days = Math.max(0, (Date.now() - new Date(st.startAt).getTime()) / 86_400_000)
+    const interest = Math.round(st.amount * st.apy / 100 * days / 365)
+    const dw = d.wallets.find(x => x.userId === userId2)!
+    dw.locked -= st.amount; dw.available += st.amount + interest
+    st.status = 'closed'
+    recordTx(d, { userId: userId2, category: 'earn', title: 'Stake released by support', amount: st.amount + interest, fee: 0, currency: 'BDT', status: 'completed', note: 'Principal + interest ৳' + interest + ' · released early by admin support' })
+    audit(d, 'admin', 'stake.release', `${userId2} ${stakeId} ৳${st.amount}`)
+    notify(d, userId2, 'Stake released', 'Support released your stake of ৳' + st.amount.toLocaleString() + ' plus ৳' + interest + ' interest to your available balance.', 'earn')
+  })
+  const adminClearLocked: Ctx['adminClearLocked'] = (userId2) => mutate(d => {
+    const w = d.wallets.find(x => x.userId === userId2); if (!w || w.locked <= 0) return
+    const total = w.locked
+    const stakesClosed = d.stakes.filter(x => x.userId === userId2 && x.status === 'active')
+    stakesClosed.forEach(st => { st.status = 'closed' })
+    const wdCancelled = d.withdrawals.filter(x => x.userId === userId2 && x.status === 'pending')
+    wdCancelled.forEach(wd => {
+      wd.status = 'rejected'
+      const tx = d.txs.find(t => t.category === 'cash_out' && t.userId === userId2 && t.status === 'pending' && t.amount === wd.amount)
+      if (tx) tx.status = 'rejected'
+    })
+    // One lump release covers stakes + pending cash outs + any other holds —
+    // the pending-withdrawal cancellation above deliberately does NOT move
+    // money separately, so nothing is double-counted.
+    w.available += total; w.locked = 0
+    recordTx(d, { userId: userId2, category: 'adjustment', title: 'Locked funds released', amount: total, fee: 0, currency: 'BDT', status: 'completed', note: 'All locked holdings cleared by admin support (' + stakesClosed.length + ' stake(s) closed, ' + wdCancelled.length + ' pending cash out(s) cancelled)' })
+    audit(d, 'admin', 'locked.clear', `${userId2} ৳${total} · stakes ${stakesClosed.length} · cashouts ${wdCancelled.length}`)
+    notify(d, userId2, 'Locked funds released', 'Support cleared all your locked holdings — ৳' + total.toLocaleString() + ' is now in your available balance.', 'info')
   })
   const updateProfile: Ctx['updateProfile'] = (p) => { if (user) mutate(d => { Object.assign(d.users.find(u => u.id === user.id)!, p) }) }
   const changePassword: Ctx['changePassword'] = (oldPw, newPw) => {
@@ -1015,7 +1105,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, walletOf,
     addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
-    applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance,
+    applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
