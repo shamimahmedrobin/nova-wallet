@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
+import { useMarket } from '../lib/market'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, PinBoxes, Select, useConfirm } from '../components/ui'
 import { depositMethods, CRYPTO_NETWORK_LABELS, payMethodTitle, payMethodValue } from '../lib/localPayments'
 import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
@@ -16,6 +17,7 @@ const SUPPORT_CHANNELS = [
 ]
 export default function Profile() {
   const { user, db, walletOf, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, signOut, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { coins } = useMarket()
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
@@ -46,7 +48,7 @@ export default function Profile() {
   }
   const [edit, setEdit] = useState({ name: user?.name ?? '', phone: user?.phone ?? '' })
   const [editPhoto, setEditPhoto] = useState<string | undefined>(user?.photo)
-  const [pw, setPw] = useState({ old: '', next: '' })
+  const [pw, setPw] = useState({ old: '', next: '', confirm: '' })
   const [fp, setFp] = useState({ email: user?.email ?? '', pin: '', next: '', confirm: '' })
   const [fpMethod, setFpMethod] = useState<'email' | 'pin'>('email')
   const [fpOtp, setFpOtp] = useState('')
@@ -96,6 +98,13 @@ export default function Profile() {
   }, [modal])
   if (!user) return null
   const w = walletOf(user.id)
+  // Same math as the Home balance card: USDT counts as Available (pegged $1),
+  // In crypto = the other coins at live prices. (Previously Profile showed
+  // available + locked only, so its figure never matched Home.)
+  const priceOfP = (sym: string) => coins.find(c => c.symbol === sym)?.priceUsd ?? 0
+  const usdtBdtP = (w.holdings.USDT ?? 0) * db.settings.bdtPerUsd
+  const cryptoBdtP = Object.entries(w.holdings).filter(([sym]) => sym !== 'USDT').reduce((sum, [sym, amt]) => sum + amt * priceOfP(sym) * db.settings.bdtPerUsd, 0)
+  const totalBdtP = w.available + w.locked + usdtBdtP + cryptoBdtP
   const rows: [string, string, any][] = [
     ['p_edit', 'edit', <UserRound size={18} />], ['p_password', 'pw', <KeyRound size={18} />], ['p_pin', 'pin', <Hash size={18} />],
     ['p_login_options', 'login', <Fingerprint size={18} />], ['p_kyc', 'kyc', <ShieldCheck size={18} />], ['p_methods', 'methods', <CreditCard size={18} />],
@@ -112,7 +121,15 @@ export default function Profile() {
         <div className="flex gap-2 justify-center mt-3">
           <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? '✅ ' + t('verified') : t('non_kyc')}</Badge>
           <Badge tone={user.status === 'active' ? 'green' : 'red'}>{user.status}</Badge>
-          <Badge tone="violet">{fmtMoney(w.available + w.locked)} {t('wallet')}</Badge>
+          <Badge tone="violet">{fmtMoney(totalBdtP)} {t('wallet')}</Badge>
+        </div>
+        <div className="grid grid-cols-3 gap-2.5 mt-4 text-left">
+          {[[t('available'), w.available + usdtBdtP], [t('locked'), w.locked], [t('in_crypto'), cryptoBdtP]].map(([l, v]) => (
+            <div key={l as string} className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-3 py-2.5 min-w-0">
+              <p className="text-[11px] font-semibold text-slate-400">{l}</p>
+              <p className="font-extrabold text-sm truncate">{fmtUSDT((v as number) / db.settings.bdtPerUsd)}</p>
+            </div>
+          ))}
         </div>
       </Card>
 
@@ -247,7 +264,13 @@ export default function Profile() {
             <Input label="New password (min 6)" type="password" value={pw.next} onChange={e => setPw(s => ({ ...s, next: e.target.value }))} />
             {pw.next && <div className="mt-2.5"><div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div className={`h-full rounded-full transition-all ${pw.next.length >= 10 ? 'bg-emerald-500 w-full' : pw.next.length >= 6 ? 'bg-amber-500 w-2/3' : 'bg-rose-500 w-1/3'}`} /></div><p className="text-[11px] font-semibold text-slate-400 mt-1.5">{pw.next.length >= 10 ? '💪 Strong password' : pw.next.length >= 6 ? '👍 Okay — longer is safer (10+ characters)' : 'Too short — use at least 6 characters'}</p></div>}
           </div>
-          <Btn className="w-full py-3.5" onClick={() => { if (pw.next.length < 6) return toast({ kind: 'error', title: 'New password too short' }); const e = changePassword(pw.old, pw.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setPw({ old: '', next: '' }); toast({ kind: 'success', title: 'Password changed' }) } }}>{t('p_password')}</Btn>
+          <div>
+            <Input label="Confirm new password" type="password" value={pw.confirm} onChange={e => setPw(s => ({ ...s, confirm: e.target.value }))} />
+            {pw.confirm && (pw.confirm === pw.next
+              ? <p className="text-[11px] font-bold text-emerald-500 mt-1.5">✓ Passwords match</p>
+              : <p className="text-[11px] font-bold text-rose-500 mt-1.5">✗ Passwords don't match yet</p>)}
+          </div>
+          <Btn className="w-full py-3.5" disabled={!pw.old || pw.next.length < 6 || pw.confirm !== pw.next} onClick={() => { if (pw.next.length < 6) return toast({ kind: 'error', title: 'New password too short' }); if (pw.confirm !== pw.next) return toast({ kind: 'error', title: 'New passwords do not match' }); const e = changePassword(pw.old, pw.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setPw({ old: '', next: '', confirm: '' }); toast({ kind: 'success', title: 'Password changed' }) } }}>{t('p_password')}</Btn>
           <button onClick={() => setModal('forgot')} className="w-full text-center text-sm font-bold text-violet-600 py-1">Forgot your current password? Reset it instead →</button>
         </div>
       </Modal>

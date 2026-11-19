@@ -4,7 +4,7 @@ import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Banknote, Bitcoin, Ch
 import { useApp } from '../lib/store'
 import { COIN_META, useMarket } from '../lib/market'
 import { fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
-import { Badge, Card, SkeletonRows, TxDirIcon, statusTone } from '../components/ui'
+import { Badge, Card, Modal, SkeletonRows, TxDirIcon, statusTone } from '../components/ui'
 
 const ACTIONS_RAW = [
   { to: '/add', labelKey: 'act_add', icon: ArrowDownToLine, g: 'from-emerald-500 to-teal-600' },
@@ -25,6 +25,7 @@ export default function Home() {
   const navigate = useNavigate()
   const { coins, loading, isLive } = useMarket()
   const [hide, setHide] = useState(false)
+  const [bd, setBd] = useState<null | 'available' | 'locked' | 'crypto'>(null)
   const [bannerIdx, setBannerIdx] = useState(0)
   const activeBanners = db.banners.filter(b => b.active)
   useEffect(() => {
@@ -57,11 +58,11 @@ export default function Home() {
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '••••••' : fmtAmount(total)} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
           <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSDT(total / db.settings.bdtPerUsd)}</p>
           <div className="grid grid-cols-3 gap-3 mt-5">
-            {[{ l: t('available'), v: Math.round(w.available + usdtBdt), lock: false }, { l: t('locked'), v: w.locked, lock: true }, { l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
-              <div key={x.l} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5 min-w-0">
-                <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}</p>
+            {[{ k: 'available' as const, l: t('available'), v: Math.round(w.available + usdtBdt), lock: false }, { k: 'locked' as const, l: t('locked'), v: w.locked, lock: true }, { k: 'crypto' as const, l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
+              <button key={x.l} onClick={() => setBd(x.k)} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5 min-w-0 text-left active:scale-[.97] transition hover:bg-white/20">
+                <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}<ChevronRight size={10} className="ml-auto opacity-70" /></p>
                 <p className="font-bold text-[15px] truncate">{hide ? '••••' : fmtUSDT(x.v / db.settings.bdtPerUsd)}</p>
-              </div>
+              </button>
             ))}
           </div>
           <div className="mt-4 flex items-center justify-between gap-2">
@@ -146,6 +147,50 @@ export default function Home() {
           </div>
         ) })}
       </Card>
+
+      {/* Balance breakdown — where each part of the balance actually sits */}
+      <Modal open={bd !== null} onClose={() => setBd(null)} title={bd === 'available' ? t('available') : bd === 'locked' ? t('locked') : t('in_crypto')}>
+        {bd === 'available' && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">💵 Cash balance</span><span className="font-extrabold">{fmtMoney(w.available)}</span></div>
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">₮ USDT holding <span className="block text-xs font-semibold text-slate-400">{(w.holdings.USDT ?? 0).toLocaleString()} USDT · pegged $1</span></span><span className="font-extrabold">{fmtMoney(Math.round(usdtBdt))}</span></div>
+            <p className="text-xs text-slate-400 leading-relaxed pt-1">USDT counts as available because it's a dollar stablecoin — you can spend, send or trade it right away, just like cash.</p>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1"><span className="font-extrabold text-sm">Total available</span><span className="font-extrabold text-violet-600">{fmtMoney(Math.round(w.available + usdtBdt))}</span></div>
+          </div>
+        )}
+        {bd === 'locked' && (() => {
+          const stakes = db.stakes.filter(st => st.userId === user.id && st.status === 'active')
+          const pendWd = db.withdrawals.filter(x => x.userId === user.id && x.status === 'pending')
+          const explained = stakes.reduce((a, st) => a + st.amount, 0) + pendWd.reduce((a, x) => a + x.amount, 0)
+          const other = Math.round(w.locked - explained)
+          return (
+            <div className="space-y-2">
+              {stakes.map(st => (
+                <div key={st.id} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">🌱 Staking <span className="block text-xs font-semibold text-slate-400">{st.apy}% APY · {st.termDays === 0 ? 'Flexible' : st.termDays + ' days'} · since {new Date(st.startAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></span><span className="font-extrabold">{fmtMoney(st.amount)}</span></div>
+              ))}
+              {pendWd.map(x => (
+                <div key={x.id} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">⏳ Cash Out pending <span className="block text-xs font-semibold text-slate-400">{x.method} · waiting for admin approval</span></span><span className="font-extrabold">{fmtMoney(x.amount)}</span></div>
+              ))}
+              {other > 0 && <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">🔒 Other holds</span><span className="font-extrabold">{fmtMoney(other)}</span></div>}
+              {w.locked === 0 && <p className="text-sm text-slate-500 text-center py-3">Nothing is locked right now. Money you stake or cash out is held here until it's released.</p>}
+              {w.locked > 0 && <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1"><span className="font-extrabold text-sm">Total locked</span><span className="font-extrabold text-violet-600">{fmtMoney(w.locked)}</span></div>}
+            </div>
+          )
+        })()}
+        {bd === 'crypto' && (
+          <div className="space-y-2">
+            {Object.entries(w.holdings).filter(([sym, amt]) => sym !== 'USDT' && amt > 0).map(([sym, amt]) => (
+              <div key={sym} className="flex items-center gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3">
+                <span className="w-9 h-9 rounded-full flex items-center justify-center text-white font-extrabold text-xs shrink-0" style={{ background: COIN_META[sym]?.color ?? '#64748b' }}>{sym[0]}</span>
+                <span className="flex-1 min-w-0"><span className="block font-bold text-sm">{COIN_META[sym]?.name ?? sym}</span><span className="text-xs text-slate-400">{amt} {sym} · {fmtPrice(priceOf(sym))}</span></span>
+                <span className="font-extrabold">{fmtUSDT(amt * priceOf(sym))}</span>
+              </div>
+            ))}
+            {cryptoBdt === 0 && <p className="text-sm text-slate-500 text-center py-3">No crypto holdings yet — USDT lives under Available. Buy a coin from the Market and it will show up here.</p>}
+            {cryptoBdt > 0 && <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1"><span className="font-extrabold text-sm">Total in crypto</span><span className="font-extrabold text-violet-600">{fmtMoney(Math.round(cryptoBdt))}</span></div>}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

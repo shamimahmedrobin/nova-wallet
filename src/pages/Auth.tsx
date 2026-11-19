@@ -164,10 +164,21 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
     </div>
   )
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md anim-fade-up">
-        <div className="flex justify-center mb-6"><Logo /></div>
-        <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 p-6 shadow-xl">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-violet-50 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-[#0b0722] dark:to-slate-950 flex items-center justify-center p-4">
+      {/* Ambient glow — same drifting blobs as the lock screen */}
+      <div className="pointer-events-none absolute -top-28 -left-24 w-80 h-80 rounded-full bg-violet-500/25 blur-3xl animate-[nw-drift_8s_ease-in-out_infinite_alternate]" />
+      <div className="pointer-events-none absolute -bottom-32 -right-20 w-96 h-96 rounded-full bg-cyan-400/20 blur-3xl animate-[nw-drift_10s_ease-in-out_infinite_alternate-reverse]" />
+      <div className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-fuchsia-500/10 blur-3xl" />
+      <div className="relative w-full max-w-md anim-fade-up">
+        <div className="flex flex-col items-center mb-6">
+          <div className="rounded-[26px] p-[2px] bg-gradient-to-br from-violet-500 via-fuchsia-500 to-cyan-400 shadow-[0_0_36px_rgba(139,92,246,.45)] mb-3.5">
+            <div className="rounded-[24px] bg-white dark:bg-slate-950 px-5 py-3.5"><Logo size={40} /></div>
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white text-center">{step === 'forgot' ? 'Reset your password' : mode === 'login' ? <>Welcome back to <span className="bg-gradient-to-r from-violet-600 via-purple-500 to-cyan-500 bg-clip-text text-transparent">NovaWallet</span></> : <>Join <span className="bg-gradient-to-r from-violet-600 via-purple-500 to-cyan-500 bg-clip-text text-transparent">NovaWallet</span></>}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 text-center">{step === 'forgot' ? 'Verify it\'s you and pick a new password.' : mode === 'login' ? 'Your money & crypto, one global wallet.' : 'Create your free account in under a minute.'}</p>
+        </div>
+        <div className="rounded-[26px] p-[1.5px] bg-gradient-to-br from-violet-500/50 via-slate-200/60 to-cyan-400/50 dark:from-violet-500/60 dark:via-slate-700/50 dark:to-cyan-400/50 shadow-2xl shadow-violet-600/15">
+        <div className="rounded-[25px] bg-white/95 dark:bg-slate-900/95 backdrop-blur p-6">
           {step === 'auth' && <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5">
             {(['login', 'register'] as const).map(m => (
               <button key={m} onClick={() => { navigate(m === 'login' ? '/login' : '/register'); setErr('') }} className={`py-2 rounded-xl text-sm font-bold ${mode === m ? 'bg-white dark:bg-slate-900 shadow text-violet-600' : 'text-slate-500'}`}>{m === 'login' ? t('login') : t('register')}</button>
@@ -244,7 +255,9 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
             </div>
           )}
         </div>
-        <button onClick={() => navigate('/')} className="mt-4 w-full text-center text-sm text-slate-500">← {t('back_to_home')}</button>
+        </div>
+        <button onClick={() => navigate('/')} className="mt-4 w-full text-center text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-violet-600 transition">← {t('back_to_home')}</button>
+        <p className="mt-3 text-center text-[11px] text-slate-400 dark:text-slate-500">🔒 Secured sign-in · Your data stays protected</p>
       </div>
     </div>
   )
