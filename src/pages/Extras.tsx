@@ -97,8 +97,9 @@ const PLANS = [
   { days: 180, apy: 16, label: '180 days', note: 'Max return' },
 ]
 export function EarnPage() {
-  const { user, db, walletOf, stake, unstake, toast, earnInfo } = useApp()
+  const { user, db, walletOf, stake, unstake, toast, earnInfo, addTicket, replyTicket } = useApp()
   const [amount, setAmount] = useState(''); const [plan, setPlan] = useState(1)
+  const [relReq, setRelReq] = useState<any>(null); const [relMsg, setRelMsg] = useState('')
   if (!user) return null
   const einfo = earnInfo()
   const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
@@ -117,6 +118,21 @@ export function EarnPage() {
   const amtBDT = Math.round(amt * db.settings.bdtPerUsd)
   const myStakes = db.stakes.filter(s => s.userId === user.id)
   const accrued = (s: typeof myStakes[number]) => Math.round(s.amount * s.apy / 100 * Math.max(0, (Date.now() - new Date(s.startAt).getTime()) / 86_400_000) / 365)
+  const unlockAt = (s: typeof myStakes[number]) => new Date(s.startAt).getTime() + s.termDays * 86_400_000
+  const isLocked = (s: typeof myStakes[number]) => s.termDays > 0 && Date.now() < unlockAt(s)
+  const fmtDay = (ts: number) => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const openRelease = (s: typeof myStakes[number]) => {
+    setRelReq(s)
+    setRelMsg('Hello, please release my stake early.\n\nStake: ' + usd(s.amount) + ' · ' + s.apy + '% APY · ' + s.termDays + '-day plan\nStarted: ' + fmtDay(new Date(s.startAt).getTime()) + ' · Unlocks: ' + fmtDay(unlockAt(s)) + '\n\nReason: ')
+  }
+  const sendRelease = () => {
+    if (!relReq || !relMsg.trim()) return
+    const open = db.tickets.find(t => t.userId === user.id && t.status !== 'resolved')
+    if (open) replyTicket(open.id, relMsg.trim(), 'user')
+    else addTicket('Early stake release request', relMsg.trim())
+    setRelReq(null); setRelMsg('')
+    toast({ kind: 'success', title: 'Request sent to Support', body: 'Support can release this stake early from your account. You will be notified when they reply.' })
+  }
   const totalStaked = myStakes.filter(s => s.status === 'active').reduce((a, s) => a + s.amount, 0)
   const totalEarned = myStakes.filter(s => s.status === 'active').reduce((a, s) => a + accrued(s), 0)
   const submit = () => {
@@ -159,6 +175,7 @@ export function EarnPage() {
         </div>
         <Input label="Amount (USDT)" type="number" placeholder="e.g. 100" value={amount} onChange={e => setAmount(e.target.value)} />
         {amt > 0 && <p className="text-xs text-slate-500">Projected yearly earning: <b className="text-emerald-600">{fmtUSDT(amt * PLANS[plan].apy / 100)}</b></p>}
+        {PLANS[plan].days > 0 && <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">🔒 This is a fixed-term plan — it locks until {fmtDay(Date.now() + PLANS[plan].days * 86_400_000)}. Only the Flexible plan can be unstaked anytime; early release is possible via Support.</p>}
         <Btn className="w-full py-3.5" onClick={submit}>Stake now</Btn>
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">My stakes</h3>
@@ -168,13 +185,32 @@ export function EarnPage() {
             <div className="flex items-center gap-3">
               <div className="flex-1"><p className="font-bold">{usd(s.amount)} · {s.apy}% APY</p>
                 <p className="text-xs text-slate-400">{s.termDays === 0 ? 'Flexible' : s.termDays + ' days'} · started {fmtDateTime(s.startAt)} · earned so far <b className="text-emerald-500">{usd(accrued(s))}</b></p></div>
-              {s.status === 'active'
-                ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const e = unstake(s.id); if (e) toast({ kind: 'error', title: e }); else toast({ kind: 'success', title: 'Unstaked', body: 'Principal + interest returned to your available balance.' }) }}>Unstake</Btn>
-                : <Badge tone="slate">closed</Badge>}
+              {s.status !== 'active' ? <Badge tone="slate">closed</Badge>
+                : isLocked(s)
+                  ? <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className="text-[11px] font-extrabold text-amber-600 dark:text-amber-400">🔒 Locked until {fmtDay(unlockAt(s))}</span>
+                      <span className="text-[11px] font-semibold text-slate-400">{Math.ceil((unlockAt(s) - Date.now()) / 86_400_000)} days left</span>
+                      <Btn variant="outline" className="!py-2 !text-xs" onClick={() => openRelease(s)}>Request early release</Btn>
+                    </div>
+                  : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const e = unstake(s.id); if (e) toast({ kind: 'error', title: e }); else toast({ kind: 'success', title: 'Unstaked', body: 'Principal + interest returned to your available balance.' }) }}>Unstake</Btn>}
             </div>
           </Card>
         ))}</div>
       )}
+      <Modal open={!!relReq} onClose={() => setRelReq(null)} title="Request early release">
+        {relReq && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500 leading-relaxed">This <b>{relReq.termDays}-day plan</b> is locked until <b>{fmtDay(unlockAt(relReq))}</b> — fixed-term stakes can't be unstaked early by yourself. If you need the money sooner, message Support below and an admin can release it for you.</p>
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-3.5 text-sm flex justify-between gap-3"><span className="font-semibold">Stake</span><b>{usd(relReq.amount)} · {relReq.apy}% APY</b></div>
+            <label className="block">
+              <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Message to Support</span>
+              <textarea value={relMsg} onChange={e => setRelMsg(e.target.value)} rows={6} className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/70 px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-violet-500 resize-none" />
+            </label>
+            <Btn className="w-full py-3.5" disabled={!relMsg.trim()} onClick={sendRelease}>Send to Support</Btn>
+            <p className="text-[11px] text-slate-400 text-center">Goes to your Support chat — replies arrive there and as a notification.</p>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

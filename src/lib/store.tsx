@@ -607,6 +607,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return 'Not signed in'
     const st = dbRef.current.stakes.find(x => x.id === stakeId && x.userId === user.id)
     if (!st || st.status !== 'active') return 'Stake not found.'
+    // Fixed-term plans (30/90/180 days) are LOCKED until maturity — only the
+    // Flexible plan unstakes anytime. Early release is a support action
+    // (adminReleaseStake), requested by messaging Support from the Earn page.
+    if (st.termDays > 0) {
+      const unlockAt = new Date(st.startAt).getTime() + st.termDays * 86_400_000
+      if (Date.now() < unlockAt) return 'This ' + st.termDays + '-day plan is locked until ' + new Date(unlockAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + '. For an early release, please message Support.'
+    }
     const days = Math.max(0, (Date.now() - new Date(st.startAt).getTime()) / 86_400_000)
     const interest = Math.round(st.amount * st.apy / 100 * days / 365)
     mutate(d => {
