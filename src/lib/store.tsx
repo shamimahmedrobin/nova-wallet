@@ -301,7 +301,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return full
   }
   const mutate = (fn: (draft: DB) => void) => {
-    setDb(prev => { const draft: DB = JSON.parse(JSON.stringify(prev)); fn(draft); return draft })
+    // Run the draft SYNCHRONOUSLY against the latest db (dbRef): several store
+    // functions capture values inside the mutator and return them (e.g.
+    // sendMoney returns the created Tx for its receipt modal). Passing an
+    // updater to setDb defers execution to render time, so those captures
+    // were still null when returned — the Send receipt modal never opened.
+    const draft: DB = JSON.parse(JSON.stringify(dbRef.current))
+    fn(draft)
+    dbRef.current = draft
+    setDb(draft)
   }
   // ---- Stake maturity: notify ONCE when a fixed-term stake reaches its term ----
   useEffect(() => {
