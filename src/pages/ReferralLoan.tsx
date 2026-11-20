@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Award, CheckCircle2, Coins, Copy, FilePlus2, HandCoins, History as HistoryIcon, Share2, Trophy, Wallet, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, CheckLine, Empty, Input, Modal, ModalDesc, ModalRow, PinField, Select, StepBar, WizardNav } from '../components/ui'
-import { emiCalc, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
+import { emiCalc, fmtDate, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
 import { depositMethods, payMethodTitle, payMethodValue } from '../lib/localPayments'
 import { PageHead } from './Services'
 
@@ -94,6 +94,15 @@ export function LoanPage() {
   const repaidLoans = myLoans.filter(l => l.status === 'repaid')
   const pendingApps = myLoans.filter(l => l.status === 'pending').length
   const feeDue = myLoans.filter(l => l.processingFee && l.feeStatus !== 'paid' && l.feeStatus !== 'submitted').length
+  const nextRepay = (() => {
+    if (!active) return null
+    const emisPaid = Math.min(active.months, Math.floor(active.paid / active.emi))
+    if (emisPaid >= active.months) return null
+    const due = new Date(active.createdAt); due.setMonth(due.getMonth() + emisPaid + 1)
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const days = Math.ceil((new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() - today.getTime()) / 86400000)
+    return { due, days, emiNo: emisPaid + 1 }
+  })()
   const repayTxs = [...db.txs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).filter(x => x.userId === user.id && x.category === 'loan_repayment')
   useEffect(() => {
     if (view === 'hub') return
@@ -230,6 +239,7 @@ export function LoanPage() {
               <div className="flex justify-between"><span className="text-slate-500">Total payable</span><span className="font-bold">{fmtMoney(active.totalPayable)}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Paid so far</span><span className="font-bold text-emerald-600">{fmtMoney(active.paid)}</span></div>
               <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Remaining</span><span className="font-extrabold text-rose-500">{fmtMoney(outstanding)}</span></div>
+              {nextRepay && <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Next Repayment</span><span className="text-right"><span className="font-extrabold text-violet-600">{fmtDate(nextRepay.due.toISOString())}</span><span className="block text-[11px] text-slate-400">EMI #{nextRepay.emiNo} · {fmtMoney(active.emi)} · {nextRepay.days < 0 ? 'overdue by ' + Math.abs(nextRepay.days) + ' day' + (Math.abs(nextRepay.days) === 1 ? '' : 's') : nextRepay.days === 0 ? 'due today' : 'in ' + nextRepay.days + ' day' + (nextRepay.days === 1 ? '' : 's')}</span></span></div>}
             </div>
             <Btn className="w-full mt-4" onClick={() => setView('repay')}>Go to Repayment</Btn>
           </Card>
