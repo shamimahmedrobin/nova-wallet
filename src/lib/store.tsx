@@ -1,14 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ADS_PER_DAY, CHECKIN_REWARDS, EARN_TASKS, QUIZ_PER_CORRECT, SCRATCH_PER_DAY, SCRATCH_PRIZES, SPINS_PER_DAY, WHEEL_PRIZES } from './earn'
-import type { DB, DepositReq, Loan, NewsItem, Tx, User , LoanInfo, EarnState } from './types'
+import type { DB, Loan, NewsItem, Tx, User , LoanInfo, EarnState } from './types'
 import { DEFAULT_LEVELS, DEFAULT_PAY_METHODS, seedDB } from './seed'
 import { translate } from './i18n'
 import { detectCurrency, FALLBACK_RATES } from './currencies'
 import { fmtBDT } from './utils'
-import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
+import { hashSecret, nowISO, rid, uid } from './utils'
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, updatePassword as fbUpdatePassword } from 'firebase/auth'
 import { firebaseAuth } from './firebase'
-import { apiBootstrap, apiMe } from './api'
+import { apiBootstrap, apiMe, apiGet, apiPost } from './api'
 
 const KEY = 'novawallet.db.v3'
 const SESSION = 'novawallet.session'
@@ -87,45 +87,45 @@ interface Ctx {
   resetPasswordWithOtp: (email: string, otp: string, newPassword: string) => string | null
   register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => Promise<string | null>
   walletOf: (userId: string) => DB['wallets'][number]
-  addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string; methodId?: string; kind?: 'bank' | 'crypto'; verification?: 'manual' | 'auto' }) => void
-  decideDeposit: (id: string, ok: boolean) => void
+  addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string; methodId?: string; kind?: 'bank' | 'crypto'; verification?: 'manual' | 'auto' }) => Promise<string | null>
+  decideDeposit: (id: string, ok: boolean) => Promise<void>
   /** AUTOMATION SEAM: a connected provider (bank API, gateway callback or
       SMS/webhook matcher) settles a pending deposit through the exact same
-      pipeline as an admin decision. providerRef is stored on the deposit. */
-  settleDepositExternal: (id: string, ok: boolean, providerRef?: string) => void
-  requestWithdraw: (p: { method: string; amount: number; destination: string; pin: string }) => string | null
-  directWithdraw: (p: { method: string; amount: number; destination: string }) => string | null
-  stake: (amount: number, apy: number, termDays: number) => string | null
-  unstake: (stakeId: string) => string | null
-  swap: (fromSym: string, toSym: string, amountFrom: number, prices: Record<string, number>) => string | null
-  decideWithdraw: (id: string, ok: boolean) => void
-  sendMoney: (p: { toUserId: string; amount: number; note?: string; pin: string }) => string | Tx
+      server pipeline as an admin decision. */
+  settleDepositExternal: (id: string, ok: boolean, providerRef?: string) => Promise<void>
+  requestWithdraw: (p: { method: string; amount: number; destination: string; pin: string }) => Promise<string | null>
+  directWithdraw: (p: { method: string; amount: number; destination: string }) => Promise<string | null>
+  stake: (amount: number, apy: number, termDays: number) => Promise<string | null>
+  unstake: (stakeId: string) => Promise<string | null>
+  swap: (fromSym: string, toSym: string, amountFrom: number, prices: Record<string, number>) => Promise<string | null>
+  decideWithdraw: (id: string, ok: boolean) => Promise<void>
+  sendMoney: (p: { toUserId: string; amount: number; note?: string; pin: string }) => Promise<string | Tx>
   verifyTxPin: (pin: string) => string | null
-  buyCrypto: (symbol: string, bdtAmount: number, priceUsd: number) => string | null
-  sellCrypto: (symbol: string, coinAmount: number, priceUsd: number) => string | null
-  applyLoan: (amount: number, months: number, info: LoanInfo) => void
+  buyCrypto: (symbol: string, bdtAmount: number, priceUsd: number) => Promise<string | null>
+  sellCrypto: (symbol: string, coinAmount: number, priceUsd: number) => Promise<string | null>
+  applyLoan: (amount: number, months: number, info: LoanInfo) => Promise<void>
   earnInfo: () => EarnState
-  claimCheckin: () => { err?: string; amount?: number; streak?: number }
-  watchAdReward: () => { err?: string; amount?: number; left?: number }
-  spinReward: () => { err?: string; prize?: number; index?: number; left?: number }
-  scratchDraw: () => { err?: string; prize?: number; left?: number }
-  completeEarnTask: (taskId: string) => { err?: string; amount?: number }
-  submitQuiz: (correct: number) => { err?: string; amount?: number }
-  setLoanFee: (loanId: string, amount: number) => void
-  submitLoanFee: (loanId: string, method: string, ref: string) => void
-  confirmLoanFee: (loanId: string) => void
-  decideLoan: (id: string, ok: boolean) => void
-  repayLoan: (loan: Loan, amount: number) => string | null
+  claimCheckin: () => Promise<{ err?: string; amount?: number; streak?: number }>
+  watchAdReward: () => Promise<{ err?: string; amount?: number; left?: number }>
+  spinReward: () => Promise<{ err?: string; prize?: number; index?: number; left?: number }>
+  scratchDraw: () => Promise<{ err?: string; prize?: number; left?: number }>
+  completeEarnTask: (taskId: string) => Promise<{ err?: string; amount?: number }>
+  submitQuiz: (correct: number) => Promise<{ err?: string; amount?: number }>
+  setLoanFee: (loanId: string, amount: number) => Promise<void>
+  submitLoanFee: (loanId: string, method: string, ref: string) => Promise<void>
+  confirmLoanFee: (loanId: string) => Promise<void>
+  decideLoan: (id: string, ok: boolean) => Promise<void>
+  repayLoan: (loan: Loan, amount: number) => Promise<string | null>
   submitKyc: (p: { docType: string; docNumber: string; docPhoto?: string; facePhoto?: string }) => void; decideKyc: (userId: string, ok: boolean) => void
   setUserStatus: (userId: string, status: User['status']) => void
-  adjustBalance: (userId: string, amount: number, title: string, note?: string) => void
-  /** Support-desk trading on a customer's account (audited, user notified). */
-  adminBuyCrypto: (userId: string, symbol: string, usdtAmount: number, priceUsd: number) => string | null
-  adminSellCrypto: (userId: string, symbol: string, coinAmount: number, priceUsd: number) => string | null
+  adjustBalance: (userId: string, amount: number, title: string, note?: string) => Promise<void>
+  /** Support-desk trading on a customer's account (server-settled). */
+  adminBuyCrypto: (userId: string, symbol: string, usdtAmount: number, priceUsd: number) => Promise<string | null>
+  adminSellCrypto: (userId: string, symbol: string, coinAmount: number, priceUsd: number) => Promise<string | null>
   /** Release one active stake early (principal + accrued interest), support action. */
-  adminReleaseStake: (userId: string, stakeId: string) => void
+  adminReleaseStake: (userId: string, stakeId: string) => Promise<void>
   /** Clear ALL locked holdings: closes stakes, cancels pending cash outs, releases the rest to Available. */
-  adminClearLocked: (userId: string) => void
+  adminClearLocked: (userId: string) => Promise<void>
   updateProfile: (p: Partial<User>) => void
   changePassword: (oldPw: string, newPw: string) => string | null
   changePin: (oldPin: string, newPin: string) => string | null
@@ -293,16 +293,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const audit = (draft: DB, actor: string, action: string, detail: string) => {
     draft.audit.unshift({ id: rid(), actor, action, detail, createdAt: nowISO() })
   }
-  const recordTx = (draft: DB, tx: Omit<Tx, 'id' | 'createdAt'> & { id?: string }) => {
-    const full: Tx = { ...tx, id: tx.id ?? uid('TXN'), createdAt: nowISO() }
-    draft.txs.unshift(full)
-    // double-entry: every movement writes a balanced debit+credit pair
-    draft.ledger.unshift(
-      { id: uid('LED'), txId: full.id, account: 'wallet:' + full.userId, debit: full.amount, credit: 0, createdAt: full.createdAt },
-      { id: uid('LED'), txId: full.id, account: 'platform:clearing', debit: 0, credit: full.amount, createdAt: full.createdAt },
-    )
-    return full
-  }
   const mutate = (fn: (draft: DB) => void) => {
     // Run the draft SYNCHRONOUSLY against the latest db (dbRef): several store
     // functions capture values inside the mutator and return them (e.g.
@@ -313,6 +303,81 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fn(draft)
     dbRef.current = draft
     setDb(draft)
+  }
+  // ---- Server state (Phase 2): D1 is the source of truth for balances and
+  // transactions. The helpers below merge Worker responses into the local
+  // store: own financial slices are replaced by /v1/state, the user
+  // directory becomes stub records (for Send/Admin across devices), and
+  // admins additionally replace every financial slice from the overview.
+  const stubFrom = (su: any): User => ({
+    id: su.id, fbUid: su.id, stub: true, name: su.name || su.username, username: su.username, email: su.email,
+    phone: '', passwordHash: '', pinHash: '', role: su.role, status: su.status, kyc: 'unverified',
+    referralCode: su.referralCode || '', referredBy: null, twoFA: false, level: su.level || 1, language: 'en',
+    createdAt: su.createdAt || nowISO(), lastLogin: su.createdAt || nowISO(), sessions: [],
+  })
+  const mergeDirectoryInto = (d: DB, users: any[]) => {
+    for (const su of users) {
+      const byEmail = d.users.find(x => x.email === su.email)
+      if (byEmail) { if (!byEmail.fbUid) byEmail.fbUid = su.id; continue }
+      if (!d.users.some(x => x.id === su.id)) d.users.push(stubFrom(su))
+    }
+  }
+  const uidResolver = (d: DB) => {
+    const m = new Map<string, string>()
+    d.users.forEach(u => { m.set(u.id, u.id); if (u.fbUid) m.set(u.fbUid, u.id) })
+    return (s: string) => m.get(s) ?? s
+  }
+  const applyStateInto = (d: DB, localId: string, state: any) => {
+    const resolve = uidResolver(d)
+    const sw = { userId: localId, available: state.wallet.available, locked: state.wallet.locked, holdings: state.wallet.holdings || {} }
+    const w = d.wallets.find(x => x.userId === localId)
+    if (w) Object.assign(w, sw); else d.wallets.push(sw)
+    const mine = (rows: any[]) => rows.map((r: any) => ({ ...r, userId: resolve(r.userId) }))
+    d.txs = [...mine(state.transactions), ...d.txs.filter(t => t.userId !== localId)]
+    d.deposits = [...mine(state.deposits), ...d.deposits.filter(x => x.userId !== localId)]
+    d.withdrawals = [...mine(state.withdrawals), ...d.withdrawals.filter(x => x.userId !== localId)]
+    d.loans = [...mine(state.loans), ...d.loans.filter(x => x.userId !== localId)]
+    d.stakes = [...mine(state.stakes), ...d.stakes.filter(x => x.userId !== localId)]
+    const lu = d.users.find(x => x.id === localId)
+    if (lu && state.profile) {
+      lu.role = state.profile.role; lu.level = state.profile.level; lu.status = state.profile.status
+      if (!lu.fbUid) lu.fbUid = state.profile.id
+    }
+  }
+  const applyOverviewInto = (d: DB, ov: any) => {
+    mergeDirectoryInto(d, ov.users)
+    const resolve = uidResolver(d)
+    d.wallets = ov.users.map((u: any) => {
+      const w = ov.wallets[u.id]
+      return { userId: resolve(u.id), available: w?.available ?? 0, locked: w?.locked ?? 0, holdings: w?.holdings ?? {} }
+    })
+    const mapRows = (rows: any[]) => rows.map((r: any) => ({ ...r, userId: resolve(r.userId) }))
+    d.txs = mapRows(ov.transactions); d.deposits = mapRows(ov.deposits); d.withdrawals = mapRows(ov.withdrawals)
+    d.loans = mapRows(ov.loans); d.stakes = mapRows(ov.stakes)
+  }
+  const applyMoneyResult = (r: any) => {
+    if (!user) return
+    if (r?.state) mutate(d => applyStateInto(d, user.id, r.state))
+    if (r?.overview) mutate(d => applyOverviewInto(d, r.overview))
+  }
+  const serverUidOf = (localId: string): string | null => {
+    const u = dbRef.current.users.find(x => x.id === localId)
+    return u?.fbUid ?? (u?.stub ? u.id : null)
+  }
+  const hydrateServer = async (u: User) => {
+    try {
+      const st = await apiGet('/v1/state')
+      if (st?.state) mutate(d => applyStateInto(d, u.id, st.state))
+      const dir = await apiGet('/v1/directory')
+      if (dir?.users) mutate(d => mergeDirectoryInto(d, dir.users))
+      if ((st?.state?.profile?.role ?? u.role) === 'admin') {
+        const ov = await apiGet('/v1/admin/overview')
+        if (ov?.overview) mutate(d => applyOverviewInto(d, ov.overview))
+      }
+    } catch { /* offline or not bootstrapped yet: keep local state */ }
+  }
+  const notifySelf = (title: string, body: string, kind: any, link?: string) => {
+    if (user) mutate(d => notify(d, user.id, title, body, kind, link))
   }
   // ---- Stake maturity: notify ONCE when a fixed-term stake reaches its term ----
   useEffect(() => {
@@ -350,7 +415,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const MAX_AMOUNT = 100000000
   const badAmount = (n: number) => !Number.isFinite(n) || n <= 0 || n > MAX_AMOUNT
   const badQty = (n: number) => !Number.isFinite(n) || n <= 0
-  const TRX_RE = /^[A-Za-z0-9-]{6,64}$/
 
   const levelDefOf = (u: User) => dbRef.current.levels.find(l => l.level === (u.level ?? 1))
   const outgoingSum = (userId: string, period: 'day' | 'month') => {
@@ -370,7 +434,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (mon + amount > def.monthlyLimit) return 'Monthly limit exceeded — Level ' + u.level + ' allows ' + def.monthlyLimit.toLocaleString() + ' BDT/month and you have already used ' + mon.toLocaleString() + ' BDT this month.'
     return null
   }
-  const feePctFor = (base: number, u: User) => base * (1 - (levelDefOf(u)?.feeDiscountPct ?? 0) / 100)
   // Sign-in is owned by Firebase Auth (Phase 1 of the backend integration).
   // Accounts created before Firebase existed (the seeded demo accounts and
   // any locally-registered ones) are migrated into Firebase automatically on
@@ -378,16 +441,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // until the data phase moves server-side; a successful Firebase sign-in
   // also re-syncs the local password copy so lock-screen unlock stays right.
   const login: Ctx['login'] = async (idOrEmail, password) => {
-    const u = dbRef.current.users.find(x => x.email === idOrEmail || x.username === idOrEmail)
-    if (!u) return 'No account found for that email / username.'
+    const u = dbRef.current.users.find(x => !x.stub && (x.email === idOrEmail || x.username === idOrEmail))
+    if (!u) {
+      // Cross-device sign-in: the account exists on the server but this
+      // device has no local profile yet. Authenticate with Firebase, then
+      // rebuild the local profile from /v1/me and hydrate money from D1.
+      if (!idOrEmail.includes('@')) return 'No account found for that email / username.'
+      try {
+        const cred = await signInWithEmailAndPassword(firebaseAuth, idOrEmail, password)
+        const token = await cred.user.getIdToken()
+        const me = await apiMe(token)
+        if (!me?.user) return 'Account not found on the server.'
+        if (me.user.status === 'suspended') { await fbSignOut(firebaseAuth).catch(() => {}); return 'This account is suspended. Contact support.' }
+        const nu: User = {
+          id: uid('USR'), fbUid: cred.user.uid, name: me.user.fullName || me.user.username, username: me.user.username,
+          email: me.user.email, phone: me.user.phone || '', passwordHash: hashSecret(password), pinHash: me.user.pinHash || '',
+          role: me.user.role, status: me.user.status, kyc: 'unverified', referralCode: me.user.referralCode || '',
+          referredBy: null, twoFA: false, level: me.user.level || 1, language: 'en',
+          createdAt: nowISO(), lastLogin: nowISO(), sessions: [{ id: 's1', device: 'Android · Chrome', at: nowISO(), current: true }],
+        }
+        mutate(d => { d.users.push(nu); d.wallets.push({ userId: nu.id, available: 0, locked: 0, holdings: {} }) })
+        localStorage.setItem(SESSION, nu.id); setUserId(nu.id); setLocked(false)
+        void hydrateServer(nu)
+        return null
+      } catch (e: any) {
+        const code = e?.code || ''
+        if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') return 'Invalid email or password.'
+        if (code === 'auth/network-request-failed') return 'Could not reach the authentication server. Check your connection and try again.'
+        if (code === 'auth/too-many-requests') return 'Too many failed attempts. Please wait a few minutes and try again.'
+        return 'No account found for that email / username.'
+      }
+    }
     const lk = lockError(u.id); if (lk) return lk
     if (u.status === 'suspended') return 'This account is suspended. Contact support.'
     const localMatch = u.passwordHash === hashSecret(password)
     let fbOk = false
     let idToken: string | null = null
+    let fbUid: string | null = null
     try {
       const cred = await signInWithEmailAndPassword(firebaseAuth, u.email, password)
       fbOk = true
+      fbUid = cred.user.uid
       idToken = await cred.user.getIdToken()
     } catch (e: any) {
       const code = e?.code || ''
@@ -397,6 +491,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         try {
           const cred = await createUserWithEmailAndPassword(firebaseAuth, u.email, password)
           fbOk = true
+          fbUid = cred.user.uid
           idToken = await cred.user.getIdToken()
         } catch (e2: any) {
           const code2 = e2?.code || ''
@@ -421,21 +516,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.passwordHash = hashSecret(password) })
     }
     recordSuccess(u.id)
-    mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO() })
+    mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO(); if (fbUid) du.fbUid = fbUid })
     localStorage.setItem(SESSION, u.id); setUserId(u.id); setLocked(false)
     if (idToken) void syncServerProfile(idToken, u)
     return null
   }
   // After a Firebase sign-in: make sure the D1 rows exist (bootstrap), then
-  // pull the server-side role down — the server is the source of truth for
-  // admin rights, so promoting a user in D1 takes effect at their next login.
+  // hydrate balances/transactions from the server — D1 is the source of
+  // truth, including the role (promoting a user in D1 takes effect here).
   const syncServerProfile = async (token: string, u: User) => {
-    await apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash })
-    const me = await apiMe(token)
-    const role = me?.user?.role
-    if (role === 'admin' || role === 'user') {
-      mutate(d => { const du = d.users.find(x => x.id === u.id); if (du && du.role !== role) du.role = role })
-    }
+    await apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash, phone: u.phone })
+    await hydrateServer(u)
   }
   // ---- Device quick login: PIN + fingerprint (WebAuthn), stored ONLY on this device ----
   const pinKey = (id: string) => 'nova.loginpin.' + id
@@ -571,10 +662,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.name.trim().length < 3) return 'Enter your full name.'
     // The account is created in Firebase Auth first — it is the real identity
     // store — then mirrored locally for the app, and bootstrapped into D1.
+    let newFbUid: string | null = null
     try {
       const cred = await createUserWithEmailAndPassword(firebaseAuth, p.email, p.password)
+      newFbUid = cred.user.uid
       const token = await cred.user.getIdToken()
-      void apiBootstrap(token, { username: p.username, fullName: p.name, pinHash: hashSecret(p.pin) })
+      void apiBootstrap(token, { username: p.username, fullName: p.name, pinHash: hashSecret(p.pin), phone: p.phone, referralCode: p.referralCode })
     } catch (e: any) {
       const code = e?.code || ''
       if (code === 'auth/email-already-in-use') return 'An account with this email already exists.'
@@ -586,7 +679,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     const referrer = p.referralCode ? cur.users.find(x => x.referralCode === p.referralCode) : undefined
     const nu: User = {
-      id: uid('USR'), name: p.name, username: p.username, email: p.email, phone: p.phone,
+      id: uid('USR'), fbUid: newFbUid ?? undefined, name: p.name, username: p.username, email: p.email, phone: p.phone,
       passwordHash: hashSecret(p.password), pinHash: hashSecret(p.pin), role: 'user', status: 'active',
       kyc: 'unverified', level: 1, referralCode: 'NOVA-' + p.username.toUpperCase().slice(0, 6), referredBy: referrer?.id ?? null,
       twoFA: false, language: langPref, createdAt: nowISO(), lastLogin: nowISO(),
@@ -599,176 +692,96 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       notify(d, nu.id, 'Welcome to NovaWallet', 'Verify your KYC from your profile to unlock loans and higher limits.', 'info')
     })
     localStorage.setItem(SESSION, nu.id); setUserId(nu.id); setLocked(false)
+    void hydrateServer(nu)
     return null
   }
 
-  const addDeposit: Ctx['addDeposit'] = (p) => {
-    if (!user) return
-    if (badAmount(p.amount)) return
-    if (p.trxId && !TRX_RE.test(p.trxId.trim())) return
-    mutate(d => {
-      // Normalized reference = the match key any future automation (bank API,
-      // gateway callback, SMS/webhook matcher) will look deposits up by.
-      const reference = p.trxId.trim().toUpperCase()
-      const dep = { id: uid('DEP'), userId: user.id, method: p.method, amount: p.amount, trxId: p.trxId, receipt: p.receipt, methodId: p.methodId, kind: p.kind, verification: p.verification ?? 'manual', reference, status: 'pending' as const, createdAt: nowISO() }
-      d.deposits.unshift(dep)
-      recordTx(d, { userId: user.id, category: 'add_money', title: 'Add Money via ' + p.method, amount: p.amount, fee: 0, currency: 'BDT', status: 'pending', method: p.method })
-      notifyAdmins(d, '💰 New deposit request', user.name + ' requested a ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + ' — review it in Finance.', 'deposit', '/admin?tab=finance')
-      notify(d, user.id, 'Deposit request submitted', 'Your ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + (dep.verification === 'auto' ? ' is queued for automatic verification — it settles as soon as the payment provider confirms it.' : ' is pending admin review.'), 'deposit')
-    })
+  const addDeposit: Ctx['addDeposit'] = async (p) => {
+    if (!user) return 'Not signed in'
+    if (badAmount(p.amount)) return 'Enter a valid amount.'
+    try {
+      const r = await apiPost('/v1/deposit', { method: p.method, amount: p.amount, trxId: p.trxId, receipt: p.receipt, methodId: p.methodId, kind: p.kind, verification: p.verification ?? 'manual' })
+      applyMoneyResult(r)
+      mutate(d => {
+        notifyAdmins(d, '💰 New deposit request', user.name + ' requested a ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + ' — review it in Finance.', 'deposit', '/admin?tab=finance')
+        notify(d, user.id, 'Deposit request submitted', 'Your ' + p.method + ' deposit of ৳' + p.amount.toLocaleString() + (p.verification === 'auto' ? ' is queued for automatic verification — it settles as soon as the payment provider confirms it.' : ' is pending admin review.'), 'deposit')
+      })
+      return null
+    } catch (e: any) { return e.message }
   }
-  // ONE settlement path for every deposit, whoever settles it — admin review
-  // today, a provider/automation tomorrow. Balances, the linked transaction,
-  // referral commission, audit and notifications all live here exactly once.
-  const applyDepositDecision = (d: DB, dep: DepositReq, ok: boolean, source: 'admin' | 'provider') => {
-      dep.status = ok ? 'approved' : 'rejected'
-      const w = d.wallets.find(x => x.userId === dep.userId)!
-      const tx = d.txs.find(t => t.category === 'add_money' && t.userId === dep.userId && t.status === 'pending' && t.amount === dep.amount)
-      if (tx) tx.status = ok ? 'completed' : 'rejected'
-      if (ok) {
-        w.available += dep.amount
-        audit(d, source, 'deposit.approve', `Approved ${dep.id} ৳${dep.amount} for ${dep.userId}`)
-        // referral commission on first approved deposit
-        const depUser = d.users.find(u => u.id === dep.userId)
-        if (depUser?.referredBy) {
-          const commission = Math.round(dep.amount * d.settings.referralPct / 100 * 0.1)
-          if (commission > 0) {
-            const rw = d.wallets.find(x => x.userId === depUser.referredBy)!
-            rw.available += commission
-            d.referralEarnings.unshift({ id: rid(), userId: depUser.referredBy, fromUser: depUser.name, amount: commission, createdAt: nowISO() })
-            recordTx(d, { userId: depUser.referredBy, category: 'referral', title: 'Referral commission', amount: commission, fee: 0, currency: 'BDT', status: 'completed' })
-            notify(d, depUser.referredBy, 'Referral reward', 'You earned ৳' + commission + ' from ' + depUser.name + "'s deposit.", 'referral')
-          }
-        }
-      } else audit(d, source, 'deposit.reject', `Rejected ${dep.id}`)
-      notify(d, dep.userId, ok ? 'Deposit approved' : 'Deposit rejected', ok ? '৳' + dep.amount.toLocaleString() + ' has been credited to your wallet.' : 'Your deposit request was rejected. Check the transaction ID and try again.', 'deposit', tx ? '/transactions?tx=' + tx.id : undefined)
+  // Deposit settlement lives on the server now (admin decision and any
+  // future provider/automation call the same Worker endpoint): balances,
+  // the linked transaction and referral commission settle in D1 exactly once.
+  const decideDeposit: Ctx['decideDeposit'] = async (id, ok) => {
+    try { const r = await apiPost('/v1/admin/decide-deposit', { id, ok }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
-  const decideDeposit: Ctx['decideDeposit'] = (id, ok) => {
-    mutate(d => { const dep = d.deposits.find(x => x.id === id); if (!dep || dep.status !== 'pending') return; applyDepositDecision(d, dep, ok, 'admin') })
+  const settleDepositExternal: Ctx['settleDepositExternal'] = async (id, ok) => {
+    try { const r = await apiPost('/v1/admin/decide-deposit', { id, ok }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
-  const settleDepositExternal: Ctx['settleDepositExternal'] = (id, ok, providerRef) => {
-    mutate(d => { const dep = d.deposits.find(x => x.id === id); if (!dep || dep.status !== 'pending') return; if (providerRef) dep.providerRef = providerRef; applyDepositDecision(d, dep, ok, 'provider') })
-  }
-  const requestWithdraw: Ctx['requestWithdraw'] = (p) => {
+  const requestWithdraw: Ctx['requestWithdraw'] = async (p) => {
     if (!user) return 'Not signed in'
     const lk = lockError(user.id); if (lk) return lk
     if (user.pinHash !== hashSecret(p.pin)) return recordFail(user.id, 'Incorrect transaction PIN.')
     recordSuccess(user.id)
     if (badAmount(p.amount)) return 'Enter a valid amount.'
-    const w = walletOf(user.id)
     if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
-    if (p.amount > w.available) return 'Insufficient available balance.'
     const lim = limitError(user, p.amount); if (lim) return lim
-    const fee = Math.round(p.amount * feePctFor(dbRef.current.settings.cashoutFeePct, user) / 100)
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.available -= p.amount; dw.locked += p.amount
-      d.withdrawals.unshift({ id: uid('WDR'), userId: user.id, method: p.method, amount: p.amount, fee, destination: p.destination, status: 'pending', createdAt: nowISO() })
-      recordTx(d, { userId: user.id, category: 'cash_out', title: 'Cash Out to ' + p.method, amount: p.amount, fee, currency: 'BDT', status: 'pending', method: p.method })
-      notifyAdmins(d, '💸 New cash out request', user.name + ' requested a cash out of ৳' + p.amount.toLocaleString() + ' to ' + p.destination + ' — review it in Finance.', 'withdraw', '/admin?tab=finance')
-      notify(d, user.id, 'Cash out requested', 'Your cash out of ৳' + p.amount.toLocaleString() + ' is pending admin review.', 'withdraw')
-    })
-    return null
+    try {
+      const r = await apiPost('/v1/withdraw', { method: p.method, amount: p.amount, destination: p.destination, pin: p.pin })
+      applyMoneyResult(r)
+      mutate(d => {
+        notifyAdmins(d, '💸 New cash out request', user.name + ' requested a cash out of ৳' + p.amount.toLocaleString() + ' to ' + p.destination + ' — review it in Finance.', 'withdraw', '/admin?tab=finance')
+        notify(d, user.id, 'Cash out requested', 'Your cash out of ৳' + p.amount.toLocaleString() + ' is pending admin review.', 'withdraw')
+      })
+      return null
+    } catch (e: any) { return e.message }
   }
-  const directWithdraw: Ctx['directWithdraw'] = (p) => {
+  const directWithdraw: Ctx['directWithdraw'] = async (p) => {
     if (!user) return 'Not signed in'
     if (user.level < 2) return 'Direct Withdraw needs a Level 2 account. Please upgrade first.'
     if (badAmount(p.amount)) return 'Enter a valid amount.'
-    const w = walletOf(user.id)
     if (user.status === 'frozen') return 'Your wallet is frozen. Contact support.'
-    if (p.amount > w.available) return 'Insufficient available balance.'
     const lim = limitError(user, p.amount); if (lim) return lim
-    const fee = Math.round(p.amount * feePctFor(dbRef.current.settings.cashoutFeePct, user) / 100)
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.available -= p.amount
-      d.withdrawals.unshift({ id: uid('WDR'), userId: user.id, method: p.method, amount: p.amount, fee, destination: p.destination, status: 'completed', createdAt: nowISO() })
-      recordTx(d, { userId: user.id, category: 'direct_withdraw', title: 'Direct Withdraw to ' + p.method, amount: p.amount, fee, currency: 'BDT', status: 'completed', method: p.method, note: 'Instant withdrawal — no admin review' })
-      notify(d, user.id, 'Withdrawal completed', 'Your direct withdrawal of ' + p.amount + ' BDT to ' + p.method + ' is complete.', 'transaction')
-    })
-    return null
+    try {
+      const r = await apiPost('/v1/direct-withdraw', { method: p.method, amount: p.amount, destination: p.destination })
+      applyMoneyResult(r)
+      notifySelf('Withdrawal completed', 'Your direct withdrawal of ' + p.amount + ' BDT to ' + p.method + ' is complete.', 'transaction')
+      return null
+    } catch (e: any) { return e.message }
   }
-  const stake: Ctx['stake'] = (amount, apy, termDays) => {
+  const stake: Ctx['stake'] = async (amount, apy, termDays) => {
     if (!user) return 'Not signed in'
     if (badAmount(amount)) return 'Enter a valid amount.'
-    const w = walletOf(user.id)
-    const rate = dbRef.current.settings.bdtPerUsd
-    // Stake from the same combined balance as Buy/Swap (and as Home's
-    // "Available"): the USDT holding first, the cash balance covers the rest.
-    const heldUsdt = w.holdings.USDT ?? 0
-    const usdtPart = Math.min(heldUsdt, amount / rate)
-    const cashPart = amount - Math.round(usdtPart * rate)
-    if (cashPart > w.available) return 'Insufficient balance. Add money first.'
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.holdings.USDT = heldUsdt - usdtPart
-      dw.available -= cashPart; dw.locked += amount
-      d.stakes.unshift({ id: uid('STK'), userId: user.id, amount, apy, termDays, startAt: nowISO(), status: 'active' })
-      recordTx(d, { userId: user.id, category: 'earn', title: 'Staked in Earn (' + apy + '% APY)', amount, fee: 0, currency: 'BDT', status: 'completed' })
-      notify(d, user.id, '🌱 Stake started', 'You staked ৳' + amount.toLocaleString() + ' at ' + apy + '% APY (' + (termDays === 0 ? 'Flexible — unstake anytime' : termDays + ' days, locked until ' + new Date(Date.now() + termDays * 86_400_000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + ').', 'earn', '/earn')
-    })
-    return null
+    try {
+      const r = await apiPost('/v1/stake', { amount, apy, termDays })
+      applyMoneyResult(r)
+      notifySelf('🌱 Stake started', 'You staked ৳' + amount.toLocaleString() + ' at ' + apy + '% APY (' + (termDays === 0 ? 'Flexible — unstake anytime' : termDays + ' days') + ').', 'earn', '/earn')
+      return null
+    } catch (e: any) { return e.message }
   }
-  const unstake: Ctx['unstake'] = (stakeId) => {
+  const unstake: Ctx['unstake'] = async (stakeId) => {
     if (!user) return 'Not signed in'
-    const st = dbRef.current.stakes.find(x => x.id === stakeId && x.userId === user.id)
-    if (!st || st.status !== 'active') return 'Stake not found.'
-    // Fixed-term plans (30/90/180 days) are LOCKED until maturity — only the
-    // Flexible plan unstakes anytime. Early release is a support action
-    // (adminReleaseStake), requested by messaging Support from the Earn page.
-    if (st.termDays > 0) {
-      const unlockAt = new Date(st.startAt).getTime() + st.termDays * 86_400_000
-      if (Date.now() < unlockAt) return 'This ' + st.termDays + '-day plan is locked until ' + new Date(unlockAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + '. For an early release, please message Support.'
-    }
-    const days = Math.max(0, (Date.now() - new Date(st.startAt).getTime()) / 86_400_000)
-    const interest = Math.round(st.amount * st.apy / 100 * days / 365)
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.locked -= st.amount; dw.available += st.amount + interest
-      d.stakes.find(x => x.id === stakeId)!.status = 'closed'
-      recordTx(d, { userId: user.id, category: 'earn', title: 'Earn unstaked + interest', amount: st.amount + interest, fee: 0, currency: 'BDT', status: 'completed', note: 'Interest earned: ' + interest + ' BDT over ' + days.toFixed(2) + ' days' })
-      notify(d, user.id, '💰 Unstaked', 'Your stake of ৳' + st.amount.toLocaleString() + ' plus ৳' + interest.toLocaleString() + ' interest is back in your available balance.', 'earn', '/earn')
-    })
-    return null
+    try {
+      const r = await apiPost('/v1/unstake', { stakeId })
+      applyMoneyResult(r)
+      notifySelf('💰 Unstaked', 'Your stake plus interest is back in your available balance.', 'earn', '/earn')
+      return null
+    } catch (e: any) { return e.message }
   }
-  const swap: Ctx['swap'] = (fromSym, toSym, amountFrom, prices) => {
+  const swap: Ctx['swap'] = async (fromSym, toSym, amountFrom, prices) => {
     if (!user) return 'Not signed in'
     if (fromSym === toSym) return 'Choose two different assets.'
-    if (badQty(amountFrom)) return 'Enter a valid amount.'
-    const w = walletOf(user.id)
-    const rate = dbRef.current.settings.bdtPerUsd
-    const priceOf = (sym: string) => sym === 'BDT' ? 1 / rate : sym === 'USDT' ? 1 : (prices[sym] ?? 0)
-    if (!priceOf(fromSym) || !priceOf(toSym)) return 'Live price unavailable for this pair.'
-    const heldFrom = w.holdings[fromSym] ?? 0
-    // USDT is the trading balance: the USDT holding spends first, and any
-    // shortfall converts automatically from the added-money (BDT) balance,
-    // so money from Add Money is always usable in Swap and Buy Crypto.
-    const spendableFrom = fromSym === 'BDT' ? w.available : fromSym === 'USDT' ? heldFrom + w.available / rate : heldFrom
-    if (amountFrom > spendableFrom) return 'Insufficient ' + fromSym + ' balance.'
-    const usdGross = amountFrom * priceOf(fromSym)
-    const feeUsd = usdGross * 0.005
-    const toAmt = (usdGross - feeUsd) / priceOf(toSym)
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      if (fromSym === 'BDT') dw.available -= amountFrom
-      else if (fromSym === 'USDT') { const fromHeld = Math.min(amountFrom, heldFrom); dw.holdings.USDT = heldFrom - fromHeld; dw.available -= Math.round((amountFrom - fromHeld) * rate) }
-      else dw.holdings[fromSym] = heldFrom - amountFrom
-      if (toSym === 'BDT') dw.available += toAmt; else dw.holdings[toSym] = (dw.holdings[toSym] ?? 0) + toAmt
-      recordTx(d, { userId: user.id, category: 'swap', title: 'Swap ' + fromSym + ' → ' + toSym, amount: Math.round(usdGross * rate), fee: Math.round(feeUsd * rate), currency: 'BDT', status: 'completed', note: amountFrom + ' ' + fromSym + ' → ' + (toSym === 'BDT' ? Math.round(toAmt) : toSym === 'USDT' ? toAmt.toFixed(2) : toAmt.toFixed(6)) + ' ' + toSym })
-    })
-    return null
+    try {
+      const r = await apiPost('/v1/swap', { fromSym, toSym, amountFrom, prices })
+      applyMoneyResult(r)
+      return null
+    } catch (e: any) { return e.message }
   }
-  const decideWithdraw: Ctx['decideWithdraw'] = (id, ok) => {
-    mutate(d => {
-      const wd = d.withdrawals.find(x => x.id === id); if (!wd || wd.status !== 'pending') return
-      wd.status = ok ? 'completed' : 'rejected'
-      const w = d.wallets.find(x => x.userId === wd.userId)!
-      w.locked -= wd.amount; if (!ok) w.available += wd.amount
-      const tx = d.txs.find(t => t.category === 'cash_out' && t.userId === wd.userId && t.status === 'pending' && t.amount === wd.amount)
-      if (tx) tx.status = ok ? 'completed' : 'rejected'
-      audit(d, 'admin', ok ? 'withdraw.complete' : 'withdraw.reject', `${wd.id} ৳${wd.amount}`)
-      notify(d, wd.userId, ok ? 'Cash out completed' : 'Cash out rejected', ok ? '৳' + (wd.amount - wd.fee).toLocaleString() + ' sent to ' + wd.destination + '.' : 'Your cash out was rejected and the amount returned to your wallet.', 'withdraw', tx ? '/transactions?tx=' + tx.id : undefined)
-    })
+  const decideWithdraw: Ctx['decideWithdraw'] = async (id, ok) => {
+    try { const r = await apiPost('/v1/admin/decide-withdraw', { id, ok }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
   const verifyTxPin: Ctx['verifyTxPin'] = (pin) => {
     if (!user) return 'Not signed in'
@@ -777,91 +790,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     recordSuccess(user.id)
     return null
   }
-  const sendMoney: Ctx['sendMoney'] = (p) => {
+  const sendMoney: Ctx['sendMoney'] = async (p) => {
     if (!user) return 'Not signed in'
     const lk = lockError(user.id); if (lk) return lk
     if (user.pinHash !== hashSecret(p.pin)) return recordFail(user.id, 'Incorrect transaction PIN.')
     recordSuccess(user.id)
     if (badAmount(p.amount)) return 'Enter a valid amount.'
     if (p.toUserId === user.id) return 'You cannot send money to yourself.'
-    const w = walletOf(user.id)
-    const fee = Math.round(p.amount * feePctFor(dbRef.current.settings.sendFeePct, user) / 100 * 100) / 100
-    if (p.amount + fee > w.available) return 'Insufficient balance (amount + fee exceeds available balance).'
-    const limS = limitError(user, p.amount); if (limS) return limS
     if (user.status === 'frozen') return 'Your wallet is frozen.'
-    let created: Tx | null = null
-    mutate(d => {
-      const sw = d.wallets.find(x => x.userId === user.id)!; const rw = d.wallets.find(x => x.userId === p.toUserId)!
-      const to = d.users.find(x => x.id === p.toUserId)!
-      sw.available -= p.amount + fee; rw.available += p.amount
-      created = recordTx(d, { userId: user.id, category: 'send', title: 'Sent to ' + to.name, amount: p.amount, fee, currency: 'BDT', status: 'completed', note: p.note, counterparty: to.name })
-      const rxTx = recordTx(d, { userId: p.toUserId, category: 'receive', title: 'Received from ' + user.name, amount: p.amount, fee: 0, currency: 'BDT', status: 'completed', counterparty: user.name })
-      notify(d, p.toUserId, 'Money received', 'You received ৳' + p.amount.toLocaleString() + ' from ' + user.name + '.', 'receive', '/transactions?tx=' + rxTx.id)
-    })
-    return created!
+    const limS = limitError(user, p.amount); if (limS) return limS
+    const toUid = serverUidOf(p.toUserId)
+    if (!toUid) return 'Recipient is not available on the server yet.'
+    try {
+      const r = await apiPost('/v1/send', { toUserId: toUid, amount: p.amount, note: p.note, pin: p.pin })
+      applyMoneyResult(r)
+      return r.tx as Tx
+    } catch (e: any) { return e.message }
   }
-  const buyCrypto: Ctx['buyCrypto'] = (symbol, amount, priceUsd) => {
+  const buyCrypto: Ctx['buyCrypto'] = async (symbol, amount, priceUsd) => {
     if (!user) return 'Not signed in'
     if (badAmount(amount) || badQty(priceUsd)) return 'Enter a valid amount.'
-    const w = walletOf(user.id)
-    const rate = dbRef.current.settings.bdtPerUsd
-    // Buying USDT itself converts the BDT balance into USDT (the on-ramp);
-    // every other coin is bought with the USDT holding.
-    if (symbol === 'USDT') {
-      if (amount > w.available) return 'Insufficient BDT balance.'
-      const coins = amount / rate
-      mutate(d => {
-        const dw = d.wallets.find(x => x.userId === user.id)!
-        dw.available -= amount; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + coins
-        recordTx(d, { userId: user.id, category: 'crypto_buy', title: 'Bought USDT', amount, fee: 0, currency: 'USDT', status: 'completed', note: coins.toFixed(2) + ' USDT @ 1.00 USDT' })
-      })
+    try {
+      const r = await apiPost('/v1/trade/buy', { symbol, amount, priceUsd })
+      applyMoneyResult(r)
       return null
-    }
-    const heldUsdt = w.holdings.USDT ?? 0
-    const shortfall = Math.max(0, amount - heldUsdt)
-    if (shortfall * rate > w.available) return 'Insufficient balance. Add money first.'
-    const coins = amount / priceUsd
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.holdings.USDT = heldUsdt - Math.min(amount, heldUsdt); dw.available -= Math.round(shortfall * rate); dw.holdings[symbol] = (dw.holdings[symbol] ?? 0) + coins
-      recordTx(d, { userId: user.id, category: 'crypto_buy', title: 'Bought ' + symbol, amount: Math.round(amount * rate), fee: 0, currency: symbol, status: 'completed', note: coins.toFixed(6) + ' ' + symbol + ' @ ' + priceUsd + ' USDT' })
-    })
-    return null
+    } catch (e: any) { return e.message }
   }
-  const sellCrypto: Ctx['sellCrypto'] = (symbol, coinAmount, priceUsd) => {
+  const sellCrypto: Ctx['sellCrypto'] = async (symbol, coinAmount, priceUsd) => {
     if (!user) return 'Not signed in'
     if (badQty(coinAmount) || badQty(priceUsd)) return 'Enter a valid amount.'
-    const w = walletOf(user.id)
-    if (coinAmount > (w.holdings[symbol] ?? 0)) return 'Insufficient ' + symbol + ' balance.'
-    const rate = dbRef.current.settings.bdtPerUsd
-    // Selling USDT converts it back into the BDT balance; every other coin
-    // is sold for USDT, which lands in the USDT holding.
-    if (symbol === 'USDT') {
-      const bdt = coinAmount * rate
-      mutate(d => {
-        const dw = d.wallets.find(x => x.userId === user.id)!
-        dw.holdings.USDT = (dw.holdings.USDT ?? 0) - coinAmount; dw.available += bdt
-        recordTx(d, { userId: user.id, category: 'crypto_sell', title: 'Sold USDT', amount: Math.round(bdt), fee: 0, currency: 'USDT', status: 'completed', note: coinAmount + ' USDT @ 1.00 USDT' })
-      })
+    try {
+      const r = await apiPost('/v1/trade/sell', { symbol, coinAmount, priceUsd })
+      applyMoneyResult(r)
       return null
-    }
-    const usdt = coinAmount * priceUsd
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.holdings[symbol] -= coinAmount; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + usdt
-      recordTx(d, { userId: user.id, category: 'crypto_sell', title: 'Sold ' + symbol, amount: Math.round(usdt * rate), fee: 0, currency: symbol, status: 'completed', note: coinAmount + ' ' + symbol + ' @ ' + priceUsd + ' USDT' })
-    })
-    return null
+    } catch (e: any) { return e.message }
   }
-  const applyLoan: Ctx['applyLoan'] = (amount, months, info) => {
+  const applyLoan: Ctx['applyLoan'] = async (amount, months, info) => {
     if (!user) return
     if (badAmount(amount)) return
-    const { emi, total } = emiCalc(amount, dbRef.current.settings.loanRatePct, months)
-    mutate(d => {
-      d.loans.unshift({ id: uid('LOAN'), userId: user.id, amount, months, ratePct: d.settings.loanRatePct, emi: Math.round(emi), totalPayable: Math.round(total), paid: 0, status: 'pending', createdAt: nowISO(), ...info })
-      notify(d, user.id, 'Loan application submitted', 'Your loan application is under admin review. No loan is approved automatically.', 'loan')
-      notifyAdmins(d, '📄 New loan application', user.name + ' applied for a loan of ৳' + amount.toLocaleString() + ' over ' + months + ' months — review it in Loans.', 'loan', '/admin?tab=loans')
-    })
+    try {
+      const r = await apiPost('/v1/loan/apply', { amount, months, info })
+      applyMoneyResult(r)
+      mutate(d => {
+        notify(d, user.id, 'Loan application submitted', 'Your loan application is under admin review. No loan is approved automatically.', 'loan')
+        notifyAdmins(d, '📄 New loan application', user.name + ' applied for a loan of ৳' + amount.toLocaleString() + ' over ' + months + ' months — review it in Loans.', 'loan', '/admin?tab=loans')
+      })
+    } catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
   const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
   const freshEarn = (userId: string): EarnState => ({ userId, day: todayStr(), lastCheckin: '', streak: 0, ads: 0, spins: 0, scratches: 0, tasksDone: [], quizDay: '' })
@@ -872,18 +846,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     Object.assign(st, normEarn(st))
     return st
   }
-  const creditEarn = (d: DB, userId: string, amount: number, title: string) => {
-    const w = d.wallets.find(x => x.userId === userId)!; w.available += amount
-    recordTx(d, { userId, category: 'earn', title, amount, fee: 0, currency: 'BDT', status: 'completed' })
+  const claimEarn = async (kind: string, amount: number, title: string): Promise<string | null> => {
+    try { const r = await apiPost('/v1/earn/claim', { kind, amount, title }); applyMoneyResult(r); return null }
+    catch (e: any) { return e.message }
   }
   const earnInfo: Ctx['earnInfo'] = () => {
     if (!user) return freshEarn('')
     const st = db.earnStates.find(x => x.userId === user.id)
     return st ? normEarn({ ...st, tasksDone: [...st.tasksDone] }) : freshEarn(user.id)
   }
-  const claimCheckin: Ctx['claimCheckin'] = () => {
+  const claimCheckin: Ctx['claimCheckin'] = async () => {
     if (!user) return { err: 'Not signed in' }
     let out: { err?: string; amount?: number; streak?: number } = {}
+    const box: { credit: { amount: number; title: string } | null } = { credit: null }
     mutate(d => {
       const st = earnStateIn(d, user.id)
       const today = todayStr()
@@ -893,129 +868,114 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       st.streak = st.lastCheckin === yStr ? st.streak + 1 : 1
       st.lastCheckin = today
       const amount = CHECKIN_REWARDS[(st.streak - 1) % CHECKIN_REWARDS.length]
-      creditEarn(d, user.id, amount, 'Daily check-in reward (day ' + st.streak + ')')
+      box.credit = { amount, title: 'Daily check-in reward (day ' + st.streak + ')' }
       out = { amount, streak: st.streak }
     })
+    { const c = box.credit; if (c) { const err = await claimEarn('checkin', c.amount, c.title); if (err) return { err } } }
     return out
   }
-  const watchAdReward: Ctx['watchAdReward'] = () => {
+  const watchAdReward: Ctx['watchAdReward'] = async () => {
     if (!user) return { err: 'Not signed in' }
     let out: { err?: string; amount?: number; left?: number } = {}
+    const box: { credit: { amount: number; title: string } | null } = { credit: null }
     mutate(d => {
       const st = earnStateIn(d, user.id)
       if (st.ads >= ADS_PER_DAY) { out = { err: 'No ads left today — come back tomorrow.' }; return }
       st.ads++
       const amount = 2 + Math.floor(Math.random() * 7)
-      creditEarn(d, user.id, amount, 'Watched ad reward')
+      box.credit = { amount, title: 'Watched ad reward' }
       out = { amount, left: ADS_PER_DAY - st.ads }
     })
+    { const c = box.credit; if (c) { const err = await claimEarn('ad', c.amount, c.title); if (err) return { err } } }
     return out
   }
-  const spinReward: Ctx['spinReward'] = () => {
+  const spinReward: Ctx['spinReward'] = async () => {
     if (!user) return { err: 'Not signed in' }
     let out: { err?: string; prize?: number; index?: number; left?: number } = {}
+    const box: { credit: { amount: number; title: string } | null } = { credit: null }
     mutate(d => {
       const st = earnStateIn(d, user.id)
       if (st.spins >= SPINS_PER_DAY) { out = { err: 'No free spins left today — come back tomorrow.' }; return }
       st.spins++
       const index = Math.floor(Math.random() * WHEEL_PRIZES.length)
       const prize = WHEEL_PRIZES[index]
-      if (prize > 0) creditEarn(d, user.id, prize, 'Spin Wheel reward')
+      if (prize > 0) box.credit = { amount: prize, title: 'Spin Wheel reward' }
       out = { prize, index, left: SPINS_PER_DAY - st.spins }
     })
+    { const c = box.credit; if (c) { const err = await claimEarn('spin', c.amount, c.title); if (err) return { err } } }
     return out
   }
-  const scratchDraw: Ctx['scratchDraw'] = () => {
+  const scratchDraw: Ctx['scratchDraw'] = async () => {
     if (!user) return { err: 'Not signed in' }
     let out: { err?: string; prize?: number; left?: number } = {}
+    const box: { credit: { amount: number; title: string } | null } = { credit: null }
     mutate(d => {
       const st = earnStateIn(d, user.id)
       if (st.scratches >= SCRATCH_PER_DAY) { out = { err: 'No scratch cards left today — come back tomorrow.' }; return }
       st.scratches++
       const prize = SCRATCH_PRIZES[Math.floor(Math.random() * SCRATCH_PRIZES.length)]
-      if (prize > 0) creditEarn(d, user.id, prize, 'Scratch card reward')
+      if (prize > 0) box.credit = { amount: prize, title: 'Scratch card reward' }
       out = { prize, left: SCRATCH_PER_DAY - st.scratches }
     })
+    { const c = box.credit; if (c) { const err = await claimEarn('scratch', c.amount, c.title); if (err) return { err } } }
     return out
   }
-  const completeEarnTask: Ctx['completeEarnTask'] = (taskId) => {
+  const completeEarnTask: Ctx['completeEarnTask'] = async (taskId) => {
     if (!user) return { err: 'Not signed in' }
     const task = EARN_TASKS.find(x => x.id === taskId)
     if (!task) return { err: 'Unknown task' }
     let out: { err?: string; amount?: number } = {}
+    const box: { credit: { amount: number; title: string } | null } = { credit: null }
     mutate(d => {
       const st = earnStateIn(d, user.id)
       if (st.tasksDone.includes(taskId)) { out = { err: 'Task already completed' }; return }
       st.tasksDone.push(taskId)
-      creditEarn(d, user.id, task.reward, 'Task reward: ' + task.title)
+      box.credit = { amount: task.reward, title: 'Task reward: ' + task.title }
       out = { amount: task.reward }
     })
+    { const c = box.credit; if (c) { const err = await claimEarn('task', c.amount, c.title); if (err) return { err } } }
     return out
   }
-  const submitQuiz: Ctx['submitQuiz'] = (correct) => {
+  const submitQuiz: Ctx['submitQuiz'] = async (correct) => {
     if (!user) return { err: 'Not signed in' }
     let out: { err?: string; amount?: number } = {}
+    const box: { credit: { amount: number; title: string } | null } = { credit: null }
     mutate(d => {
       const st = earnStateIn(d, user.id)
       if (st.quizDay === todayStr()) { out = { err: 'You already played the quiz today.' }; return }
       st.quizDay = todayStr()
       const amount = Math.max(0, Math.min(5, correct)) * QUIZ_PER_CORRECT
-      if (amount > 0) creditEarn(d, user.id, amount, 'Daily quiz reward (' + correct + '/5 correct)')
+      if (amount > 0) box.credit = { amount, title: 'Daily quiz reward (' + correct + '/5 correct)' }
       out = { amount }
     })
+    { const c = box.credit; if (c) { const err = await claimEarn('quiz', c.amount, c.title); if (err) return { err } } }
     return out
   }
-  const setLoanFee: Ctx['setLoanFee'] = (loanId, amount) => {
-    mutate(d => {
-      const loan = d.loans.find(x => x.id === loanId); if (!loan) return
-      loan.processingFee = amount; loan.feeStatus = 'unpaid'
-      audit(d, 'admin', 'loan.fee_set', loanId + ' processing fee ' + amount + ' BDT')
-      notify(d, loan.userId, 'Loan processing fee', 'A processing fee of ' + amount + ' BDT was set for your loan ' + loanId + '. Pay it from the Loan section to continue.', 'loan')
-    })
+  const setLoanFee: Ctx['setLoanFee'] = async (loanId, amount) => {
+    try { const r = await apiPost('/v1/loan/fee', { loanId, action: 'set', amount }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
-  const submitLoanFee: Ctx['submitLoanFee'] = (loanId, method, ref) => {
+  const submitLoanFee: Ctx['submitLoanFee'] = async (loanId, method, ref) => {
     if (!user) return
-    mutate(d => {
-      const loan = d.loans.find(x => x.id === loanId && x.userId === user.id); if (!loan) return
-      loan.feeStatus = 'submitted'; loan.feeMethod = method; loan.feeTxRef = ref
-      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Processing fee payment submitted', user.name + ' submitted a fee payment for ' + loanId + ' via ' + method + ' (ref: ' + ref + ').', 'loan', '/admin?tab=loans'))
-    })
+    try { const r = await apiPost('/v1/loan/fee', { loanId, action: 'submit', method, ref }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
-  const confirmLoanFee: Ctx['confirmLoanFee'] = (loanId) => {
-    mutate(d => {
-      const loan = d.loans.find(x => x.id === loanId); if (!loan) return
-      loan.feeStatus = 'paid'
-      audit(d, 'admin', 'loan.fee_paid', loanId + ' processing fee confirmed paid')
-      notify(d, loan.userId, 'Processing fee confirmed', 'Your processing fee payment for loan ' + loanId + ' has been confirmed. Thank you.', 'loan')
-    })
+  const confirmLoanFee: Ctx['confirmLoanFee'] = async (loanId) => {
+    try { const r = await apiPost('/v1/loan/fee', { loanId, action: 'confirm' }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
-  const decideLoan: Ctx['decideLoan'] = (id, ok) => {
-    mutate(d => {
-      const loan = d.loans.find(x => x.id === id); if (!loan || loan.status !== 'pending') return
-      loan.status = ok ? 'active' : 'rejected'
-      if (ok) {
-        const w = d.wallets.find(x => x.userId === loan.userId)!; w.available += loan.amount
-        recordTx(d, { userId: loan.userId, category: 'loan_disbursement', title: 'Loan disbursed', amount: loan.amount, fee: 0, currency: 'BDT', status: 'completed' })
-        audit(d, 'admin', 'loan.approve', `${loan.id} ৳${loan.amount} disbursed`)
-      } else audit(d, 'admin', 'loan.reject', loan.id)
-      notify(d, loan.userId, ok ? 'Loan approved' : 'Loan rejected', ok ? '৳' + loan.amount.toLocaleString() + ' has been disbursed to your wallet.' : 'Your loan application was not approved this time.', 'loan')
-    })
+  const decideLoan: Ctx['decideLoan'] = async (id, ok) => {
+    try { const r = await apiPost('/v1/admin/decide-loan', { id, ok }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
-  const repayLoan: Ctx['repayLoan'] = (loan, amount) => {
+  const repayLoan: Ctx['repayLoan'] = async (loan, amount) => {
     if (!user) return 'Not signed in'
     if (badAmount(amount)) return 'Enter a valid amount.'
-    const w = walletOf(user.id)
-    if (amount > w.available) return 'Insufficient balance.'
-    const remaining = loan.totalPayable - loan.paid
-    if (amount > remaining) return 'Amount exceeds outstanding balance of ৳' + remaining.toLocaleString() + '.'
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === user.id)!
-      dw.available -= amount
-      const dl = d.loans.find(x => x.id === loan.id)!; dl.paid += amount
-      if (dl.paid >= dl.totalPayable) dl.status = 'repaid'
-      recordTx(d, { userId: user.id, category: 'loan_repayment', title: 'Loan repayment', amount, fee: 0, currency: 'BDT', status: 'completed' })
-    })
-    return null
+    try {
+      const r = await apiPost('/v1/loan/repay', { loanId: loan.id, amount })
+      applyMoneyResult(r)
+      return null
+    } catch (e: any) { return e.message }
   }
   const submitKyc: Ctx['submitKyc'] = (p) => {
     if (!user) return
@@ -1038,96 +998,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setUserStatus: Ctx['setUserStatus'] = (userId2, status) => mutate(d => {
     const u = d.users.find(x => x.id === userId2); if (u) { u.status = status; audit(d, 'admin', 'user.' + status, userId2) }
   })
-  const adjustBalance: Ctx['adjustBalance'] = (userId2, amount, title, note) => mutate(d => {
-    const w = d.wallets.find(x => x.userId === userId2); if (!w) return
-    w.available += amount
-    // The admin-given title (Charge, Complaint, Hold, Refund…) IS the statement
-    // title — it shows verbatim in the customer's Transactions and in the
-    // Admin panel's Transactions tab / user statement.
-    recordTx(d, { userId: userId2, category: 'adjustment', title: title || 'Admin adjustment', amount, fee: 0, currency: 'BDT', status: 'completed', note })
-    audit(d, 'admin', 'wallet.adjust', `${userId2} ${amount > 0 ? '+' : ''}৳${amount} — ${title}${note ? ' · ' + note : ''}`)
-    notify(d, userId2, title || 'Wallet adjustment', 'Your balance was adjusted by ৳' + amount.toLocaleString() + (note ? '. ' + note : ''), 'info')
-  })
-  const adminBuyCrypto: Ctx['adminBuyCrypto'] = (userId2, symbol, usdtAmount, priceUsd) => {
+  const adjustBalance: Ctx['adjustBalance'] = async (userId2, amount, title, note) => {
+    const tUid = serverUidOf(userId2)
+    if (!tUid) { toast({ kind: 'error', title: 'That user is not on the server yet.' }); return }
+    try {
+      // The admin-given title IS the statement title — it shows verbatim in
+      // the customer's Transactions (the server records it on the tx).
+      const r = await apiPost('/v1/admin/adjust', { userId: tUid, amount, title: title || 'Admin adjustment', note })
+      applyMoneyResult(r)
+    } catch (e: any) { toast({ kind: 'error', title: e.message }) }
+  }
+  const adminBuyCrypto: Ctx['adminBuyCrypto'] = async (userId2, symbol, usdtAmount, priceUsd) => {
     if (badAmount(usdtAmount) || badQty(priceUsd)) return 'Enter a valid amount.'
-    const w = dbRef.current.wallets.find(x => x.userId === userId2); if (!w) return 'Wallet not found.'
-    const rate = dbRef.current.settings.bdtPerUsd
-    if (symbol === 'USDT') {
-      const cost = Math.round(usdtAmount * rate)
-      if (cost > w.available) return 'Insufficient cash balance for this buy.'
-      mutate(d => {
-        const dw = d.wallets.find(x => x.userId === userId2)!
-        dw.available -= cost; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + usdtAmount
-        recordTx(d, { userId: userId2, category: 'crypto_buy', title: 'Bought USDT (support)', amount: cost, fee: 0, currency: 'USDT', status: 'completed', note: usdtAmount.toFixed(2) + ' USDT @ 1.00 · executed by admin support' })
-        audit(d, 'admin', 'trade.buy', `${userId2} USDT ${usdtAmount}`)
-        notify(d, userId2, 'Support trade executed', 'Support bought ' + usdtAmount.toFixed(2) + ' USDT for your account.', 'trade')
-      })
+    const tUid = serverUidOf(userId2)
+    if (!tUid) return 'That user is not on the server yet.'
+    // Server buy semantics: for USDT the amount is BDT (the on-ramp), for
+    // other coins it is USDT-denominated — translate the admin's USDT input.
+    const amount = symbol === 'USDT' ? Math.round(usdtAmount * dbRef.current.settings.bdtPerUsd) : usdtAmount
+    try {
+      const r = await apiPost('/v1/admin/trade', { forUserId: tUid, side: 'buy', symbol, amount, priceUsd })
+      applyMoneyResult(r)
       return null
-    }
-    const heldUsdt = w.holdings.USDT ?? 0
-    const shortfall = Math.max(0, usdtAmount - heldUsdt)
-    if (shortfall * rate > w.available) return 'Insufficient balance (USDT holding + cash) for this buy.'
-    const coins = usdtAmount / priceUsd
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === userId2)!
-      dw.holdings.USDT = heldUsdt - Math.min(usdtAmount, heldUsdt); dw.available -= Math.round(shortfall * rate); dw.holdings[symbol] = (dw.holdings[symbol] ?? 0) + coins
-      recordTx(d, { userId: userId2, category: 'crypto_buy', title: 'Bought ' + symbol + ' (support)', amount: Math.round(usdtAmount * rate), fee: 0, currency: symbol, status: 'completed', note: coins.toFixed(6) + ' ' + symbol + ' @ ' + priceUsd + ' USDT · executed by admin support' })
-      audit(d, 'admin', 'trade.buy', `${userId2} ${symbol} ${usdtAmount} USDT @ ${priceUsd}`)
-      notify(d, userId2, 'Support trade executed', 'Support bought ' + coins.toFixed(6) + ' ' + symbol + ' for your account.', 'trade')
-    })
-    return null
+    } catch (e: any) { return e.message }
   }
-  const adminSellCrypto: Ctx['adminSellCrypto'] = (userId2, symbol, coinAmount, priceUsd) => {
+  const adminSellCrypto: Ctx['adminSellCrypto'] = async (userId2, symbol, coinAmount, priceUsd) => {
     if (badQty(coinAmount) || badQty(priceUsd)) return 'Enter a valid amount.'
-    const w = dbRef.current.wallets.find(x => x.userId === userId2); if (!w) return 'Wallet not found.'
-    if (coinAmount > (w.holdings[symbol] ?? 0)) return 'Insufficient ' + symbol + ' holding.'
-    const rate = dbRef.current.settings.bdtPerUsd
-    mutate(d => {
-      const dw = d.wallets.find(x => x.userId === userId2)!
-      if (symbol === 'USDT') {
-        const bdt = Math.round(coinAmount * rate)
-        dw.holdings.USDT = (dw.holdings.USDT ?? 0) - coinAmount; dw.available += bdt
-        recordTx(d, { userId: userId2, category: 'crypto_sell', title: 'Sold USDT (support)', amount: bdt, fee: 0, currency: 'USDT', status: 'completed', note: coinAmount + ' USDT @ 1.00 · executed by admin support' })
-      } else {
-        const usdt = coinAmount * priceUsd
-        dw.holdings[symbol] -= coinAmount; dw.holdings.USDT = (dw.holdings.USDT ?? 0) + usdt
-        recordTx(d, { userId: userId2, category: 'crypto_sell', title: 'Sold ' + symbol + ' (support)', amount: Math.round(usdt * rate), fee: 0, currency: symbol, status: 'completed', note: coinAmount + ' ' + symbol + ' @ ' + priceUsd + ' USDT · executed by admin support' })
-      }
-      audit(d, 'admin', 'trade.sell', `${userId2} ${symbol} ${coinAmount} @ ${priceUsd}`)
-      notify(d, userId2, 'Support trade executed', 'Support sold ' + coinAmount + ' ' + symbol + ' from your account.', 'trade')
-    })
-    return null
+    const tUid = serverUidOf(userId2)
+    if (!tUid) return 'That user is not on the server yet.'
+    try {
+      const r = await apiPost('/v1/admin/trade', { forUserId: tUid, side: 'sell', symbol, coinAmount, priceUsd })
+      applyMoneyResult(r)
+      return null
+    } catch (e: any) { return e.message }
   }
-  const adminReleaseStake: Ctx['adminReleaseStake'] = (userId2, stakeId) => mutate(d => {
-    const st = d.stakes.find(x => x.id === stakeId && x.userId === userId2); if (!st || st.status !== 'active') return
-    const days = Math.max(0, (Date.now() - new Date(st.startAt).getTime()) / 86_400_000)
-    const interest = Math.round(st.amount * st.apy / 100 * days / 365)
-    const dw = d.wallets.find(x => x.userId === userId2)!
-    dw.locked -= st.amount; dw.available += st.amount + interest
-    st.status = 'closed'
-    recordTx(d, { userId: userId2, category: 'earn', title: 'Stake released by support', amount: st.amount + interest, fee: 0, currency: 'BDT', status: 'completed', note: 'Principal + interest ৳' + interest + ' · released early by admin support' })
-    audit(d, 'admin', 'stake.release', `${userId2} ${stakeId} ৳${st.amount}`)
-    notify(d, userId2, 'Stake released', 'Support released your stake of ৳' + st.amount.toLocaleString() + ' plus ৳' + interest + ' interest to your available balance.', 'earn')
-  })
-  const adminClearLocked: Ctx['adminClearLocked'] = (userId2) => mutate(d => {
-    const w = d.wallets.find(x => x.userId === userId2); if (!w || w.locked <= 0) return
-    const total = w.locked
-    const stakesClosed = d.stakes.filter(x => x.userId === userId2 && x.status === 'active')
-    stakesClosed.forEach(st => { st.status = 'closed' })
-    const wdCancelled = d.withdrawals.filter(x => x.userId === userId2 && x.status === 'pending')
-    wdCancelled.forEach(wd => {
-      wd.status = 'rejected'
-      const tx = d.txs.find(t => t.category === 'cash_out' && t.userId === userId2 && t.status === 'pending' && t.amount === wd.amount)
-      if (tx) tx.status = 'rejected'
-    })
-    // One lump release covers stakes + pending cash outs + any other holds —
-    // the pending-withdrawal cancellation above deliberately does NOT move
-    // money separately, so nothing is double-counted.
-    w.available += total; w.locked = 0
-    recordTx(d, { userId: userId2, category: 'adjustment', title: 'Locked funds released', amount: total, fee: 0, currency: 'BDT', status: 'completed', note: 'All locked holdings cleared by admin support (' + stakesClosed.length + ' stake(s) closed, ' + wdCancelled.length + ' pending cash out(s) cancelled)' })
-    audit(d, 'admin', 'locked.clear', `${userId2} ৳${total} · stakes ${stakesClosed.length} · cashouts ${wdCancelled.length}`)
-    notify(d, userId2, 'Locked funds released', 'Support cleared all your locked holdings — ৳' + total.toLocaleString() + ' is now in your available balance.', 'info')
-  })
+  const adminReleaseStake: Ctx['adminReleaseStake'] = async (userId2, stakeId) => {
+    const tUid = serverUidOf(userId2)
+    if (!tUid) { toast({ kind: 'error', title: 'That user is not on the server yet.' }); return }
+    try { const r = await apiPost('/v1/admin/release-stake', { userId: tUid, stakeId }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
+  }
+  const adminClearLocked: Ctx['adminClearLocked'] = async (userId2) => {
+    const tUid = serverUidOf(userId2)
+    if (!tUid) { toast({ kind: 'error', title: 'That user is not on the server yet.' }); return }
+    try { const r = await apiPost('/v1/admin/clear-locked', { userId: tUid }); applyMoneyResult(r) }
+    catch (e: any) { toast({ kind: 'error', title: e.message }) }
+  }
   const updateProfile: Ctx['updateProfile'] = (p) => { if (user) mutate(d => { Object.assign(d.users.find(u => u.id === user.id)!, p) }) }
   const changePassword: Ctx['changePassword'] = (oldPw, newPw) => {
     if (!user) return 'Not signed in'

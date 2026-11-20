@@ -71,8 +71,8 @@ export function CheckinPage() {
   const filled = claimed ? ((info.streak - 1) % 7) + 1 : continuing ? info.streak % 7 : 0
   const nextReward = CHECKIN_REWARDS[filled % 7]
   const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null)
-  const claim = () => {
-    const r = claimCheckin()
+  const claim = async () => {
+    const r = await claimCheckin()
     if (r.err) return toast({ kind: 'error', title: r.err })
     setOkModal({ title: 'Check-in reward ✓', rows: [['Reward', '+' + usd(r.amount ?? 0)], ['Streak', 'Day ' + r.streak], ['Status', 'Added to your balance'], ['Next', 'Come back tomorrow for the next reward']] })
   }
@@ -131,8 +131,8 @@ export function AdsPage() {
     }, 100)
   }
   const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null)
-  const claim = () => {
-    const r = watchAdReward()
+  const claim = async () => {
+    const r = await watchAdReward()
     if (r.err) return toast({ kind: 'error', title: r.err })
     setOkModal({ title: 'Ad reward ✓', rows: [['Reward', '+' + usd(r.amount ?? 0)], ['Ads left today', String(r.left ?? 0)], ['Status', 'Added to your balance']] })
     setPhase('idle'); setProgress(0); setAdIdx(i => i + 1)
@@ -171,8 +171,8 @@ export function SpinPage() {
   const [spinning, setSpinning] = useState(false)
   const [lastPrize, setLastPrize] = useState<number | null>(null)
   const gradient = 'conic-gradient(from 0deg, ' + WHEEL_PRIZES.map((_, i) => `${SEG_COLORS[i]} ${i * 45}deg ${(i + 1) * 45}deg`).join(', ') + ')'
-  const spin = () => {
-    const r = spinReward()
+  const spin = async () => {
+    const r = await spinReward()
     if (r.err) return toast({ kind: 'error', title: r.err })
     const seg = 45
     const targetMod = (360 - ((r.index ?? 0) * seg + seg / 2) + 360) % 360
@@ -235,8 +235,8 @@ export function ScratchPage() {
     ctx.fillText('SCRATCH HERE', c.width / 2, c.height / 2 - 6)
     ctx.font = 'bold 20px system-ui'; ctx.fillText('🎫 Good luck!', c.width / 2, c.height / 2 + 30)
   }
-  const draw = () => {
-    const r = scratchDraw()
+  const draw = async () => {
+    const r = await scratchDraw()
     if (r.err) { setExhausted(true); return }
     setPrize(r.prize ?? 0); setLeft(r.left ?? 0); setRevealed(false)
     requestAnimationFrame(paintCover)
@@ -314,8 +314,8 @@ export function TasksPage() {
     }, 1000)
   }
   const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null)
-  const claim = (id: string) => {
-    const r = completeEarnTask(id)
+  const claim = async (id: string) => {
+    const r = await completeEarnTask(id)
     if (r.err) return toast({ kind: 'error', title: r.err })
     setOkModal({ title: 'Task reward ✓', rows: [['Task', EARN_TASKS.find(x => x.id === id)?.title ?? id], ['Reward', '+' + usd(r.amount ?? 0)], ['Status', 'Added to your balance']] })
   }
@@ -371,14 +371,14 @@ export function QuizPage() {
     if (picked !== null) return
     setPicked(opt)
     if (opt === QUIZ[i].answer) scoreRef.current += 1
-    setTimeout(() => {
+    setTimeout(async () => {
       setPicked(null)
       if (i + 1 < QUIZ.length) setI(i + 1)
       else {
         setFinished(true)
         if (!submitted.current) {
           submitted.current = true
-          const r = submitQuiz(scoreRef.current)
+          const r = await submitQuiz(scoreRef.current)
           if (r.err) toast({ kind: 'error', title: r.err })
           else { setEarned(r.amount ?? 0); if ((r.amount ?? 0) > 0) toast({ kind: 'success', title: '+' + usd(r.amount ?? 0) + ' quiz reward added' }) }
         }

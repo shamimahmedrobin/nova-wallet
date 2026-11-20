@@ -1,29 +1,60 @@
-// NovaWallet API client — the Cloudflare Worker is the only door to the D1
-// database. Every call carries the current Firebase ID token. All helpers
-// are best-effort: a backend hiccup must never block sign-in (the local
-// store still runs the app until the data phase moves server-side).
+// NovaWallet API client — talks to the Cloudflare Worker, which is the
+// source of truth for balances and transactions (D1). Every call carries
+// the current Firebase ID token; the Worker verifies it and derives the
+// user from it. Bootstrap/me stay best-effort, while money calls throw an
+// Error with the server's message so the UI can show exactly what the
+// server decided.
+import { firebaseAuth } from './firebase'
+
 export const API_BASE = 'https://novawallet-api.solution-home-bd.workers.dev'
 
-async function call(path: string, token: string, init?: RequestInit): Promise<any | null> {
+export async function authToken(): Promise<string | null> {
   try {
-    const res = await fetch(API_BASE + path, {
-      ...init,
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    })
-    if (!res.ok) return null
-    return await res.json().catch(() => null)
+    return (await firebaseAuth.currentUser?.getIdToken()) ?? null
   } catch {
     return null
   }
 }
 
-// First sign-in after registration: creates the users / user_profiles /
-// wallets rows in D1 (idempotent — the Worker returns created:false after).
-export function apiBootstrap(token: string, data: { username: string; fullName: string; pinHash: string }): Promise<any | null> {
-  return call('/v1/bootstrap', token, { method: 'POST', body: JSON.stringify(data) })
+async function call(path: string, init: RequestInit): Promise<any> {
+  const token = await authToken()
+  if (!token) throw new Error('Not signed in to the server. Please log in again.')
+  const res = await fetch(API_BASE + path, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...(init.headers || {}) },
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || ('Server error (' + res.status + ')'))
+  return data
 }
 
-// The signed-in user's server-side profile + wallet balances.
-export function apiMe(token: string): Promise<any | null> {
-  return call('/v1/me', token)
+export const apiGet = (path: string) => call(path, { method: 'GET' })
+export const apiPost = (path: string, body: unknown) => call(path, { method: 'POST', body: JSON.stringify(body) })
+
+export async function apiBootstrap(
+  token: string,
+  profile: { username: string; fullName: string; pinHash: string; phone?: string; referralCode?: string },
+): Promise<boolean> {
+  try {
+    const res = await fetch(API_BASE + '/v1/bootstrap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(profile),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function apiMe(token: string): Promise<any | null> {
+  try {
+    const res = await fetch(API_BASE + '/v1/me', {
+      headers: { Authorization: 'Bearer ' + token },
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
 }

@@ -54,10 +54,11 @@ export function AddMoney() {
   const isCrypto = activeMethod.kind === 'crypto'
   const methodLabel = payMethodTitle(activeMethod)
   const amtBDT = Math.round(toBDT(Number(amount) || 0))
-  const submit = () => {
+  const submit = async () => {
     if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Enter an amount of at least ' + fmtMoney(10) })
     if (!isCrypto && trx.trim().length < 6) return toast({ kind: 'error', title: 'Enter the payment Transaction ID' })
-    addDeposit({ method: methodLabel, amount: amtBDT, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined, methodId: activeMethod.id, kind: activeMethod.kind, verification: activeMethod.verification ?? 'manual' })
+    const depErr = await addDeposit({ method: methodLabel, amount: amtBDT, trxId: trx.trim() || 'CRYPTO-' + Date.now(), receipt: receipt || undefined, methodId: activeMethod.id, kind: activeMethod.kind, verification: activeMethod.verification ?? 'manual' })
+    if (depErr) return toast({ kind: 'error', title: depErr })
     setLastAmt(amtBDT); setDone(true); setAmount(''); setTrx(''); setReceipt(''); setDstep(0); setDack(false)
   }
   // Stacked rows: short label on top, value on its own full-width line below —
@@ -189,10 +190,10 @@ export function CashOut() {
   const fee = Math.round(amtBDT * effPct / 100)
   const mine = db.withdrawals.filter(d => d.userId === user?.id)
   const w = user ? walletOf(user.id) : null
-  const submit = () => {
+  const submit = async () => {
     if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum cash out is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
-    const err = requestWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim(), pin })
+    const err = await requestWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim(), pin })
     if (err) return setErrMsg(err)
     setDone(true); setAmount(''); setPin(''); setCstep(0)
     toast({ kind: 'success', title: 'Cash out requested', body: 'Amount locked until processed.' })
@@ -282,10 +283,10 @@ export function SendMoney() {
   const effPctS = db.settings.sendFeePct * (1 - discS / 100)
   const fee = Math.round(amtBDT * effPctS / 100 * 100) / 100
   const w = user ? walletOf(user.id) : null
-  const submit = () => {
+  const submit = async () => {
     if (!to) return toast({ kind: 'error', title: 'Select a recipient first' })
     if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Minimum send amount is ' + fmtMoney(10) })
-    const r = sendMoney({ toUserId: to.id, amount: amtBDT, note: note || undefined, pin })
+    const r = await sendMoney({ toUserId: to.id, amount: amtBDT, note: note || undefined, pin })
     if (typeof r === 'string') return setErrMsg(r)
     setReceipt(r); setPin('')
   }

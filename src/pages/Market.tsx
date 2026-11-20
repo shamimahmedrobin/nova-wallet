@@ -26,18 +26,18 @@ export default function Market() {
   const setUsdtSell = (v: string) => { setUsdtVal(v); setAmount(v && livePrice ? String(Math.round(Number(v) / livePrice * 1e6) / 1e6) : '') }
   const list = useMemo(() => coins.filter(c => (!onlyWatch || watch.includes(c.symbol)) && (c.name.toLowerCase().includes(q.toLowerCase()) || c.symbol.toLowerCase().includes(q.toLowerCase()))), [coins, q, onlyWatch, watch])
   const open = (c: Coin, m: 'buy' | 'sell') => { setSelected(c); setMode(m); setAmount(''); setCoinAmt(''); setUsdtVal('') }
-  const trade = () => {
+  const trade = async () => {
     if (!selected) return
     const live = coins.find(c => c.symbol === selected.symbol) ?? selected
     const sym = selected.symbol
     if (mode === 'buy') {
       const got = buyPreview
-      const err = buyCrypto(sym, Number(amount), live.priceUsd)
+      const err = await buyCrypto(sym, Number(amount), live.priceUsd)
       if (err) return setErrMsg(err)
       setOkModal({ title: 'Bought ' + sym + ' ✓', rows: [['Paid', sym === 'USDT' ? fmtBDT(Number(amount)) : fmtUSDT(Number(amount))], ['You received', got.toFixed(sym === 'USDT' ? 2 : 6) + ' ' + sym], ['Price', fmtPrice(live.priceUsd)], ['Status', 'Completed']] })
     } else {
       const got = sellPreview
-      const err = sellCrypto(sym, Number(amount), live.priceUsd)
+      const err = await sellCrypto(sym, Number(amount), live.priceUsd)
       if (err) return setErrMsg(err)
       setOkModal({ title: 'Sold ' + sym + ' ✓', rows: [['You sold', Number(amount) + ' ' + sym], ['You received', sym === 'USDT' ? fmtBDT(Math.round(got * db.settings.bdtPerUsd)) : fmtUSDT(got)], ['Price', fmtPrice(live.priceUsd)], ['Status', 'Completed']] })
     }

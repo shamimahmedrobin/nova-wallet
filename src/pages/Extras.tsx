@@ -47,11 +47,11 @@ export function DirectWithdraw() {
   const activeNetwork = CRYPTO_NETWORK_LABELS.includes(network) ? network : CRYPTO_NETWORK_LABELS[0]
   const fullMethod = isCrypto ? 'Crypto Wallet · ' + activeNetwork : activeOut
   const destLabel = !isCrypto ? 'Destination account / number / address' : activeNetwork === 'Binance Pay' ? 'Binance Pay ID / email' : 'Wallet address'
-  const submit = () => {
+  const submit = async () => {
     if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum direct withdraw is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
     if (user && user.level < 2) return setGate(true)
-    const err = directWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim() })
+    const err = await directWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim() })
     if (err) return setErrMsg(err)
     setLastTx({ amount: amtBDT, method: fullMethod }); setDone(true); setAmount(''); setDwStep(0)
     toast({ kind: 'success', title: 'Withdrawal completed', body: 'Money sent instantly — no admin review needed.' })
@@ -159,9 +159,9 @@ export function EarnPage() {
   }
   const totalStaked = myStakes.filter(s => s.status === 'active').reduce((a, s) => a + s.amount, 0)
   const totalEarned = myStakes.filter(s => s.status === 'active').reduce((a, s) => a + accrued(s), 0)
-  const submit = () => {
+  const submit = async () => {
     if (!amt || amt < 1) return toast({ kind: 'error', title: 'Minimum stake is $1.00' })
-    const err = stake(amtBDT, PLANS[plan].apy, PLANS[plan].days)
+    const err = await stake(amtBDT, PLANS[plan].apy, PLANS[plan].days)
     if (err) return setErrMsg(err)
     setAmount(''); setOkModal({ title: 'Staked successfully ✓', rows: [['Amount', fmtUSDT(amt)], ['Plan', PLANS[plan].label + ' · ' + PLANS[plan].apy + '% APY'], ['Status', 'Active — earning daily']] })
   }
@@ -216,7 +216,7 @@ export function EarnPage() {
                       <span className="text-[11px] font-semibold text-slate-400">{Math.ceil((unlockAt(s) - Date.now()) / 86_400_000)} days left</span>
                       <Btn variant="outline" className="!py-2 !text-xs" onClick={() => openRelease(s)}>Request early release</Btn>
                     </div>
-                  : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const back = s.amount + accrued(s); const e = unstake(s.id); if (e) setErrMsg(e); else setOkModal({ title: 'Unstaked ✓', rows: [['Returned to balance', usd(back)], ['Principal', usd(s.amount)], ['Interest earned', usd(accrued(s))], ['Status', 'Completed']] }) }}>Unstake</Btn>}
+                  : <Btn variant="outline" className="!py-2 !text-xs" onClick={async () => { const back = s.amount + accrued(s); const e = await unstake(s.id); if (e) setErrMsg(e); else setOkModal({ title: 'Unstaked ✓', rows: [['Returned to balance', usd(back)], ['Principal', usd(s.amount)], ['Interest earned', usd(accrued(s))], ['Status', 'Completed']] }) }}>Unstake</Btn>}
             </div>
           </Card>
         ))}</div>
@@ -259,9 +259,9 @@ export function SwapPage() {
   const balanceOf = (sym: string) => sym === 'BDT' ? w.available : sym === 'USDT' ? spendableUSDT : (w.holdings[sym] ?? 0)
   const assets = ['USDT', ...Object.keys(COIN_META).filter(s => s !== 'USDT')]
   const fmtAmt = (sym: string, v: number) => sym === 'USDT' ? v.toFixed(2) + ' USDT' : v.toFixed(6) + ' ' + sym
-  const submit = () => {
+  const submit = async () => {
     if (!amt) return toast({ kind: 'error', title: 'Enter an amount' })
-    const err = swap(from, to, amt, prices)
+    const err = await swap(from, to, amt, prices)
     if (err) return setErrMsg(err)
     setOkModal({ title: 'Swap completed ✓', rows: [['You swapped', fmtAmt(from, amt)], ['You receive (approx.)', fmtAmt(to, Number(receiveAmt) || 0)], ['Swap fee (0.5%)', fmtUSDT(usdGross * 0.005)], ['Status', 'Completed']] })
     setAmount(''); setReceiveAmt('')
@@ -321,9 +321,9 @@ export function TradePage() {
   const setUsdtSellT = (v: string) => { setUsdtVal(v); setAmount(v && px ? String(Math.round(Number(v) / px * 1e6) / 1e6) : '') }
   const data = coin ? coin.spark.filter((_, i) => i % Math.max(1, Math.floor(coin.spark.length / 40)) === 0).map((v, i) => ({ i, v })) : []
   const up = (coin?.change24h ?? 0) >= 0
-  const submit = () => {
+  const submit = async () => {
     if (!coin || !amt) return toast({ kind: 'error', title: 'Enter an amount' })
-    const err = side === 'buy' ? buyCrypto(coin.symbol, amt, coin.priceUsd) : sellCrypto(coin.symbol, amt, coin.priceUsd)
+    const err = side === 'buy' ? await buyCrypto(coin.symbol, amt, coin.priceUsd) : await sellCrypto(coin.symbol, amt, coin.priceUsd)
     if (err) return toast({ kind: 'error', title: err })
     setAmount(''); setCoinAmt(''); setUsdtVal(''); toast({ kind: 'success', title: (side === 'buy' ? 'Bought ' : 'Sold ') + coin.symbol, body: 'Executed at the confirmed market price.' })
   }
