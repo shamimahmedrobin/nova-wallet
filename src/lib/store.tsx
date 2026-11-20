@@ -6,7 +6,7 @@ import { translate } from './i18n'
 import { detectCurrency, FALLBACK_RATES } from './currencies'
 import { fmtBDT } from './utils'
 import { hashSecret, nowISO, rid, uid } from './utils'
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, updatePassword as fbUpdatePassword } from 'firebase/auth'
+import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut, updatePassword as fbUpdatePassword } from 'firebase/auth'
 import { firebaseAuth } from './firebase'
 import { apiBootstrap, apiMe, apiGet, apiPost } from './api'
 
@@ -379,6 +379,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const notifySelf = (title: string, body: string, kind: any, link?: string) => {
     if (user) mutate(d => notify(d, user.id, title, body, kind, link))
   }
+  // ---- Server freshness: pull the server state when the app boots with a
+  // saved session, whenever it returns to the foreground, and every 30s
+  // while open — so money other people send appears on its own, without
+  // logging out and back in. Firebase restores its own session
+  // asynchronously after a cold start, so also pull when it reports one.
+  const hydrateRef = useRef(hydrateServer); hydrateRef.current = hydrateServer
+  const userIdRef = useRef(userId); userIdRef.current = userId
+  useEffect(() => {
+    if (!userId) return
+    const pull = () => {
+      if (lockedRef.current) return
+      const u = dbRef.current.users.find(x => x.id === userIdRef.current)
+      if (u && !u.stub) void hydrateRef.current(u)
+    }
+    pull()
+    const iv = setInterval(pull, 30000)
+    const onVis = () => { if (document.visibilityState === 'visible') pull() }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', pull)
+    const unsub = onAuthStateChanged(firebaseAuth, fb => { if (fb) pull() })
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', pull); unsub() }
+  }, [userId, locked])
   // ---- Stake maturity: notify ONCE when a fixed-term stake reaches its term ----
   useEffect(() => {
     if (!userId) return
