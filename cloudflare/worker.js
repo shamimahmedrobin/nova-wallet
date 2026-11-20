@@ -182,13 +182,18 @@ async function getBalances(db, walletId) {
 const balOf = (map, cur) => map.get(cur)?.available ?? 0;
 const lockedOf = (map, cur) => map.get(cur)?.locked ?? 0;
 
-// Balance delta statement (upsert). Negative results are rejected by the
-// table's CHECK constraints, which aborts the whole batch.
+// Balance delta statement (upsert). The INSERT values are clamped at 0
+// because D1/SQLite checks the proposed INSERT row against the CHECK
+// constraints BEFORE taking the ON CONFLICT path — a raw negative delta
+// fails even when the existing balance covers it. The UPDATE applies the
+// real delta, and its result is still CHECK-enforced, so an overdraft
+// aborts the whole batch. (Every debit path pre-checks the balance, so a
+// negative delta never legitimately meets a missing row.)
 function adjStmt(db, walletId, currency, dAvail, dLocked = 0) {
   return db.prepare(
     `INSERT INTO wallet_balances (wallet_id, currency, available, locked) VALUES (?, ?, ?, ?)
-     ON CONFLICT(wallet_id, currency) DO UPDATE SET available = available + excluded.available, locked = locked + excluded.locked`
-  ).bind(walletId, currency, dAvail, dLocked);
+     ON CONFLICT(wallet_id, currency) DO UPDATE SET available = available + ?, locked = locked + ?`
+  ).bind(walletId, currency, Math.max(dAvail, 0), Math.max(dLocked, 0), dAvail, dLocked);
 }
 
 function ensureCurrencyStmt(db, symbol) {
