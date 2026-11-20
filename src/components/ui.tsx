@@ -214,3 +214,36 @@ export function useConfirm() {
     el: state ? <Confirm open {...state} onClose={() => setState(null)} onConfirm={() => state.onConfirm()} /> : null,
   }
 }
+
+/* ---------- Multi-step wizard chrome (v2.45) ---------- */
+export function StepBar({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <div className="mb-5">
+      <div className="flex items-start gap-1.5">
+        {steps.map((label, i) => (
+          <div key={label} className="flex-1 min-w-0">
+            <div className={`h-1.5 rounded-full ${i <= current ? 'bg-gradient-to-r from-violet-500 to-cyan-500' : 'bg-slate-200 dark:bg-slate-800'}`} />
+            <p className={`text-[10px] font-bold mt-1.5 truncate ${i === current ? 'text-violet-600 dark:text-violet-400' : i < current ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500'}`}>{i < current ? '✓ ' : ''}{label}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-400 mt-1">Step {current + 1} of {steps.length}</p>
+    </div>
+  )
+}
+export function WizardNav({ onBack, onNext, nextLabel = 'Continue', nextDisabled }: { onBack?: () => void; onNext: () => void; nextLabel?: string; nextDisabled?: boolean }) {
+  return (
+    <div className="flex gap-2 pt-1">
+      {onBack && <Btn variant="outline" className="px-5 py-3.5" onClick={onBack}>Back</Btn>}
+      <Btn className="flex-1 py-3.5" disabled={nextDisabled} onClick={onNext}>{nextLabel}</Btn>
+    </div>
+  )
+}
+export function CheckLine({ ok, warn, children }: { ok?: boolean; warn?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 text-sm">
+      <span className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-extrabold shrink-0 ${ok ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15' : warn ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/15' : 'bg-rose-100 text-rose-600 dark:bg-rose-500/15'}`}>{ok ? '✓' : warn ? '!' : '✕'}</span>
+      <span className="flex-1 leading-snug">{children}</span>
+    </div>
+  )
+}

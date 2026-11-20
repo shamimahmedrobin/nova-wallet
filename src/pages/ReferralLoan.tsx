@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Copy, HandCoins, Share2, Trophy } from 'lucide-react'
+import { CheckCircle2, Copy, HandCoins, Share2, Trophy } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, Empty, Input, Modal, ModalDesc, ModalRow, Select } from '../components/ui'
+import { Avatar, Badge, Btn, Card, CheckLine, Empty, Input, Modal, ModalDesc, ModalRow, Select, StepBar, WizardNav } from '../components/ui'
 import { emiCalc, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
 import { depositMethods, payMethodTitle, payMethodValue } from '../lib/localPayments'
 import { PageHead } from './Services'
@@ -80,6 +80,7 @@ export function LoanPage() {
   const [idType, setIdType] = useState('National ID'); const [idPhoto, setIdPhoto] = useState('')
   const [gName, setGName] = useState(''); const [gPhone, setGPhone] = useState('')
   const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
+  const [wstep, setWstep] = useState(0); const [ack, setAck] = useState(false); const [submittedApp, setSubmittedApp] = useState(false)
   if (!user) return null
   const s = db.settings
   const effLoanLimit = user?.loanLimitOverride ?? db.levels.find(l => l.level === user?.level)?.loanLimit ?? s.loanLimit
@@ -89,18 +90,31 @@ export function LoanPage() {
   const myLoans = db.loans.filter(l => l.userId === user.id)
   const active = myLoans.find(l => l.status === 'active')
   const outstanding = active ? active.totalPayable - active.paid : 0
+  const validateDocs = (): boolean => {
+    if (!appName.trim()) { toast({ kind: 'error', title: 'Enter your full name' }); return false }
+    if (phoneNum.replace(/\D/g, '').length < 6) { toast({ kind: 'error', title: 'Enter your phone number' }); return false }
+    if (!whatsapp.trim()) { toast({ kind: 'error', title: 'Enter your WhatsApp number' }); return false }
+    if (!nid.trim()) { toast({ kind: 'error', title: 'Enter your ' + idType + ' number' }); return false }
+    if (!idPhoto) { toast({ kind: 'error', title: 'Upload a photo of your ' + idType }); return false }
+    if (!photo) { toast({ kind: 'error', title: 'Upload your photo' }); return false }
+    if (!gName.trim() || !gPhone.trim()) { toast({ kind: 'error', title: 'Enter guarantor name and mobile number' }); return false }
+    return true
+  }
   const submit = () => {
-    if (!appName.trim()) return toast({ kind: 'error', title: 'Enter your full name' })
-    if (phoneNum.replace(/\D/g, '').length < 6) return toast({ kind: 'error', title: 'Enter your phone number' })
-    if (!whatsapp.trim()) return toast({ kind: 'error', title: 'Enter your WhatsApp number' })
-    if (!nid.trim()) return toast({ kind: 'error', title: 'Enter your ' + idType + ' number' })
-    if (!idPhoto) return toast({ kind: 'error', title: 'Upload a photo of your ' + idType })
-    if (!photo) return toast({ kind: 'error', title: 'Upload your photo' })
-    if (!gName.trim() || !gPhone.trim()) return toast({ kind: 'error', title: 'Enter guarantor name and mobile number' })
+    if (!validateDocs()) return
     if (amtBDT < s.minLoan || amtBDT > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtMoney(s.minLoan)} and ${fmtMoney(s.maxLoan)}` })
     if (amtBDT > effLoanLimit) return toast({ kind: 'error', title: user.loanLimitOverride ? `Your personal loan limit is ${fmtMoney(effLoanLimit)}.` : `Your Level ${user.level} loan limit is ${fmtMoney(effLoanLimit)} — upgrade your level for a higher limit.` })
-    applyLoan(amtBDT, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim(), idType, idPhoto }); toast({ kind: 'success', title: 'Application submitted', body: 'An admin will review your information. Loans are never auto-approved.' })
+    applyLoan(amtBDT, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim(), idType, idPhoto })
+    setSubmittedApp(true); toast({ kind: 'success', title: 'Application submitted for approval', body: 'An admin will review your information. Loans are never auto-approved.' })
   }
+  // --- wizard derived state ---
+  const eligAmountOk = amtBDT >= s.minLoan && amtBDT <= s.maxLoan
+  const eligLimitOk = amtBDT > 0 && amtBDT <= effLoanLimit
+  const nameMatch = appName.trim().toLowerCase() === user.name.toLowerCase()
+  const nidDigits = nid.replace(/\D/g, '')
+  const nidFormatOk = idType === 'National ID' ? [10, 13, 17].includes(nidDigits.length) : nid.trim().length >= 6
+  const phoneOk = (code + phoneNum).replace(/\D/g, '').length >= 11
+  const gPhoneOk = gPhone.replace(/\D/g, '').length >= 10
   return (
     <div>
       <PageHead title={t('loan_title')} sub={t('loan_sub')} />
@@ -173,56 +187,135 @@ export function LoanPage() {
           </div>
         </Card>
       )}
-      <Card className="p-5 space-y-4">
-        <h3 className="font-extrabold">Apply for a loan</h3>
-        <Input label={`Amount in ${currency} (min ${fmtMoney(s.minLoan)} – max ${fmtMoney(s.maxLoan)})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-        {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} at today's rate.</p>}
-        <Select label="Duration" value={months} onChange={(e: any) => setMonths(e.target.value)}>
-          {[3, 6, 12, 18, 24].map(m => <option key={m} value={m}>{m} months</option>)}
-        </Select>
-        <div className="rounded-2xl border-2 border-slate-200/70 dark:border-slate-700/60 p-4 space-y-4">
-          <p className="font-extrabold text-sm">Applicant &amp; guarantor information <span className="text-slate-400 font-semibold">(required at any account level)</span></p>
-          <Input label="Full name" value={appName} onChange={e => setAppName(e.target.value)} />
-          <div className="flex gap-2">
-            <div className="w-[118px] shrink-0">
-              <Select label="Code" value={code} onChange={(e: any) => setCode(e.target.value)}>
-                {['+880', '+91', '+92', '+1', '+44', '+971', '+966', '+60'].map(c => <option key={c} value={c}>{c}</option>)}
-              </Select>
+      <Card className="p-5">
+        <h3 className="font-extrabold mb-4">Apply for a loan</h3>
+        {submittedApp ? (
+          <div className="text-center py-2 anim-fade-up">
+            <CheckCircle2 size={56} className="mx-auto text-emerald-500" />
+            <p className="font-extrabold text-lg mt-3">Application submitted for approval</p>
+            <p className="text-sm text-slate-500 mt-1">Your application is with our team. Loans are never auto-approved — you will be notified when an admin reviews it.</p>
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm text-left mt-4">
+              <div className="flex justify-between"><span className="text-slate-500">Amount</span><span className="font-bold">{fmtMoney(amtBDT)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Duration</span><span className="font-bold">{mo} months</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Monthly EMI</span><span className="font-bold">{fmtMoney(Math.round(calc.emi))}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Status</span><span className="font-bold text-amber-500">Pending review</span></div>
             </div>
-            <div className="flex-1 min-w-0"><Input label="Phone number" value={phoneNum} onChange={e => setPhoneNum(e.target.value)} /></div>
+            <Btn variant="outline" className="w-full mt-4" onClick={() => { setSubmittedApp(false); setWstep(0); setAck(false) }}>Start a new application</Btn>
           </div>
-          <Input label="WhatsApp number" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
-          <Select label="ID type" value={idType} onChange={(e: any) => setIdType(e.target.value)}>
-            {['National ID', 'Passport', 'Driving Licence'].map(x => <option key={x} value={x}>{x}</option>)}
-          </Select>
-          <Input label={`${idType} number`} value={nid} onChange={e => setNid(e.target.value)} />
-          <div>
-            <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">{idType} photo</span>
-            <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">
-              {idPhoto ? <img src={idPhoto} alt="ID document" className="w-12 h-12 rounded-xl object-cover" /> : <span className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl">🪪</span>}
-              <span className="text-sm font-bold text-violet-600">{idPhoto ? 'ID photo added — tap to change' : 'Tap to upload your ' + idType + ' photo'}</span>
-              <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setIdPhoto(await fileToScaledDataUrl(f)) }} />
-            </label>
-          </div>
-          <div>
-            <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Your photo</span>
-            <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">
-              {photo ? <img src={photo} alt="Applicant" className="w-12 h-12 rounded-xl object-cover" /> : <span className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl">📷</span>}
-              <span className="text-sm font-bold text-violet-600">{photo ? 'Photo added — tap to change' : 'Tap to upload your photo'}</span>
-              <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToScaledDataUrl(f)) }} />
-            </label>
-          </div>
-          <Input label="Guarantor — full name" value={gName} onChange={e => setGName(e.target.value)} />
-          <Input label="Guarantor — mobile number" value={gPhone} onChange={e => setGPhone(e.target.value)} />
-        </div>
-        <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500">Interest rate</span><span className="font-bold">{s.loanRatePct}% / year</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Service charge</span><span className="font-bold">৳0</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Total interest</span><span className="font-bold">{fmtMoney(Math.round(calc.interest))}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Monthly EMI</span><span className="font-bold text-violet-600">{fmtMoney(Math.round(calc.emi))}</span></div>
-          <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Total payable</span><span className="font-extrabold">{fmtMoney(Math.round(calc.total))}</span></div>
-        </div>
-        <Btn className="w-full py-3.5" onClick={submit}>Submit application for admin review</Btn>
+        ) : (
+          <>
+            <StepBar steps={['Eligibility', 'Documents', 'Verify', 'Acknowledge']} current={wstep} />
+            {wstep === 0 && (
+              <div className="space-y-4 anim-fade-up">
+                <Input label={`Amount in ${currency} (min ${fmtMoney(s.minLoan)} – max ${fmtMoney(s.maxLoan)})`} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+                {currency !== 'BDT' && amt > 0 && <p className="text-xs text-slate-400 -mt-2">≈ {fmtUSDT(amtBDT / db.settings.bdtPerUsd)} at today's rate.</p>}
+                <Select label="Duration" value={months} onChange={(e: any) => setMonths(e.target.value)}>
+                  {[3, 6, 12, 18, 24].map(m => <option key={m} value={m}>{m} months</option>)}
+                </Select>
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-2.5">
+                  <p className="font-extrabold text-sm">Eligibility check</p>
+                  <CheckLine ok={eligAmountOk}>Amount within the allowed range ({fmtMoney(s.minLoan)} – {fmtMoney(s.maxLoan)}){amtBDT > 0 && !eligAmountOk ? ' — adjust the amount' : ''}</CheckLine>
+                  <CheckLine ok={eligLimitOk}>Within your {user.loanLimitOverride ? 'personal' : 'Level ' + user.level} loan limit of {fmtMoney(effLoanLimit)}{amtBDT > effLoanLimit ? ' — lower the amount or upgrade your level' : ''}</CheckLine>
+                  <CheckLine ok={user.kyc !== 'unverified'} warn={user.kyc === 'pending'}>KYC: {user.kyc === 'verified' ? 'verified' : user.kyc === 'pending' ? 'submitted — under review' : 'not submitted — submit it from Profile for a faster decision'}</CheckLine>
+                  <CheckLine ok={!active} warn={!!active}>{active ? 'You already have an active loan (' + active.id + ') — a new application will still be reviewed by an admin' : 'No active loan right now'}</CheckLine>
+                </div>
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">Interest rate</span><span className="font-bold">{s.loanRatePct}% / year</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Service charge</span><span className="font-bold">৳0</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Total interest</span><span className="font-bold">{fmtMoney(Math.round(calc.interest))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Monthly EMI</span><span className="font-bold text-violet-600">{fmtMoney(Math.round(calc.emi))}</span></div>
+                  <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Total payable</span><span className="font-extrabold">{fmtMoney(Math.round(calc.total))}</span></div>
+                </div>
+                <WizardNav nextLabel="Continue to documents" nextDisabled={!eligAmountOk || !eligLimitOk} onNext={() => setWstep(1)} />
+              </div>
+            )}
+            {wstep === 1 && (
+              <div className="space-y-4 anim-fade-up">
+                <div className="rounded-2xl border-2 border-slate-200/70 dark:border-slate-700/60 p-4 space-y-4">
+                  <p className="font-extrabold text-sm">Applicant &amp; guarantor information <span className="text-slate-400 font-semibold">(required at any account level)</span></p>
+                  <Input label="Full name" value={appName} onChange={e => setAppName(e.target.value)} />
+                  <div className="flex gap-2">
+                    <div className="w-[118px] shrink-0">
+                      <Select label="Code" value={code} onChange={(e: any) => setCode(e.target.value)}>
+                        {['+880', '+91', '+92', '+1', '+44', '+971', '+966', '+60'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </Select>
+                    </div>
+                    <div className="flex-1 min-w-0"><Input label="Phone number" value={phoneNum} onChange={e => setPhoneNum(e.target.value)} /></div>
+                  </div>
+                  <Input label="WhatsApp number" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
+                  <Select label="ID type" value={idType} onChange={(e: any) => setIdType(e.target.value)}>
+                    {['National ID', 'Passport', 'Driving Licence'].map(x => <option key={x} value={x}>{x}</option>)}
+                  </Select>
+                  <Input label={`${idType} number`} value={nid} onChange={e => setNid(e.target.value)} />
+                  <div>
+                    <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">{idType} photo</span>
+                    <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">
+                      {idPhoto ? <img src={idPhoto} alt="ID document" className="w-12 h-12 rounded-xl object-cover" /> : <span className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl">🪪</span>}
+                      <span className="text-sm font-bold text-violet-600">{idPhoto ? 'ID photo added — tap to change' : 'Tap to upload your ' + idType + ' photo'}</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setIdPhoto(await fileToScaledDataUrl(f)) }} />
+                    </label>
+                  </div>
+                  <div>
+                    <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Your photo</span>
+                    <label className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 px-4 py-3 cursor-pointer">
+                      {photo ? <img src={photo} alt="Applicant" className="w-12 h-12 rounded-xl object-cover" /> : <span className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl">📷</span>}
+                      <span className="text-sm font-bold text-violet-600">{photo ? 'Photo added — tap to change' : 'Tap to upload your photo'}</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToScaledDataUrl(f)) }} />
+                    </label>
+                  </div>
+                  <Input label="Guarantor — full name" value={gName} onChange={e => setGName(e.target.value)} />
+                  <Input label="Guarantor — mobile number" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+                </div>
+                <WizardNav onBack={() => setWstep(0)} nextLabel="Continue to verification" onNext={() => { if (validateDocs()) setWstep(2) }} />
+              </div>
+            )}
+            {wstep === 2 && (
+              <div className="space-y-4 anim-fade-up">
+                <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20 p-4">
+                  <p className="font-extrabold text-sm">🤖 AI document check</p>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">We read the details from your documents and flag anything that looks off. Correct any field right here — the checks update as you type. In this demo the checks run on your device; with the live backend, an AI reads the document photo itself.</p>
+                </div>
+                {idPhoto && <img src={idPhoto} alt="ID document" className="w-full max-h-44 object-cover rounded-2xl border border-slate-200 dark:border-slate-700" />}
+                <div className="space-y-2.5">
+                  <CheckLine ok={nameMatch} warn={!nameMatch}>Name on document: <b>{appName || '—'}</b>{nameMatch ? ' — matches your account name' : ' — differs from your account name (' + user.name + '); an admin will double-check it'}</CheckLine>
+                  <CheckLine ok={nidFormatOk}>{idType} number format: {nidFormatOk ? 'looks valid (' + nidDigits.length + ' digits)' : idType === 'National ID' ? 'NID numbers are 10, 13 or 17 digits — yours has ' + nidDigits.length : 'looks too short — check the number'}</CheckLine>
+                  <CheckLine ok={phoneOk}>Phone number: {phoneOk ? 'valid format' : 'looks incomplete'}</CheckLine>
+                  <CheckLine ok={!!whatsapp.trim()}>WhatsApp number provided</CheckLine>
+                  <CheckLine ok={gPhoneOk}>Guarantor mobile: {gPhoneOk ? 'valid format' : 'looks incomplete'}</CheckLine>
+                  <CheckLine ok={!!idPhoto && !!photo}>Document photo and your photo attached</CheckLine>
+                </div>
+                <div className="rounded-2xl border-2 border-slate-200/70 dark:border-slate-700/60 p-4 space-y-4">
+                  <p className="font-extrabold text-sm">Edit the details the AI read</p>
+                  <Input label="Full name" value={appName} onChange={e => setAppName(e.target.value)} />
+                  <Input label={`${idType} number`} value={nid} onChange={e => setNid(e.target.value)} />
+                  <Input label="WhatsApp number" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
+                  <Input label="Guarantor — full name" value={gName} onChange={e => setGName(e.target.value)} />
+                  <Input label="Guarantor — mobile number" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+                </div>
+                <WizardNav onBack={() => setWstep(1)} nextLabel="Continue to acknowledgement" onNext={() => { if (validateDocs()) setWstep(3) }} />
+              </div>
+            )}
+            {wstep === 3 && (
+              <div className="space-y-4 anim-fade-up">
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">Loan amount</span><span className="font-extrabold">{fmtMoney(amtBDT)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Duration</span><span className="font-bold">{mo} months</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Monthly EMI</span><span className="font-bold text-violet-600">{fmtMoney(Math.round(calc.emi))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Total payable</span><span className="font-bold">{fmtMoney(Math.round(calc.total))}</span></div>
+                  <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Applicant</span><span className="font-bold">{appName}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">{idType}</span><span className="font-bold">{nid}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Phone</span><span className="font-bold">{code} {phoneNum}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Guarantor</span><span className="font-bold">{gName} · {gPhone}</span></div>
+                </div>
+                <label className="flex items-start gap-3 rounded-2xl border-2 border-slate-200/70 dark:border-slate-700/60 p-4 cursor-pointer">
+                  <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} className="mt-0.5 w-4.5 h-4.5 accent-violet-600" />
+                  <span className="text-sm leading-relaxed">I confirm that all information and documents in this application are correct, and I agree to repay the loan in monthly instalments of <b>{fmtMoney(Math.round(calc.emi))}</b> as shown above.</span>
+                </label>
+                <WizardNav onBack={() => setWstep(2)} nextLabel="Submit for Approval" nextDisabled={!ack} onNext={submit} />
+              </div>
+            )}
+          </>
+        )}
       </Card>
       <h3 className="font-extrabold mt-6 mb-3">My applications & repayment history</h3>
       {myLoans.length === 0 ? <Card><Empty title="No loans yet" /></Card> : (
