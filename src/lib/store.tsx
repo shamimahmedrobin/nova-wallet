@@ -97,6 +97,7 @@ interface Ctx {
   swap: (fromSym: string, toSym: string, amountFrom: number, prices: Record<string, number>) => string | null
   decideWithdraw: (id: string, ok: boolean) => void
   sendMoney: (p: { toUserId: string; amount: number; note?: string; pin: string }) => string | Tx
+  verifyTxPin: (pin: string) => string | null
   buyCrypto: (symbol: string, bdtAmount: number, priceUsd: number) => string | null
   sellCrypto: (symbol: string, coinAmount: number, priceUsd: number) => string | null
   applyLoan: (amount: number, months: number, info: LoanInfo) => void
@@ -688,6 +689,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       notify(d, wd.userId, ok ? 'Cash out completed' : 'Cash out rejected', ok ? '৳' + (wd.amount - wd.fee).toLocaleString() + ' sent to ' + wd.destination + '.' : 'Your cash out was rejected and the amount returned to your wallet.', 'withdraw', tx ? '/transactions?tx=' + tx.id : undefined)
     })
   }
+  const verifyTxPin: Ctx['verifyTxPin'] = (pin) => {
+    if (!user) return 'Not signed in'
+    const lk = lockError(user.id); if (lk) return lk
+    if (user.pinHash !== hashSecret(pin)) return recordFail(user.id, 'Incorrect transaction PIN.')
+    recordSuccess(user.id)
+    return null
+  }
   const sendMoney: Ctx['sendMoney'] = (p) => {
     if (!user) return 'Not signed in'
     const lk = lockError(user.id); if (lk) return lk
@@ -1146,7 +1154,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, walletOf,
-    addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, buyCrypto, sellCrypto,
+    addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, verifyTxPin, buyCrypto, sellCrypto,
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
