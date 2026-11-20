@@ -235,11 +235,6 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
               <Input label={t('password')} type="password" placeholder="••••••••" value={loginPw} onChange={e => setLoginPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && doLogin()} />
               <Btn className="w-full py-3.5" onClick={() => doLogin()}>{t('login')}</Btn>
               <button onClick={() => { setErr(''); setStep('forgot') }} className="w-full text-center text-sm font-bold text-violet-600">Forgot password?</button>
-              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-3.5 text-xs space-y-2">
-                <p className="font-bold text-slate-600 dark:text-slate-300">{t('demo_accounts')}</p>
-                <button className="block w-full text-left font-mono text-violet-600 dark:text-violet-300" onClick={() => { setLoginId('shamim@novawallet.app'); setLoginPw('123456') }}>👤 shamim@novawallet.app / 123456 · PIN 1234</button>
-                <button className="block w-full text-left font-mono text-amber-600 dark:text-amber-300" onClick={() => { setLoginId('admin@novawallet.app'); setLoginPw('admin123') }}>🛡️ admin@novawallet.app / admin123 · PIN 9999</button>
-              </div>
             </div>
           ) : (
             <div className="space-y-4">

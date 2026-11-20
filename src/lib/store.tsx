@@ -8,9 +8,9 @@ import { fmtBDT } from './utils'
 import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, updatePassword as fbUpdatePassword } from 'firebase/auth'
 import { firebaseAuth } from './firebase'
-import { apiBootstrap } from './api'
+import { apiBootstrap, apiMe } from './api'
 
-const KEY = 'novawallet.db.v2'
+const KEY = 'novawallet.db.v3'
 const SESSION = 'novawallet.session'
 const LASTSEEN = 'nova.lastseen'
 const TABKEY = 'nova.tabopen'
@@ -384,11 +384,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (u.status === 'suspended') return 'This account is suspended. Contact support.'
     const localMatch = u.passwordHash === hashSecret(password)
     let fbOk = false
+    let idToken: string | null = null
     try {
       const cred = await signInWithEmailAndPassword(firebaseAuth, u.email, password)
       fbOk = true
-      const token = await cred.user.getIdToken()
-      void apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash })
+      idToken = await cred.user.getIdToken()
     } catch (e: any) {
       const code = e?.code || ''
       if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
@@ -397,8 +397,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         try {
           const cred = await createUserWithEmailAndPassword(firebaseAuth, u.email, password)
           fbOk = true
-          const token = await cred.user.getIdToken()
-          void apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash })
+          idToken = await cred.user.getIdToken()
         } catch (e2: any) {
           const code2 = e2?.code || ''
           if (code2 === 'auth/network-request-failed') return 'Could not reach the authentication server. Check your connection and try again.'
@@ -424,7 +423,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     recordSuccess(u.id)
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO() })
     localStorage.setItem(SESSION, u.id); setUserId(u.id); setLocked(false)
+    if (idToken) void syncServerProfile(idToken, u)
     return null
+  }
+  // After a Firebase sign-in: make sure the D1 rows exist (bootstrap), then
+  // pull the server-side role down — the server is the source of truth for
+  // admin rights, so promoting a user in D1 takes effect at their next login.
+  const syncServerProfile = async (token: string, u: User) => {
+    await apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash })
+    const me = await apiMe(token)
+    const role = me?.user?.role
+    if (role === 'admin' || role === 'user') {
+      mutate(d => { const du = d.users.find(x => x.id === u.id); if (du && du.role !== role) du.role = role })
+    }
   }
   // ---- Device quick login: PIN + fingerprint (WebAuthn), stored ONLY on this device ----
   const pinKey = (id: string) => 'nova.loginpin.' + id
