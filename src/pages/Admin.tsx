@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowLeftRight, Check, Copy, CreditCard, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, Bell, Check, CheckCheck, Copy, CreditCard, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, TxDirIcon, statusTone } from '../components/ui'
@@ -25,17 +25,19 @@ const TABS = [
 ] as const
 
 export default function Admin() {
-  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked } = useApp()
+  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead } = useApp()
   const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
+  const byDateDesc = <T extends { createdAt: string }>(arr: T[]): T[] => [...arr].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   const { coins } = useMarket(30_000)
   const priceOfA = (sym: string) => sym === 'USDT' ? 1 : coins.find(c => c.symbol === sym)?.priceUsd ?? 0
   const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
+  const [notifOpen, setNotifOpen] = useState(false)
   const [userQ, setUserQ] = useState('')
   const [txQ, setTxQ] = useState(''); const [selTx, setSelTx] = useState<Tx | null>(null)
   const copyTxId = async (id: string) => { try { await navigator.clipboard.writeText(id); toast({ kind: 'success', title: 'Transaction ID copied', body: id }) } catch { toast({ kind: 'error', title: 'Copy failed', body: id }) } }
   const txq = txQ.trim().toLowerCase()
-  const filteredTxs = !txq ? db.txs : db.txs.filter(tx => tx.id.toLowerCase().includes(txq) || tx.title.toLowerCase().includes(txq) || (tx.counterparty ?? '').toLowerCase().includes(txq) || (db.users.find(u => u.id === tx.userId)?.name.toLowerCase().includes(txq) ?? false))
+  const filteredTxs = !txq ? byDateDesc(db.txs) : byDateDesc(db.txs).filter(tx => tx.id.toLowerCase().includes(txq) || tx.title.toLowerCase().includes(txq) || (tx.counterparty ?? '').toLowerCase().includes(txq) || (db.users.find(u => u.id === tx.userId)?.name.toLowerCase().includes(txq) ?? false))
   const [selUserId, setSelUserId] = useState<string | null>(null)
   const [mAdjAmt, setMAdjAmt] = useState(''); const [mLoanLimit, setMLoanLimit] = useState('')
   const [mAdjDir, setMAdjDir] = useState<'add' | 'deduct'>('add'); const [mAdjTitle, setMAdjTitle] = useState('Charge'); const [mAdjNote, setMAdjNote] = useState('')
@@ -72,7 +74,7 @@ export default function Admin() {
       withdrawals: db.withdrawals.filter(d => d.status === 'completed').reduce((s, d) => s + d.amount, 0),
       transfers: db.txs.filter(t => t.category === 'send' && t.status === 'completed').reduce((s, t) => s + t.amount, 0),
       fees: db.txs.reduce((s, t) => s + (t.status === 'completed' ? t.fee : 0), 0),
-      refPaid: db.referralEarnings.reduce((s, r) => s + r.amount, 0),
+      refPaid: db.referralEarnings.reduce((sum, r) => sum + Math.round(r.amount / db.settings.bdtPerUsd * 100) / 100 * db.settings.bdtPerUsd, 0),
       pendingDeposits: db.deposits.filter(d => d.status === 'pending'),
       pendingWithdrawals: db.withdrawals.filter(d => d.status === 'pending'),
       pendingLoans: db.loans.filter(d => d.status === 'pending'),
@@ -87,10 +89,21 @@ export default function Admin() {
     support: db.tickets.filter(t => t.status === 'pending').length,
   }
   const chartData = useMemo(() => {
-    const days: Record<string, number> = {}
-    db.txs.forEach(t => { const k = new Date(t.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); if (t.status === 'completed') days[k] = (days[k] ?? 0) + t.amount })
-    return Object.entries(days).slice(-7).map(([name, volume]) => ({ name, volume }))
+    const days: Record<string, { ts: number; volume: number }> = {}
+    db.txs.forEach(t => { if (t.status !== 'completed') return; const d = new Date(t.createdAt); const k = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); const dayTs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); days[k] = days[k] ?? { ts: dayTs, volume: 0 }; days[k].volume += t.amount })
+    return Object.entries(days).sort((a, b) => a[1].ts - b[1].ts).slice(-7).map(([name, v]) => ({ name, volume: v.volume }))
   }, [db.txs])
+  const myNotifs = byDateDesc(db.notifications.filter(n => n.userId === user?.id))
+  const myUnread = myNotifs.filter(n => !n.read).length
+  const openNotif = (n: typeof myNotifs[number]) => {
+    markRead(n.id); setNotifOpen(false)
+    const link = n.link ?? ''
+    const tabM = link.match(/tab=([a-z]+)/); const userM = link.match(/user=([A-Za-z0-9-]+)/)
+    const kindTab: Record<string, string> = { support: 'support', deposit: 'finance', withdraw: 'finance', loan: 'loans', kyc: 'users', upgrade: 'levels' }
+    const target = tabM?.[1] ?? kindTab[n.kind] ?? 'overview'
+    if (TABS.some(x => x.id === target)) setTab(target)
+    if (userM) { const du = db.users.find(x => x.id === userM[1]); if (du) openUser(du) }
+  }
   if (!user) return null
   const nameOf = (id: string) => db.users.find(u => u.id === id)?.name ?? id
 
@@ -102,6 +115,7 @@ export default function Admin() {
           <h1 className="font-extrabold text-lg flex items-center gap-2"><ShieldCheck className="text-amber-500" /> Admin Panel</h1>
           <Badge tone="amber">Secure · RBAC</Badge>
           <div className="ml-auto flex gap-2">
+            <button onClick={() => setNotifOpen(true)} aria-label="Notifications" className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><Bell size={18} />{myUnread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{myUnread}</span>}</button>
             <button onClick={toggleTheme} className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             <Link to="/home" className="hidden sm:inline-flex items-center rounded-2xl px-4 py-2.5 text-sm font-semibold bg-violet-600 text-white">User app</Link>
           </div>
@@ -111,11 +125,25 @@ export default function Admin() {
         </div>
       </header>
 
+      <Modal open={notifOpen} onClose={() => setNotifOpen(false)} title="Admin notifications">
+        <div className="space-y-2">
+          {myUnread > 0 && <button onClick={markAllRead} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-xs font-bold text-violet-600 dark:text-violet-400 active:scale-95 transition"><CheckCheck size={14} /> Mark all read ({myUnread})</button>}
+          {myNotifs.length === 0 ? <Empty title="No notifications" body="Deposit, KYC, upgrade, loan and support alerts will appear here." /> : myNotifs.map(n => (
+            <button key={n.id} onClick={() => openNotif(n)} className="w-full text-left">
+              <div className={`rounded-2xl border border-slate-200/70 dark:border-slate-800 p-3.5 flex gap-3 items-start ${!n.read ? 'border-l-4 border-l-violet-500 bg-violet-50/50 dark:bg-violet-500/5' : 'opacity-75'}`}>
+                <div className="p-2 rounded-xl bg-violet-100 dark:bg-violet-500/15 text-violet-600 shrink-0"><Bell size={15} /></div>
+                <div className="flex-1 min-w-0"><p className="font-bold text-sm">{n.title} {!n.read && <span className="ml-1 inline-block w-2 h-2 rounded-full bg-rose-500" />}</p><p className="text-sm text-slate-500">{n.body}</p><p className="text-[11px] text-slate-400 mt-1 capitalize">{n.kind} · {fmtDateTime(n.createdAt)}</p></div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </Modal>
+
       <main className="max-w-5xl mx-auto px-4 py-6 pb-16">
         {tab === 'overview' && (
           <div className="space-y-4 anim-fade-up">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[['Registered users', stats.users], ['Active users', stats.active], ['Total wallet balance', usdt(stats.totalBalance)], ['Revenue (fees)', usdt(Math.round(stats.fees))],
+              {[['Registered customers', stats.users], ['Active users', stats.active], ['Total wallet balance', usdt(stats.totalBalance)], ['Revenue (fees)', usdt(Math.round(stats.fees))],
                 ['Total deposits', usdt(stats.deposits)], ['Total withdrawals', usdt(stats.withdrawals)], ['Total transfers', usdt(stats.transfers)], ['Referral commissions paid', usdt(stats.refPaid)],
                 ['Pending deposits', stats.pendingDeposits.length], ['Pending withdrawals', stats.pendingWithdrawals.length], ['Pending loans', stats.pendingLoans.length], ['Pending KYC', stats.pendingKyc.length],
               ].map(([k, v]) => (
@@ -128,7 +156,7 @@ export default function Admin() {
             </Card>
             <Card className="p-5">
               <h3 className="font-extrabold mb-2">Recent transactions</h3>
-              {db.txs.slice(0, 8).map(t => (
+              {byDateDesc(db.txs).slice(0, 8).map(t => (
                 <div key={t.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800 last:border-0 text-sm">
                   <div className="flex-1 min-w-0"><p className="font-semibold truncate">{t.title}</p><p className="text-xs text-slate-400">{nameOf(t.userId)} · {t.id} · {fmtDateTime(t.createdAt)}</p></div>
                   <span className="font-bold">{usdt(t.amount)}</span><Badge tone={statusTone(t.status)}>{t.status}</Badge>
@@ -370,7 +398,6 @@ export default function Admin() {
             {db.audit.map(a => (
               <Card key={a.id} className="p-4 text-sm"><p className="font-bold">{a.action} <span className="text-slate-400 font-normal">by {a.actor}</span></p><p className="text-slate-500">{a.detail}</p><p className="text-[11px] text-slate-400">{fmtDateTime(a.createdAt)}</p></Card>
             ))}
-            <Card className="p-5"><h3 className="font-extrabold mb-2">Support chat</h3><p className="text-sm text-slate-500 mb-3">{db.tickets.filter(t => t.status === 'pending').length} pending · {db.tickets.filter(t => t.status === 'processing').length} processing · {db.tickets.filter(t => t.status === 'resolved').length} resolved</p><Btn variant="outline" className="!py-2 !text-xs" onClick={() => setTab('support')}>Open Support Chat</Btn></Card>
           </div>
         )}
 
@@ -481,7 +508,7 @@ export default function Admin() {
           const cryptoValueBdt = holdings.reduce((sum, [sym, a]) => sum + a * priceOfA(sym) * db.settings.bdtPerUsd, 0)
           const stakes = db.stakes.filter(st => st.userId === selUser.id && st.status === 'active')
           const pendWd = db.withdrawals.filter(x => x.userId === selUser.id && x.status === 'pending')
-          const stmt = db.txs.filter(t => t.userId === selUser.id).slice(0, 10)
+          const stmt = byDateDesc(db.txs.filter(t => t.userId === selUser.id)).slice(0, 10)
           const ADJ_TITLES = ['Charge', 'Complaint', 'Hold', 'Refund', 'Bonus', 'Compensation', 'Correction']
           const tradePrice = priceOfA(mSym)
           const sellHolding = sw?.holdings[mSym] ?? 0
@@ -494,7 +521,8 @@ export default function Admin() {
                 <div className="flex justify-between gap-3"><span className="text-slate-500">Phone</span><span className="font-bold">{selUser.phone}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-slate-500">Joined</span><span className="font-bold">{fmtDateTime(selUser.createdAt)}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-slate-500">KYC / Status</span><span className="font-bold capitalize">{selUser.kyc} · {selUser.status}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Available (cash)</span><span className="font-bold">{usdt(sw?.available ?? 0)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Cash balance</span><span className="font-bold">{usdt(sw?.available ?? 0)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Available incl. USDT (customer's Home figure)</span><span className="font-bold">{usdt((sw?.available ?? 0) + (sw?.holdings.USDT ?? 0) * db.settings.bdtPerUsd)}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-slate-500">Locked</span><span className="font-bold">{usdt(sw?.locked ?? 0)}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-slate-500">Crypto value (live)</span><span className="font-bold">{usdt(cryptoValueBdt)}</span></div>
                 {holdings.length > 0 && (
@@ -588,6 +616,11 @@ export default function Admin() {
                       <b className="text-sm">{usdt(x.amount)}</b>
                     </div>
                   ))}
+                  {(() => { const rem = (sw?.locked ?? 0) - stakes.reduce((a, st) => a + st.amount, 0) - pendWd.reduce((a, x) => a + x.amount, 0); return rem > 0 ? (
+                    <div className="flex items-center gap-2.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 px-3.5 py-2.5">
+                      <span className="flex-1 min-w-0 text-sm"><b>🔒 Other holds</b> <span className="text-slate-400 text-xs block">No stake or cash-out record behind this part (platform / legacy hold) — Clear ALL below releases it.</span></span>
+                      <b className="text-sm">{usdt(rem)}</b>
+                    </div>) : null })()}
                   {stakes.length === 0 && pendWd.length === 0 && (sw?.locked ?? 0) === 0 && <p className="text-sm text-slate-400">Nothing locked for this customer.</p>}
                   {stakes.length === 0 && pendWd.length === 0 && (sw?.locked ?? 0) > 0 && <p className="text-sm text-slate-400">This locked amount has no stake or cash-out record (legacy/other hold) — Clear all releases it.</p>}
                 </div>

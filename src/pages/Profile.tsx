@@ -369,7 +369,7 @@ export default function Profile() {
       <Modal open={modal === 'kyc'} onClose={() => setModal(null)} title={t('p_kyc')}>
         {user.kyc === 'verified' ? (
           <>
-            <ModalDesc>{t('kyc_pending_note')}</ModalDesc>
+            <ModalDesc>{t('kyc_verified_note')}</ModalDesc>
             <ModalRow><span className="text-sm font-semibold">{t('status')}</span><span className="float-right"><Badge tone="green">{t('verified')}</Badge></span>
               {user.kycDocNumber && <p className="text-xs text-slate-500 mt-1.5">{user.kycDocType === 'passport' ? t('kyc_passport') : user.kycDocType === 'driving' ? t('kyc_driving') : t('kyc_nid')} · {user.kycDocNumber}</p>}</ModalRow>
             <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>

@@ -559,7 +559,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } else audit(d, source, 'deposit.reject', `Rejected ${dep.id}`)
-      notify(d, dep.userId, ok ? 'Deposit approved' : 'Deposit rejected', ok ? '৳' + dep.amount.toLocaleString() + ' has been credited to your wallet.' : 'Your deposit request was rejected. Check the transaction ID and try again.', 'deposit')
+      notify(d, dep.userId, ok ? 'Deposit approved' : 'Deposit rejected', ok ? '৳' + dep.amount.toLocaleString() + ' has been credited to your wallet.' : 'Your deposit request was rejected. Check the transaction ID and try again.', 'deposit', tx ? '/transactions?tx=' + tx.id : undefined)
   }
   const decideDeposit: Ctx['decideDeposit'] = (id, ok) => {
     mutate(d => { const dep = d.deposits.find(x => x.id === id); if (!dep || dep.status !== 'pending') return; applyDepositDecision(d, dep, ok, 'admin') })
@@ -685,7 +685,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const tx = d.txs.find(t => t.category === 'cash_out' && t.userId === wd.userId && t.status === 'pending' && t.amount === wd.amount)
       if (tx) tx.status = ok ? 'completed' : 'rejected'
       audit(d, 'admin', ok ? 'withdraw.complete' : 'withdraw.reject', `${wd.id} ৳${wd.amount}`)
-      notify(d, wd.userId, ok ? 'Cash out completed' : 'Cash out rejected', ok ? '৳' + (wd.amount - wd.fee).toLocaleString() + ' sent to ' + wd.destination + '.' : 'Your cash out was rejected and the amount returned to your wallet.', 'withdraw')
+      notify(d, wd.userId, ok ? 'Cash out completed' : 'Cash out rejected', ok ? '৳' + (wd.amount - wd.fee).toLocaleString() + ' sent to ' + wd.destination + '.' : 'Your cash out was rejected and the amount returned to your wallet.', 'withdraw', tx ? '/transactions?tx=' + tx.id : undefined)
     })
   }
   const sendMoney: Ctx['sendMoney'] = (p) => {
@@ -706,8 +706,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const to = d.users.find(x => x.id === p.toUserId)!
       sw.available -= p.amount + fee; rw.available += p.amount
       created = recordTx(d, { userId: user.id, category: 'send', title: 'Sent to ' + to.name, amount: p.amount, fee, currency: 'BDT', status: 'completed', note: p.note, counterparty: to.name })
-      recordTx(d, { userId: p.toUserId, category: 'receive', title: 'Received from ' + user.name, amount: p.amount, fee: 0, currency: 'BDT', status: 'completed', counterparty: user.name })
-      notify(d, p.toUserId, 'Money received', 'You received ৳' + p.amount.toLocaleString() + ' from ' + user.name + '.', 'receive')
+      const rxTx = recordTx(d, { userId: p.toUserId, category: 'receive', title: 'Received from ' + user.name, amount: p.amount, fee: 0, currency: 'BDT', status: 'completed', counterparty: user.name })
+      notify(d, p.toUserId, 'Money received', 'You received ৳' + p.amount.toLocaleString() + ' from ' + user.name + '.', 'receive', '/transactions?tx=' + rxTx.id)
     })
     return created!
   }
@@ -1070,7 +1070,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     audit(d, 'admin', 'news.publish', n.title)
   })
   const deleteNews = (id: string) => mutate(d => { d.news = d.news.filter(x => x.id !== id) })
-  const updateSettings: Ctx['updateSettings'] = (s) => mutate(d => { Object.assign(d.settings, s); audit(d, 'admin', 'settings.update', JSON.stringify(s)) })
+  const updateSettings: Ctx['updateSettings'] = (s) => mutate(d => {
+    const clean = { ...s }
+    ;(['minLoan', 'maxLoan', 'loanLimit'] as const).forEach(k => { if (typeof clean[k] === 'number') clean[k] = Math.round(clean[k]) })
+    Object.assign(d.settings, clean); audit(d, 'admin', 'settings.update', JSON.stringify(clean))
+  })
   const toggleBanner = (id: string) => mutate(d => { const b = d.banners.find(x => x.id === id); if (b) b.active = !b.active })
   const addTicket: Ctx['addTicket'] = (subject, message) => {
     if (!user) return
@@ -1124,7 +1128,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     notify(d, r.userId, ok ? '🎉 Level upgraded' : 'Upgrade request rejected', ok ? 'Your account is now Level ' + r.toLevel + '. Higher limits are active.' : 'Your upgrade request was not approved. Check the level requirements and try again.', 'security')
   })
   const updateLevelDef: Ctx['updateLevelDef'] = (level, patch) => mutate(d => {
-    const def = d.levels.find(x => x.level === level); if (def) { Object.assign(def, patch); audit(d, 'admin', 'level.update', 'Level ' + level) }
+    const def = d.levels.find(x => x.level === level); if (!def) return
+    const clean = { ...patch }
+    ;(['dailyLimit', 'monthlyLimit', 'loanLimit', 'depositRequired'] as const).forEach(k => { if (typeof clean[k] === 'number') clean[k] = Math.round(clean[k]) })
+    Object.assign(def, clean); audit(d, 'admin', 'level.update', 'Level ' + level)
   })
   const setUserLevel: Ctx['setUserLevel'] = (userId2, level) => mutate(d => {
     const u = d.users.find(x => x.id === userId2); if (u) { u.level = level; audit(d, 'admin', 'level.set', `${userId2} → Level ${level}`); notify(d, userId2, 'Account level changed', 'An admin set your account to Level ' + level + '.', 'security') }

@@ -43,7 +43,7 @@ export default function Home() {
   const cryptoBdt = useMemo(() => w ? Object.entries(w.holdings).filter(([s]) => s !== 'USDT').reduce((sum, [s, amt]) => sum + amt * priceOf(s) * db.settings.bdtPerUsd, 0) : 0, [w, coins, db.settings.bdtPerUsd])
   if (!user || !w) return null
   const total = w.available + w.locked + usdtBdt + cryptoBdt
-  const myTxs = db.txs.filter(t => t.userId === user.id).slice(0, 5)
+  const myTxs = [...db.txs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).filter(t => t.userId === user.id).slice(0, 5)
   const myRefs = db.users.filter(u => u.referredBy === user.id)
   const refEarned = db.referralEarnings.filter(r => r.userId === user.id).reduce((s, r) => s + r.amount, 0)
   const ACTIONS = ACTIONS_RAW.map(a => ({ ...a, label: t(a.labelKey) }))
@@ -175,7 +175,7 @@ export default function Home() {
               {pendWd.map(x => (
                 <div key={x.id} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">⏳ Cash Out pending <span className="block text-xs font-semibold text-slate-400">{x.method} · waiting for admin approval</span></span><span className="font-extrabold">{fmtMoney(x.amount)}</span></div>
               ))}
-              {other > 0 && <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">🔒 Other holds</span><span className="font-extrabold">{fmtMoney(other)}</span></div>}
+              {other > 0 && <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><div className="flex items-center justify-between gap-3"><span className="font-semibold text-sm">🔒 Other holds</span><span className="font-extrabold">{fmtMoney(other)}</span></div><p className="text-[11px] text-slate-400 mt-1">Locked funds not tied to a stake or a pending cash out — e.g. a platform or security hold. Message Support if you need this released.</p></div>}
               {w.locked === 0 && <p className="text-sm text-slate-500 text-center py-3">Nothing is locked right now. Money you stake or cash out is held here until it's released.</p>}
               {w.locked > 0 && <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1"><span className="font-extrabold text-sm">Total locked</span><span className="font-extrabold text-violet-600">{fmtMoney(w.locked)}</span></div>}
             </div>

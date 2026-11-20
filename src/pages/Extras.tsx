@@ -58,7 +58,7 @@ export function DirectWithdraw() {
   if (!user) return null
   return (
     <div>
-      <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')}: ${fmtMoney(w?.available ?? 0)}`} />
+      <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')} (cash): ${fmtMoney(w?.available ?? 0)}${(w?.holdings.USDT ?? 0) > 0 ? ` · Incl. USDT: ${fmtMoney((w?.available ?? 0) + (w?.holdings.USDT ?? 0) * db.settings.bdtPerUsd)}` : ''}`} />
       <Card className="p-5 space-y-4">
         <Select label="Withdrawal method" value={activeOut} onChange={(e: any) => setMethod(e.target.value)}>{outMethods.map(m => <option key={m}>{m}</option>)}</Select>
         {isCrypto && <Select label="Crypto network / transfer system" value={activeNetwork} onChange={(e: any) => setNetwork(e.target.value)}>{CRYPTO_NETWORK_LABELS.map(n => <option key={n}>{n}</option>)}</Select>}
@@ -323,7 +323,7 @@ export function TradePage() {
                 <AreaChart data={data}>
                   <YAxis hide domain={['dataMin', 'dataMax']} />
                   <Tooltip formatter={(v: any) => [fmtPrice(Number(v)), 'Price']} labelFormatter={() => ''} />
-                  <Area type="monotone" dataKey="v" stroke={up ? '#10b981' : '#f43f5e'} fill={up ? '#10b98133' : '#f43f5e33'} strokeWidth={2} />
+                  <Area isAnimationActive={false} type="monotone" dataKey="v" stroke={up ? '#10b981' : '#f43f5e'} fill={up ? '#10b98133' : '#f43f5e33'} strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

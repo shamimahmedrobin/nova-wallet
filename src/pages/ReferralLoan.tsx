@@ -168,7 +168,7 @@ export function LoanPage() {
           <div className="h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 mt-3 overflow-hidden"><div className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full" style={{ width: Math.min(100, active.paid / active.totalPayable * 100) + '%' }} /></div>
           <p className="text-xs text-slate-500 mt-2">Paid {fmtMoney(active.paid)} of {fmtMoney(active.totalPayable)} · Remaining {fmtMoney(outstanding)}</p>
           <div className="flex gap-2 mt-3">
-            <Input type="number" value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} />
+            <Input label="Repay amount" type="number" placeholder="e.g. 50" value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} />
             <Btn onClick={() => { const err = repayLoan(active, Math.round(toBDT(Number(repayAmt[active.id]) || 0))); if (err) toast({ kind: 'error', title: err }); else toast({ kind: 'success', title: 'Repayment recorded' }) }}>Repay</Btn>
           </div>
         </Card>

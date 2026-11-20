@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Link, useParams } from 'react-router-dom'
 import { Bell, Copy, FileText, Search, X , CheckCheck, ChevronRight } from 'lucide-react'
@@ -16,7 +16,15 @@ export function Transactions() {
   const copyTxId = async (id: string) => { try { await navigator.clipboard.writeText(id); toast({ kind: 'success', title: 'Transaction ID copied', body: id }) } catch { toast({ kind: 'error', title: 'Copy failed', body: id }) } }
   const [q, setQ] = useState(''); const [cat, setCat] = useState('all'); const [status, setStatus] = useState('all')
   const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [sel, setSel] = useState<Tx | null>(null)
-  const mine = useMemo(() => db.txs.filter(t => t.userId === user?.id)
+  // Deep link from a notification: /transactions?tx=<id> opens that transaction's detail.
+  const [deepTx] = useState(() => { try { return new URLSearchParams(window.location.search).get('tx') } catch { return null } })
+  useEffect(() => {
+    if (!deepTx || sel) return
+    const hit = db.txs.find(t => t.id === deepTx && t.userId === user?.id)
+    if (hit) setSel(hit)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepTx, db.txs])
+  const mine = useMemo(() => [...db.txs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).filter(t => t.userId === user?.id)
     .filter(t => cat === 'all' || t.category === cat)
     .filter(t => status === 'all' || t.status === status)
     .filter(t => !q || t.id.toLowerCase().includes(q.toLowerCase()) || t.title.toLowerCase().includes(q.toLowerCase()))

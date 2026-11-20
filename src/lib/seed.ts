@@ -97,7 +97,7 @@ export function seedDB(): DB {
     ],
     banners: [
       { id: 'b1', title: 'Earn 5% on every referral', subtitle: 'Invite friends, earn commission on their fees — forever.', gradient: 'from-violet-600 via-purple-600 to-indigo-600', active: true },
-      { id: 'b2', title: 'Instant loan up to ৳1,00,000', subtitle: 'Apply in 2 minutes. Admin-reviewed, transparent EMI.', gradient: 'from-cyan-600 via-blue-600 to-indigo-700', active: true },
+      { id: 'b2', title: 'Instant loan up to ৳100,000', subtitle: 'Apply in 2 minutes. Admin-reviewed, transparent EMI.', gradient: 'from-cyan-600 via-blue-600 to-indigo-700', active: true },
       { id: 'b3', title: 'Zero-fee USDT deposits', subtitle: 'Deposit crypto directly to your NovaWallet address.', gradient: 'from-emerald-600 via-teal-600 to-cyan-700', active: true },
     ],
     notifications: [
@@ -110,7 +110,10 @@ export function seedDB(): DB {
       { id: 'a1', actor: 'admin', action: 'deposit.approve', detail: 'Approved DEP-099 ৳50,000 for shamim', createdAt: d(12) },
       { id: 'a2', actor: 'system', action: 'loan.disburse', detail: 'LOAN-301 ৳30,000 disbursed to shamim', createdAt: d(20) },
     ],
-    tickets: [],
+    tickets: [
+      { id: 'TKT-901', userId: arif.id, subject: 'Cash out pending since yesterday', status: 'pending', createdAt: d(0, 10), updatedAt: d(0, 10), messages: [{ id: 'MSG-901', from: 'user', text: 'Hello, my cash out of ৳12,000 (WDR-201) is still pending since yesterday. Can you check please?', at: d(0, 10) }] },
+      { id: 'TKT-902', userId: nusrat.id, subject: 'Question about the 90-day staking plan', status: 'processing', createdAt: d(1, 11), updatedAt: d(1, 12), messages: [{ id: 'MSG-902', from: 'user', text: 'If I stake for 90 days, can I withdraw before the term ends?', at: d(1, 11) }, { id: 'MSG-903', from: 'admin', text: 'Hi Nusrat! Fixed-term plans stay locked until maturity. If you ever need an early release, message us here and we can release it from your account.', at: d(1, 12) }] },
+    ],
     levels: DEFAULT_LEVELS,
     levelRequests: [
       { id: 'LVR-101', userId: tanvir.id, fromLevel: 1, toLevel: 2, status: 'pending', createdAt: d(0, 12) },
