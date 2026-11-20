@@ -154,7 +154,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
         <div className="mt-14 rounded-[2rem] bg-gradient-to-br from-violet-700 via-purple-700 to-indigo-800 text-white p-8 sm:p-10 shadow-2xl shadow-violet-700/25">
           <h2 className="text-2xl sm:text-3xl font-extrabold">{t('cta_title')}</h2>
           <p className="mt-2 text-white/80 max-w-md mx-auto leading-relaxed">{t('cta_sub')}</p>
-          <Btn className="mt-6 px-8 py-4 text-base !bg-white !text-violet-700 shadow-xl" onClick={() => navigate('/register')}>{t('create_free_account')}</Btn>
+          <button type="button" onClick={() => navigate('/register')} className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-8 py-4 text-base font-extrabold text-violet-700 shadow-[0_16px_36px_-10px_rgba(0,0,0,0.45)] ring-1 ring-white/70 hover:bg-violet-50 hover:scale-[1.02] active:scale-[.98] transition">{t('create_free_account')}</button>
         </div>
 
         <p className="mt-10 text-xs text-slate-400 flex items-center justify-center gap-1.5"><Repeat size={12} /> {t('market_note')}</p>

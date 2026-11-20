@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Fingerprint, KeyRound, LogOut } from 'lucide-react'
+import { Fingerprint, KeyRound, LogOut, ShieldCheck } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Btn, Input, PinPad } from '../components/ui'
 import { Logo } from '../components/Layout'
+import { fmtDateTime } from '../lib/utils'
 
 // Full-screen lock — everything fits on ONE screen, no scrolling.
 // Unlock with the on-screen PIN pad (auto-unlocks at 4 digits), fingerprint,
@@ -39,7 +40,7 @@ export default function LockScreen() {
       <div className="relative h-full flex flex-col items-center justify-center px-4 py-3">
         <div className="mb-3" style={{ filter: 'drop-shadow(0 6px 18px rgba(139,92,246,0.45))' }}><Logo size={36} /></div>
         <div className="w-full max-w-sm rounded-[1.8rem] p-[1.5px] bg-gradient-to-b from-violet-500/80 via-fuchsia-400/30 to-cyan-500/70 shadow-[0_24px_60px_-12px_rgba(124,58,237,0.45)]">
-        <div className="rounded-[calc(1.8rem-1.5px)] bg-white/92 dark:bg-slate-900/95 backdrop-blur px-5 py-5">
+        <div className="rounded-[calc(1.8rem-1.5px)] bg-white/92 dark:bg-slate-900/95 backdrop-blur px-5 py-4">
           <div className="relative w-fit mx-auto">
             <span className="block rounded-full p-[3px] bg-gradient-to-br from-violet-600 via-fuchsia-500 to-cyan-500 shadow-[0_0_36px_rgba(168,85,247,0.5)]">
               <Avatar name={user.name} size={54} photo={user.photo} />
@@ -47,12 +48,23 @@ export default function LockScreen() {
             <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 text-white flex items-center justify-center border-2 border-white dark:border-slate-900 text-[9px] shadow">🔒</span>
           </div>
           <p className="text-center font-extrabold text-xl mt-2.5">Welcome back, <span className="bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-500 bg-clip-text text-transparent">{first}</span> 👋</p>
+          <p className="text-center text-xs font-semibold text-slate-400 mt-0.5">{user.email}</p>
+          <div className="flex justify-center flex-wrap gap-1.5 mt-2.5">
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-300">{user.role === 'admin' ? '👑 Admin account' : '⬆ Level ' + user.level}</span>
+            {user.kyc === 'verified'
+              ? <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">✓ KYC Verified</span>
+              : user.kyc === 'pending'
+                ? <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400">⏳ KYC Pending</span>
+                : <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-500/15 text-slate-500 dark:text-slate-400">Non KYC</span>}
+            {user.status !== 'active' && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 capitalize">⚠ {user.status}</span>}
+          </div>
+          {user.lastLogin && <p className="text-center text-[11px] text-slate-400 mt-2">Last login · {fmtDateTime(user.lastLogin)}</p>}
 
           {err && <div className="mt-3 rounded-2xl bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 px-3 py-2.5 text-[13px] font-semibold text-center">{err}</div>}
 
           {!pwView && devicePinSet && (
-            <div className="mt-4">
-              <div key={shake} className={`flex justify-center gap-3 mb-4 ${shake ? 'animate-[nw-shake_.35s_ease]' : ''}`}>
+            <div className="mt-3">
+              <div key={shake} className={`flex justify-center gap-3 mb-3 ${shake ? 'animate-[nw-shake_.35s_ease]' : ''}`}>
                 {[0, 1, 2, 3].map(i => (
                   <span key={i} className={`w-3.5 h-3.5 rounded-full transition-all ${pin.length > i ? 'bg-gradient-to-br from-violet-600 to-cyan-500 scale-110 shadow-[0_0_12px_rgba(168,85,247,0.8)]' : 'bg-slate-200 dark:bg-slate-700'}`} />
                 ))}
@@ -86,6 +98,8 @@ export default function LockScreen() {
               {hasQuick && <button onClick={() => { setShowPw(false); setErr('') }} className="w-full text-center text-sm font-bold text-violet-600 py-1">← Back to PIN</button>}
             </div>
           )}
+
+          <p className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-center text-[11px] font-semibold text-slate-400 flex items-center justify-center gap-1.5"><ShieldCheck size={13} className="text-emerald-500 shrink-0" /> Locked for your security · Auto-locks after 5 min away</p>
         </div>
         </div>
 
@@ -93,11 +107,12 @@ export default function LockScreen() {
           {confirmOut ? (
             <div className="flex gap-2">
               <Btn variant="ghost" className="flex-1 py-3" onClick={() => setConfirmOut(false)}>Cancel</Btn>
-              <Btn className="flex-1 py-3 !bg-rose-600" onClick={signOut}><LogOut size={16} /> Sign out</Btn>
+              <Btn variant="danger" className="flex-1 py-3" onClick={signOut}><LogOut size={16} /> Sign out</Btn>
             </div>
           ) : (
             <button onClick={() => setConfirmOut(true)} className="w-full py-2 text-sm font-bold text-rose-500 inline-flex items-center justify-center gap-1.5"><LogOut size={15} /> Sign out</button>
           )}
+          <p className="text-center text-[10px] font-semibold text-slate-400/80 mt-1.5">NovaWallet · Your money &amp; crypto, one global wallet</p>
         </div>
       </div>
     </div>
