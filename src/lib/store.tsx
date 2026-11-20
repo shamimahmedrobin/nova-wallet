@@ -6,6 +6,9 @@ import { translate } from './i18n'
 import { detectCurrency, FALLBACK_RATES } from './currencies'
 import { fmtBDT } from './utils'
 import { emiCalc, hashSecret, nowISO, rid, uid } from './utils'
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, updatePassword as fbUpdatePassword } from 'firebase/auth'
+import { firebaseAuth } from './firebase'
+import { apiBootstrap } from './api'
 
 const KEY = 'novawallet.db.v2'
 const SESSION = 'novawallet.session'
@@ -62,7 +65,7 @@ interface Ctx {
   lang: string; setLanguage: (code: string) => void; t: (key: string) => string
   currency: string; currencyIsAuto: boolean; detectedCurrency: string; setCurrency: (code: string | null) => void; fmtMoney: (bdt: number) => string; fmtAmount: (bdt: number) => string; toBDT: (amount: number) => number; fromBDT: (bdt: number) => number
   toasts: Toast[]; toast: (t: Omit<Toast, 'id'>) => void; dismissToast: (id: string) => void
-  login: (idOrEmail: string, password: string) => string | null
+  login: (idOrEmail: string, password: string) => Promise<string | null>
   locked: boolean
   appInstalled: boolean
   devicePinSet: boolean
@@ -82,7 +85,7 @@ interface Ctx {
   requestPasswordOtp: (email: string) => { error: string | null; otp: string | null }
   verifyPasswordOtp: (email: string, otp: string) => string | null
   resetPasswordWithOtp: (email: string, otp: string, newPassword: string) => string | null
-  register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => string | null
+  register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => Promise<string | null>
   walletOf: (userId: string) => DB['wallets'][number]
   addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string; methodId?: string; kind?: 'bank' | 'crypto'; verification?: 'manual' | 'auto' }) => void
   decideDeposit: (id: string, ok: boolean) => void
@@ -368,13 +371,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return null
   }
   const feePctFor = (base: number, u: User) => base * (1 - (levelDefOf(u)?.feeDiscountPct ?? 0) / 100)
-  const login: Ctx['login'] = (idOrEmail, password) => {
+  // Sign-in is owned by Firebase Auth (Phase 1 of the backend integration).
+  // Accounts created before Firebase existed (the seeded demo accounts and
+  // any locally-registered ones) are migrated into Firebase automatically on
+  // their first successful sign-in. The local profile still drives the app
+  // until the data phase moves server-side; a successful Firebase sign-in
+  // also re-syncs the local password copy so lock-screen unlock stays right.
+  const login: Ctx['login'] = async (idOrEmail, password) => {
     const u = dbRef.current.users.find(x => x.email === idOrEmail || x.username === idOrEmail)
     if (!u) return 'No account found for that email / username.'
     const lk = lockError(u.id); if (lk) return lk
-    if (u.passwordHash !== hashSecret(password)) return recordFail(u.id, 'Wrong password. Please try again.')
-    recordSuccess(u.id)
     if (u.status === 'suspended') return 'This account is suspended. Contact support.'
+    const localMatch = u.passwordHash === hashSecret(password)
+    let fbOk = false
+    try {
+      const cred = await signInWithEmailAndPassword(firebaseAuth, u.email, password)
+      fbOk = true
+      const token = await cred.user.getIdToken()
+      void apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash })
+    } catch (e: any) {
+      const code = e?.code || ''
+      if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
+        if (!localMatch) return recordFail(u.id, 'Wrong password. Please try again.')
+        // First sign-in of a pre-Firebase account: migrate it into Firebase.
+        try {
+          const cred = await createUserWithEmailAndPassword(firebaseAuth, u.email, password)
+          fbOk = true
+          const token = await cred.user.getIdToken()
+          void apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash })
+        } catch (e2: any) {
+          const code2 = e2?.code || ''
+          if (code2 === 'auth/network-request-failed') return 'Could not reach the authentication server. Check your connection and try again.'
+          // auth/email-already-in-use (password was reset locally via PIN/OTP,
+          // so Firebase still holds the old one) or auth/weak-password:
+          // fall through with the verified local credentials for this phase.
+          if (code2 !== 'auth/email-already-in-use' && code2 !== 'auth/weak-password') return 'Sign-in failed. Please try again.'
+        }
+      } else if (code === 'auth/too-many-requests') {
+        return 'Too many failed attempts. Please wait a few minutes and try again.'
+      } else if (code === 'auth/network-request-failed') {
+        return 'Could not reach the authentication server. Check your connection and try again.'
+      } else if (code === 'auth/unauthorized-domain') {
+        return 'This website domain is not authorized for sign-in yet.'
+      } else if (!localMatch) {
+        return recordFail(u.id, 'Wrong password. Please try again.')
+      }
+    }
+    if (fbOk && !localMatch) {
+      // Self-heal: keep the local copy in sync with the Firebase password.
+      mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.passwordHash = hashSecret(password) })
+    }
+    recordSuccess(u.id)
     mutate(d => { const du = d.users.find(x => x.id === u.id)!; du.lastLogin = nowISO() })
     localStorage.setItem(SESSION, u.id); setUserId(u.id); setLocked(false)
     return null
@@ -449,7 +496,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return null
   }
   const lockNow = () => { lastActiveRef.current = Date.now(); setLocked(true) }
-  const signOut = () => { setLocked(false); localStorage.removeItem(SESSION); setUserId(null) }
+  const signOut = () => { setLocked(false); localStorage.removeItem(SESSION); setUserId(null); void fbSignOut(firebaseAuth).catch(() => {}) }
   const resetPassword: Ctx['resetPassword'] = (email, pin, newPassword) => {
     const u = dbRef.current.users.find(x => x.email === email.trim().toLowerCase())
     if (!u) return 'No account found for that email.'
@@ -500,7 +547,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return
     mutate(d => { const du = d.users.find(x => x.id === user.id)!; du.payMethods = (du.payMethods ?? []).filter(m => m.id !== id) })
   }
-  const register: Ctx['register'] = (p) => {
+  const register: Ctx['register'] = async (p) => {
     const cur = dbRef.current
     if (cur.users.some(x => x.email === p.email)) return 'An account with this email already exists.'
     if (cur.users.some(x => x.username === p.username)) return 'That username is taken.'
@@ -511,6 +558,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.password.length < 6) return 'Password must be at least 6 characters.'
     if (!/^\d{4}$/.test(p.pin)) return 'PIN must be exactly 4 digits.'
     if (p.name.trim().length < 3) return 'Enter your full name.'
+    // The account is created in Firebase Auth first — it is the real identity
+    // store — then mirrored locally for the app, and bootstrapped into D1.
+    try {
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, p.email, p.password)
+      const token = await cred.user.getIdToken()
+      void apiBootstrap(token, { username: p.username, fullName: p.name, pinHash: hashSecret(p.pin) })
+    } catch (e: any) {
+      const code = e?.code || ''
+      if (code === 'auth/email-already-in-use') return 'An account with this email already exists.'
+      if (code === 'auth/weak-password') return 'Password must be at least 6 characters.'
+      if (code === 'auth/invalid-email') return 'Enter a valid email address.'
+      if (code === 'auth/network-request-failed') return 'Could not reach the authentication server. Check your connection and try again.'
+      if (code === 'auth/unauthorized-domain') return 'This website domain is not authorized for sign-up yet.'
+      return 'Sign-up failed. Please try again.'
+    }
     const referrer = p.referralCode ? cur.users.find(x => x.referralCode === p.referralCode) : undefined
     const nu: User = {
       id: uid('USR'), name: p.name, username: p.username, email: p.email, phone: p.phone,
@@ -1061,7 +1123,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const lk = lockError(user.id); if (lk) return lk
     if (user.passwordHash !== hashSecret(oldPw)) return recordFail(user.id, 'Current password is incorrect.')
     recordSuccess(user.id)
-    mutate(d => { d.users.find(u => u.id === user.id)!.passwordHash = hashSecret(newPw) }); return null
+    mutate(d => { d.users.find(u => u.id === user.id)!.passwordHash = hashSecret(newPw) })
+    // Keep the Firebase password in sync too (best-effort: Firebase may ask
+    // for a fresh sign-in on long-lived sessions; the next sign-in re-syncs
+    // the local copy from Firebase, so a miss here cannot lock anyone out).
+    if (firebaseAuth.currentUser) void fbUpdatePassword(firebaseAuth.currentUser, newPw).catch(() => {})
+    return null
   }
   const changePin: Ctx['changePin'] = (oldPin, newPin) => {
     if (!user) return 'Not signed in'

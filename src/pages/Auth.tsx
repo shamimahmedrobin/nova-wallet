@@ -27,8 +27,8 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
     // open before the previous session ended.
     navigate(id.includes('admin') ? '/admin' : '/home')
   }
-  const doLogin = (id = loginId, pw = loginPw) => {
-    const e = login(id.trim().toLowerCase(), pw)
+  const doLogin = async (id = loginId, pw = loginPw) => {
+    const e = await login(id.trim().toLowerCase(), pw)
     if (e) { setErr(e); return }
     afterLogin(id)
   }
@@ -44,10 +44,10 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
     toast({ kind: 'success', title: 'Password reset', body: 'Log in with your new password.' })
     setLoginId(fp.email); setLoginPw(''); setErr(''); setStep('auth'); setFpOtp(''); setFpOtpDemo(null); setFpOtpVerified(false)
   }
-  const doRegister = () => {
+  const doRegister = async () => {
     if (form.password.length < 6) return setErr('Password must be at least 6 characters.')
     if (!/^\d{4}$/.test(form.pin)) return setErr('Transaction PIN must be exactly 4 digits.')
-    const e = register({ ...form, email: form.email.trim().toLowerCase(), username: form.username.trim().toLowerCase(), referralCode: form.referralCode.trim() || undefined })
+    const e = await register({ ...form, email: form.email.trim().toLowerCase(), username: form.username.trim().toLowerCase(), referralCode: form.referralCode.trim() || undefined })
     if (e) return setErr(e)
     toast({ kind: 'success', title: 'Account created', body: 'Welcome to NovaWallet.' })
     navigate('/home')
