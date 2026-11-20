@@ -25,7 +25,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
     toast({ kind: 'success', title: 'Welcome back!' })
     // Always land on Home after a fresh login — never restore the page that was
     // open before the previous session ended.
-    navigate(id.includes('admin') ? '/admin' : '/home')
+    navigate(id.includes('admin') ? '/admin' : '/')
   }
   const doLogin = async (id = loginId, pw = loginPw) => {
     const e = await login(id.trim().toLowerCase(), pw)
@@ -50,7 +50,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
     const e = await register({ ...form, email: form.email.trim().toLowerCase(), username: form.username.trim().toLowerCase(), referralCode: form.referralCode.trim() || undefined })
     if (e) return setErr(e)
     toast({ kind: 'success', title: 'Account created', body: 'Welcome to NovaWallet.' })
-    navigate('/home')
+    navigate('/')
   }
   const features = [
     { icon: ArrowDownToLine, t: t('act_add'), d: t('feat_add_d') },

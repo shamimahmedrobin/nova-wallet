@@ -182,7 +182,7 @@ const NOTIF_ROUTES: Record<string, { to: string; state?: any }> = {
   upgrade: { to: '/profile' },
   security: { to: '/profile' },
   kyc: { to: '/profile' },
-  info: { to: '/home' },
+  info: { to: '/' },
 }
 export function Notifications() {
   const { user, db, markAllRead, markRead, t } = useApp()
@@ -193,11 +193,11 @@ export function Notifications() {
     markRead(n.id)
     // An exact deep link stored on the notification wins (Admin tab / user modal links).
     if (n.link) {
-      if (n.link.startsWith('/admin') && user?.role !== 'admin') { navigate('/home'); return }
+      if (n.link.startsWith('/admin') && user?.role !== 'admin') { navigate('/'); return }
       navigate(n.link)
       return
     }
-    const r = NOTIF_ROUTES[n.kind] ?? { to: '/home' }
+    const r = NOTIF_ROUTES[n.kind] ?? { to: '/' }
     navigate(r.to, r.state ? { state: r.state } : undefined)
   }
   return (

@@ -1,6 +1,6 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react'
 const Market = lazy(() => import('./pages/Market'))
 const Admin = lazy(() => import('./pages/Admin'))
 import { AppProvider, useApp } from './lib/store'
@@ -11,8 +11,8 @@ import LockScreen from './pages/LockScreen'
 // Page-level code splitting: each page module loads on first visit, so the
 // first paint only carries the landing/auth shell (Admin and Market were
 // already split). Named exports are adapted to lazy() default components.
-const lazyNamed = <T extends Record<string, any>>(load: () => Promise<T>, name: keyof T) =>
-  lazy(() => load().then(m => ({ default: m[name] })))
+const lazyNamed = <T extends Record<string, any>>(load: () => Promise<T>, name: keyof T): LazyExoticComponent<ComponentType<any>> =>
+  lazy(() => load().then(m => ({ default: m[name] as ComponentType<any> })))
 const Home = lazyNamed(() => import('./pages/Home'), 'default')
 const AddMoney = lazyNamed(() => import('./pages/Services'), 'AddMoney')
 const CashOut = lazyNamed(() => import('./pages/Services'), 'CashOut')
@@ -52,7 +52,7 @@ function LockGate() {
       // Public pages (Terms / Privacy) stay where they are after an unlock —
       // only app pages reset to Home.
       if (pathname !== '/terms' && pathname !== '/privacy') {
-        navigate(user.role === 'admin' ? '/admin' : '/home', { replace: true })
+        navigate(user.role === 'admin' ? '/admin' : '/', { replace: true })
       }
     }
   }, [locked, user, navigate, pathname])
@@ -65,7 +65,7 @@ function LockGate() {
 const SYS_ROUTES: Record<string, string> = {
   loan: '/loan', support: '/profile', transaction: '/transactions', deposit: '/transactions',
   withdraw: '/transactions', receive: '/transactions', referral: '/referral', security: '/profile',
-  kyc: '/profile', upgrade: '/profile', earn: '/earn', trade: '/transactions', info: '/home',
+  kyc: '/profile', upgrade: '/profile', earn: '/earn', trade: '/transactions', info: '/',
 }
 function SystemNotifier() {
   const { user, db } = useApp()
@@ -96,7 +96,7 @@ function SystemNotifier() {
     } catch { return }
     const base = import.meta.env.BASE_URL.replace(/\/$/, '')
     fresh.slice(0, 3).forEach(n => {
-      const rel = n.link ?? SYS_ROUTES[n.kind] ?? '/home'
+      const rel = n.link ?? SYS_ROUTES[n.kind] ?? '/'
       const url = window.location.origin + base + rel
       const opts: NotificationOptions = { body: n.body, tag: n.id, icon: base + '/icons/icon-192.png', data: { url } }
       if ('serviceWorker' in navigator) {
@@ -133,17 +133,21 @@ function ScrollManager() {
 function Guard({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const { user } = useApp(); const loc = useLocation()
   if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />
-  if (admin && user.role !== 'admin') return <Navigate to="/home" replace />
+  if (admin && user.role !== 'admin') return <Navigate to="/" replace />
   return <>{children}</>
 }
-function Root() {
+function HomeRoot() {
   const { user } = useApp()
-  if (user) return <Navigate to="/home" replace />
-  return <Auth initialMode="landing" />
+  if (!user) return <Auth initialMode="landing" />
+  return <Home />
+}
+function Shell() {
+  const { user } = useApp()
+  return user ? <Layout /> : <Outlet />
 }
 function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { user } = useApp()
-  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/home'} replace />
+  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/'} replace />
   return <Auth key={mode} initialMode={mode} />
 }
 export default function App() {
@@ -156,13 +160,14 @@ export default function App() {
         <SystemNotifier />
         <Suspense fallback={<div className="p-10 text-center text-sm font-semibold text-slate-400">Loading…</div>}>
         <Routes>
-          <Route path="/" element={<Root />} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
-          <Route element={<Guard><Layout /></Guard>}>
-            <Route path="/home" element={<Home />} />
+          <Route element={<Shell />}>
+            <Route index element={<HomeRoot />} />
+            <Route element={<Guard><Outlet /></Guard>}>
             <Route path="/add" element={<AddMoney />} />
             <Route path="/cashout" element={<CashOut />} />
             <Route path="/send" element={<SendMoney />} />
@@ -178,13 +183,20 @@ export default function App() {
             <Route path="/swap" element={<SwapPage />} />
             <Route path="/trade" element={<TradePage />} />
             <Route path="/referral" element={<Referral />} />
-            <Route path="/loan" element={<LoanPage />} />
+            <Route path="/loan" element={<LoanPage view="hub" />} />
+            <Route path="/loan/apply" element={<LoanPage view="apply" />} />
+            <Route path="/loan/active" element={<LoanPage view="active" />} />
+            <Route path="/loan/repay" element={<LoanPage view="repay" />} />
+            <Route path="/loan/close" element={<LoanPage view="close" />} />
+            <Route path="/loan/noc" element={<LoanPage view="noc" />} />
+            <Route path="/loan/history" element={<LoanPage view="history" />} />
             <Route path="/crypto" element={<Suspense fallback={<div className="p-8 text-center">Loading market…</div>}><Market /></Suspense>} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/news" element={<NewsList />} />
             <Route path="/news/:id" element={<NewsDetail />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/profile" element={<Profile />} />
+            </Route>
           </Route>
           <Route path="/admin" element={<Guard admin><Suspense fallback={<div className="p-8 text-center">Loading admin…</div>}><Admin /></Suspense></Guard>} />
           <Route path="*" element={<Navigate to="/" replace />} />

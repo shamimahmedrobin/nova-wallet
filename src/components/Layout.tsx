@@ -4,7 +4,7 @@ import { useApp } from '../lib/store'
 import { useConfirm } from './ui'
 
 const NAV = [
-  { to: '/home', key: 'nav_home', icon: Home, end: true },
+  { to: '/', key: 'nav_home', icon: Home, end: true },
   { to: '/transactions', key: 'nav_transactions', icon: ArrowLeftRight },
   { to: '/news', key: 'nav_news', icon: Newspaper },
   { to: '/profile', key: 'nav_profile', icon: UserIcon },

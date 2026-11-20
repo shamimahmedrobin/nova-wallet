@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Award, CheckCircle2, Coins, Copy, FilePlus2, HandCoins, History as HistoryIcon, Share2, Trophy, Wallet, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, CheckLine, Empty, Input, Modal, ModalDesc, ModalRow, PinField, Select, StepBar, WizardNav } from '../components/ui'
@@ -72,7 +73,8 @@ export function Referral() {
   )
 }
 
-export function LoanPage() {
+export type LoanView = 'hub' | 'apply' | 'active' | 'repay' | 'close' | 'noc' | 'history'
+export function LoanPage({ view = 'hub' }: { view?: LoanView }) {
   const { user, db, applyLoan, repayLoan, submitLoanFee, addTicket, verifyTxPin, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
   const [amount, setAmount] = useState(''); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
   const [appName, setAppName] = useState(user?.name ?? ''); const [code, setCode] = useState('+880'); const [phoneNum, setPhoneNum] = useState(user?.phone ?? '')
@@ -81,7 +83,7 @@ export function LoanPage() {
   const [gName, setGName] = useState(''); const [gPhone, setGPhone] = useState('')
   const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
   const [wstep, setWstep] = useState(0); const [ack, setAck] = useState(false); const [submittedApp, setSubmittedApp] = useState(false)
-  const [view, setView] = useState<'hub' | 'apply' | 'active' | 'repay' | 'close' | 'noc' | 'history'>('hub'); const [closeDone, setCloseDone] = useState(false); const [closeArm, setCloseArm] = useState(false); const [txPin, setTxPin] = useState(''); const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null); const [errMsg, setErrMsg] = useState('')
+  const navigate = useNavigate(); const go = (v: LoanView) => navigate(v === 'hub' ? '/loan' : '/loan/' + v); const [closeDone, setCloseDone] = useState(false); const [closeArm, setCloseArm] = useState(false); const [txPin, setTxPin] = useState(''); const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null); const [errMsg, setErrMsg] = useState('')
   if (!user) return null
   const s = db.settings
   const effLoanLimit = user?.loanLimitOverride ?? db.levels.find(l => l.level === user?.level)?.loanLimit ?? s.loanLimit
@@ -104,16 +106,9 @@ export function LoanPage() {
     return { due, days, emiNo: emisPaid + 1 }
   })()
   const repayTxs = [...db.txs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).filter(x => x.userId === user.id && x.category === 'loan_repayment')
-  useEffect(() => {
-    if (view === 'hub') return
-    window.history.pushState({ loanView: view }, '')
-    const onPop = () => setView('hub')
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [view])
   const sectionHead = (title: string, sub: string) => (
     <div className="mb-5 anim-fade-up">
-      <button onClick={() => setView('hub')} className="inline-flex items-center gap-1.5 text-sm font-bold text-violet-600 dark:text-violet-400 mb-2"><ArrowLeft size={16} /> All loan services</button>
+      <button onClick={() => go('hub')} className="inline-flex items-center gap-1.5 text-sm font-bold text-violet-600 dark:text-violet-400 mb-2"><ArrowLeft size={16} /> All loan services</button>
       <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{title}</h1>
       <p className="text-sm text-slate-500 mt-0.5">{sub}</p>
     </div>
@@ -193,7 +188,7 @@ export function LoanPage() {
           { id: 'noc' as const, icon: Award, title: 'Request NOC', sub: repaidLoans.length > 0 ? 'Available' : 'After repayment', badge: '' },
           { id: 'history' as const, icon: HistoryIcon, title: 'Loan History', sub: myLoans.length + ' record' + (myLoans.length === 1 ? '' : 's'), badge: feeDue > 0 ? String(feeDue) : '' },
         ]).map(m => (
-          <button key={m.id} onClick={() => setView(m.id)} className="relative flex flex-col items-center text-center gap-1.5 rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-4 shadow-sm active:scale-[.96] transition">
+          <button key={m.id} onClick={() => go(m.id)} className="relative flex flex-col items-center text-center gap-1.5 rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-4 shadow-sm active:scale-[.96] transition">
             <span className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500/15 to-cyan-500/15 dark:from-violet-500/25 dark:to-cyan-500/20 text-violet-600 dark:text-violet-400 flex items-center justify-center"><m.icon size={22} /></span>
             <span className="font-extrabold text-[13px] leading-tight">{m.title}</span>
             <span className="text-[10px] text-slate-500 leading-snug">{m.sub}</span>
@@ -243,7 +238,7 @@ export function LoanPage() {
               <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Remaining</span><span className="font-extrabold text-rose-500">{fmtMoney(outstanding)}</span></div>
               {nextRepay && <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Next Repayment</span><span className="text-right"><span className="font-extrabold text-violet-600">{fmtDate(nextRepay.due.toISOString())}</span><span className="block text-[11px] text-slate-400">EMI #{nextRepay.emiNo} · {fmtMoney(active.emi)} · {nextRepay.days < 0 ? 'overdue by ' + Math.abs(nextRepay.days) + ' day' + (Math.abs(nextRepay.days) === 1 ? '' : 's') : nextRepay.days === 0 ? 'due today' : 'in ' + nextRepay.days + ' day' + (nextRepay.days === 1 ? '' : 's')}</span></span></div>}
             </div>
-            <Btn className="w-full mt-4" onClick={() => setView('repay')}>Go to Repayment</Btn>
+            <Btn className="w-full mt-4" onClick={() => go('repay')}>Go to Repayment</Btn>
           </Card>
         ) : <Card><Empty title="No active loan" body="When a loan application is approved and disbursed, it will appear here." /></Card>}
       </>)}
@@ -278,7 +273,7 @@ export function LoanPage() {
             <CheckCircle2 size={52} className="mx-auto text-emerald-500" />
             <p className="font-extrabold text-lg mt-3">Loan closed</p>
             <p className="text-sm text-slate-500 mt-1">Your loan is fully repaid and closed. You can now request your No Objection Certificate (NOC).</p>
-            <Btn className="w-full mt-4" onClick={() => setView('noc')}>Request NOC</Btn>
+            <Btn className="w-full mt-4" onClick={() => go('noc')}>Request NOC</Btn>
           </Card>
         ) : active ? (
           <Card className="p-5 space-y-4">
@@ -302,7 +297,7 @@ export function LoanPage() {
         {repaidLoans.length === 0 ? (
           <Card className="p-5 space-y-3">
             <p className="text-sm text-slate-500 leading-relaxed">An NOC is issued only after a loan is <b>fully repaid</b>.{active ? ' You still have ' + fmtMoney(outstanding) + ' outstanding on loan ' + active.id + '.' : ' You have no repaid loan yet.'}</p>
-            {active && <Btn className="w-full" onClick={() => setView('close')}>Close my loan to become eligible</Btn>}
+            {active && <Btn className="w-full" onClick={() => go('close')}>Close my loan to become eligible</Btn>}
           </Card>
         ) : (
           <div className="space-y-3">{repaidLoans.map(l => { const tk = db.tickets.find(x => x.userId === user.id && x.subject === 'NOC request — ' + l.id); return (
