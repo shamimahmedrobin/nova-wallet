@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CheckCircle2, Copy, HandCoins, Share2, Trophy } from 'lucide-react'
+import { ArrowLeft, Award, CheckCircle2, ChevronRight, Coins, Copy, FilePlus2, HandCoins, History as HistoryIcon, Share2, Trophy, Wallet, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, CheckLine, Empty, Input, Modal, ModalDesc, ModalRow, Select, StepBar, WizardNav } from '../components/ui'
 import { emiCalc, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
@@ -73,7 +73,7 @@ export function Referral() {
 }
 
 export function LoanPage() {
-  const { user, db, applyLoan, repayLoan, submitLoanFee, toast, t, currency, fmtMoney, toBDT } = useApp()
+  const { user, db, applyLoan, repayLoan, submitLoanFee, addTicket, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
   const [amount, setAmount] = useState(''); const [months, setMonths] = useState('12'); const [repayAmt, setRepayAmt] = useState<Record<string, string>>({})
   const [appName, setAppName] = useState(user?.name ?? ''); const [code, setCode] = useState('+880'); const [phoneNum, setPhoneNum] = useState(user?.phone ?? '')
   const [whatsapp, setWhatsapp] = useState(''); const [nid, setNid] = useState(''); const [photo, setPhoto] = useState('')
@@ -81,6 +81,7 @@ export function LoanPage() {
   const [gName, setGName] = useState(''); const [gPhone, setGPhone] = useState('')
   const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
   const [wstep, setWstep] = useState(0); const [ack, setAck] = useState(false); const [submittedApp, setSubmittedApp] = useState(false)
+  const [view, setView] = useState<'hub' | 'apply' | 'active' | 'repay' | 'close' | 'noc' | 'history'>('hub'); const [closeDone, setCloseDone] = useState(false); const [closeArm, setCloseArm] = useState(false)
   if (!user) return null
   const s = db.settings
   const effLoanLimit = user?.loanLimitOverride ?? db.levels.find(l => l.level === user?.level)?.loanLimit ?? s.loanLimit
@@ -90,6 +91,17 @@ export function LoanPage() {
   const myLoans = db.loans.filter(l => l.userId === user.id)
   const active = myLoans.find(l => l.status === 'active')
   const outstanding = active ? active.totalPayable - active.paid : 0
+  const repaidLoans = myLoans.filter(l => l.status === 'repaid')
+  const pendingApps = myLoans.filter(l => l.status === 'pending').length
+  const feeDue = myLoans.filter(l => l.processingFee && l.feeStatus !== 'paid' && l.feeStatus !== 'submitted').length
+  const repayTxs = [...db.txs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).filter(x => x.userId === user.id && x.category === 'loan_repayment')
+  const sectionHead = (title: string, sub: string) => (
+    <div className="mb-5 anim-fade-up">
+      <button onClick={() => setView('hub')} className="inline-flex items-center gap-1.5 text-sm font-bold text-violet-600 dark:text-violet-400 mb-2"><ArrowLeft size={16} /> All loan services</button>
+      <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{title}</h1>
+      <p className="text-sm text-slate-500 mt-0.5">{sub}</p>
+    </div>
+  )
   const validateDocs = (): boolean => {
     if (!appName.trim()) { toast({ kind: 'error', title: 'Enter your full name' }); return false }
     if (phoneNum.replace(/\D/g, '').length < 6) { toast({ kind: 'error', title: 'Enter your phone number' }); return false }
@@ -117,7 +129,7 @@ export function LoanPage() {
   const gPhoneOk = gPhone.replace(/\D/g, '').length >= 10
   return (
     <div>
-      <PageHead title={t('loan_title')} sub={t('loan_sub')} />
+      {view === 'hub' && <PageHead title={t('loan_title')} sub={t('loan_sub')} />}
       <Modal open={!!feePay} onClose={() => setFeePay(null)} title="Pay processing fee">
         {(() => {
           const loan = db.loans.find(l => l.id === feePay); if (!loan) return null
@@ -147,12 +159,31 @@ export function LoanPage() {
         })()}
       </Modal>
 
+      {view === 'hub' && (<>
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Loan limit</p><p className="font-extrabold mt-1">{fmtMoney(effLoanLimit)}</p>{user?.loanLimitOverride ? <p className="text-[10px] text-violet-500 font-bold mt-0.5">Custom limit by admin</p> : null}</Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Outstanding</p><p className="font-extrabold mt-1 text-rose-500">{fmtMoney(outstanding)}</p></Card>
         <Card className="p-4 text-center"><p className="text-[11px] text-slate-400 uppercase font-bold">Account level</p><p className="font-extrabold mt-1">Level {user.level}</p></Card>
       </div>
-      {myLoans.filter(l => l.processingFee).length > 0 && (
+      <Card className="p-2 divide-y divide-slate-100 dark:divide-slate-800">
+        {([
+          { id: 'apply' as const, icon: FilePlus2, title: 'Apply Loan', sub: pendingApps > 0 ? pendingApps + ' application(s) pending review' : 'Up to ' + fmtMoney(effLoanLimit) + ' · ' + s.loanRatePct + '%/yr', badge: pendingApps > 0 ? String(pendingApps) : '' },
+          { id: 'active' as const, icon: Wallet, title: 'Active Loan', sub: active ? active.id + ' · EMI ' + fmtMoney(active.emi) + ' · ' + Math.round(active.paid / active.totalPayable * 100) + '% paid' : 'No active loan right now', badge: '' },
+          { id: 'repay' as const, icon: Coins, title: 'Repayment', sub: active ? 'Outstanding ' + fmtMoney(outstanding) : 'Nothing due right now', badge: '' },
+          { id: 'close' as const, icon: XCircle, title: 'Close Loan', sub: active ? 'Pay off ' + fmtMoney(outstanding) + ' in full and close early' : repaidLoans.length > 0 ? 'Your loan is fully repaid & closed' : 'No loan to close', badge: '' },
+          { id: 'noc' as const, icon: Award, title: 'Request NOC', sub: repaidLoans.length > 0 ? 'Available for ' + repaidLoans[0].id : 'No Objection Certificate — issued after full repayment', badge: '' },
+          { id: 'history' as const, icon: HistoryIcon, title: 'Loan History', sub: myLoans.length + ' application(s) & loan(s)' + (feeDue > 0 ? ' · processing fee due' : ''), badge: feeDue > 0 ? String(feeDue) : '' },
+        ]).map(m => (
+          <button key={m.id} onClick={() => setView(m.id)} className="w-full flex items-center gap-3.5 p-3.5 text-left active:bg-slate-50 dark:active:bg-slate-800/60 rounded-2xl transition">
+            <span className="w-11 h-11 rounded-2xl bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0"><m.icon size={20} /></span>
+            <span className="flex-1 min-w-0"><span className="block font-extrabold text-[15px]">{m.title}</span><span className="block text-xs text-slate-500 truncate">{m.sub}</span></span>
+            {m.badge && <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[11px] font-extrabold inline-flex items-center justify-center">{m.badge}</span>}
+            <ChevronRight size={18} className="text-slate-300 dark:text-slate-600 shrink-0" />
+          </button>
+        ))}
+      </Card>
+      </>)}
+      {view === 'history' && myLoans.filter(l => l.processingFee).length > 0 && (
         <Card className="p-5 mb-4 border-l-4 !border-l-amber-500">
           <div className="flex items-center gap-3">
             <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shrink-0"><HandCoins size={20} /></span>
@@ -176,19 +207,98 @@ export function LoanPage() {
           </div>
         </Card>
       )}
-      {active && (
-        <Card className="p-5 mb-4 border-l-4 !border-l-violet-500">
-          <div className="flex justify-between items-start"><div><p className="font-extrabold">Active loan {active.id}</p><p className="text-sm text-slate-500">{fmtMoney(active.amount)} · {active.months} months · EMI {fmtMoney(active.emi)}</p></div><Badge tone="green">Active</Badge></div>
-          <div className="h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 mt-3 overflow-hidden"><div className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full" style={{ width: Math.min(100, active.paid / active.totalPayable * 100) + '%' }} /></div>
-          <p className="text-xs text-slate-500 mt-2">Paid {fmtMoney(active.paid)} of {fmtMoney(active.totalPayable)} · Remaining {fmtMoney(outstanding)}</p>
-          <div className="flex gap-2 mt-3">
-            <Input label="Repay amount" type="number" placeholder="e.g. 50" value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} />
-            <Btn onClick={() => { const err = repayLoan(active, Math.round(toBDT(Number(repayAmt[active.id]) || 0))); if (err) toast({ kind: 'error', title: err }); else toast({ kind: 'success', title: 'Repayment recorded' }) }}>Repay</Btn>
+      {view === 'active' && (<>
+        {sectionHead('Active Loan', 'Your running loan at a glance. Repayments live in the Repayment section.')}
+        {active ? (
+          <Card className="p-5 border-l-4 !border-l-violet-500">
+            <div className="flex justify-between items-start"><div><p className="font-extrabold">Loan {active.id}</p><p className="text-sm text-slate-500">Applied {fmtDateTime(active.createdAt)}</p></div><Badge tone="green">Active</Badge></div>
+            <div className="h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 mt-4 overflow-hidden"><div className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full" style={{ width: Math.min(100, active.paid / active.totalPayable * 100) + '%' }} /></div>
+            <p className="text-xs text-slate-500 mt-2">{Math.round(active.paid / active.totalPayable * 100)}% repaid</p>
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm mt-4">
+              <div className="flex justify-between"><span className="text-slate-500">Loan amount</span><span className="font-bold">{fmtMoney(active.amount)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Duration</span><span className="font-bold">{active.months} months</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Interest rate</span><span className="font-bold">{active.ratePct}% / year</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Monthly EMI</span><span className="font-bold text-violet-600">{fmtMoney(active.emi)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Total payable</span><span className="font-bold">{fmtMoney(active.totalPayable)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Paid so far</span><span className="font-bold text-emerald-600">{fmtMoney(active.paid)}</span></div>
+              <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Remaining</span><span className="font-extrabold text-rose-500">{fmtMoney(outstanding)}</span></div>
+            </div>
+            <Btn className="w-full mt-4" onClick={() => setView('repay')}>Go to Repayment</Btn>
+          </Card>
+        ) : <Card><Empty title="No active loan" body="When a loan application is approved and disbursed, it will appear here." /></Card>}
+      </>)}
+      {view === 'repay' && (<>
+        {sectionHead('Repayment', 'Pay your monthly EMI or any extra amount toward your loan.')}
+        {active ? (<>
+          <Card className="p-5 space-y-4">
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
+              <div className="flex justify-between"><span className="text-slate-500">Loan</span><span className="font-bold">{active.id}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Monthly EMI</span><span className="font-bold">{fmtMoney(active.emi)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Outstanding</span><span className="font-extrabold text-rose-500">{fmtMoney(outstanding)}</span></div>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1"><Input label="Repay amount" type="number" placeholder="e.g. 50" value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} /></div>
+              <Btn className="self-end !py-3" onClick={() => { const err = repayLoan(active, Math.round(toBDT(Number(repayAmt[active.id]) || 0))); if (err) toast({ kind: 'error', title: err }); else { toast({ kind: 'success', title: 'Repayment recorded' }); setRepayAmt(r => ({ ...r, [active.id]: '' })) } }}>Repay</Btn>
+            </div>
+            <button onClick={() => setRepayAmt(r => ({ ...r, [active.id]: String(Math.round(fromBDT(active.emi) * 100) / 100) }))} className="text-xs font-bold text-violet-600">Use EMI amount ({fmtMoney(active.emi)})</button>
+          </Card>
+          <h3 className="font-extrabold mt-6 mb-3">Repayment history</h3>
+          {repayTxs.length === 0 ? <Card><Empty title="No repayments yet" /></Card> : (
+            <div className="space-y-2">{repayTxs.map(x => (
+              <Card key={x.id} className="p-4 flex items-center gap-3"><div className="flex-1"><p className="font-bold">{x.title}</p><p className="text-xs text-slate-400">{x.id} · {fmtDateTime(x.createdAt)}</p></div><span className="font-extrabold text-rose-500">−{fmtMoney(x.amount)}</span></Card>
+            ))}</div>
+          )}
+        </>) : <Card><Empty title="Nothing to repay" body="You have no active loan right now." /></Card>}
+      </>)}
+      {view === 'close' && (<>
+        {sectionHead('Close Loan', 'Settle your full outstanding in one payment and close the loan early.')}
+        {closeDone ? (
+          <Card className="p-5 text-center">
+            <CheckCircle2 size={52} className="mx-auto text-emerald-500" />
+            <p className="font-extrabold text-lg mt-3">Loan closed</p>
+            <p className="text-sm text-slate-500 mt-1">Your loan is fully repaid and closed. You can now request your No Objection Certificate (NOC).</p>
+            <Btn className="w-full mt-4" onClick={() => setView('noc')}>Request NOC</Btn>
+          </Card>
+        ) : active ? (
+          <Card className="p-5 space-y-4">
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
+              <div className="flex justify-between"><span className="text-slate-500">Loan</span><span className="font-bold">{active.id}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Total payable</span><span className="font-bold">{fmtMoney(active.totalPayable)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Paid so far</span><span className="font-bold text-emerald-600">{fmtMoney(active.paid)}</span></div>
+              <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Payoff amount today</span><span className="font-extrabold text-rose-500">{fmtMoney(outstanding)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Early-closure fee</span><span className="font-bold">৳0</span></div>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">Closing pays the entire remaining balance from your wallet at once. The loan is marked repaid immediately — no more EMIs.</p>
+            <Btn variant="danger" className="w-full py-3.5" onClick={() => { if (!closeArm) { setCloseArm(true); setTimeout(() => setCloseArm(false), 4000); return } const err = repayLoan(active, outstanding); if (err) { toast({ kind: 'error', title: err }); setCloseArm(false) } else { setCloseArm(false); setCloseDone(true); toast({ kind: 'success', title: 'Loan closed', body: 'Your loan has been fully repaid.' }) } }}>{closeArm ? '⚠️ Tap again to confirm — pay ' + fmtMoney(outstanding) + ' and close' : 'Close loan — pay ' + fmtMoney(outstanding)}</Btn>
+          </Card>
+        ) : repaidLoans.length > 0 ? (
+          <Card className="p-5 text-center"><CheckCircle2 size={44} className="mx-auto text-emerald-500" /><p className="font-extrabold mt-3">Already closed</p><p className="text-sm text-slate-500 mt-1">Your loan {repaidLoans[0].id} is fully repaid. Head to Request NOC for your certificate.</p></Card>
+        ) : <Card><Empty title="No loan to close" body="You have no active or repaid loan." /></Card>}
+      </>)}
+      {view === 'noc' && (<>
+        {sectionHead('Request NOC', 'A No Objection Certificate confirms you have no dues with NovaWallet.')}
+        {repaidLoans.length === 0 ? (
+          <Card className="p-5 space-y-3">
+            <p className="text-sm text-slate-500 leading-relaxed">An NOC is issued only after a loan is <b>fully repaid</b>.{active ? ' You still have ' + fmtMoney(outstanding) + ' outstanding on loan ' + active.id + '.' : ' You have no repaid loan yet.'}</p>
+            {active && <Btn className="w-full" onClick={() => setView('close')}>Close my loan to become eligible</Btn>}
+          </Card>
+        ) : (
+          <div className="space-y-3">{repaidLoans.map(l => { const tk = db.tickets.find(x => x.userId === user.id && x.subject === 'NOC request — ' + l.id); return (
+            <Card key={l.id} className="p-5 space-y-3">
+              <div className="flex items-center gap-3"><span className="w-11 h-11 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0"><Award size={20} /></span><div><p className="font-extrabold">{l.id}</p><p className="text-xs text-slate-500">{fmtMoney(l.amount)} · fully repaid ({fmtMoney(l.totalPayable)} paid)</p></div></div>
+              {tk ? (
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm">{tk.status === 'resolved' ? <><b className="text-emerald-600">✓ NOC issued</b><p className="text-slate-500 mt-1">Our team sent your certificate in the support chat “{tk.subject}” — open Profile → Help & Support to view it.</p></> : <><b className="text-amber-500">Requested — {tk.status}</b><p className="text-slate-500 mt-1">Our team is preparing your certificate. You will be notified when it is ready.</p></>}</div>
+              ) : (
+                <Btn className="w-full" onClick={() => { addTicket('NOC request — ' + l.id, 'Hello, I have fully repaid my loan ' + l.id + ' (' + fmtMoney(l.amount) + ', total paid ' + fmtMoney(l.totalPayable) + '). Please issue my No Objection Certificate (NOC).'); toast({ kind: 'success', title: 'NOC requested', body: 'Our team will prepare your certificate and reply in Support.' }) }}>Request NOC for {l.id}</Btn>
+              )}
+            </Card>)})}
           </div>
-        </Card>
-      )}
+        )}
+      </>)}
+      {view === 'apply' && (<>
+      {sectionHead('Apply Loan', 'A step-by-step application — eligibility, documents, verification, approval.')}
       <Card className="p-5">
-        <h3 className="font-extrabold mb-4">Apply for a loan</h3>
+        <h3 className="font-extrabold mb-4">Loan application</h3>
         {submittedApp ? (
           <div className="text-center py-2 anim-fade-up">
             <CheckCircle2 size={56} className="mx-auto text-emerald-500" />
@@ -317,7 +427,10 @@ export function LoanPage() {
           </>
         )}
       </Card>
-      <h3 className="font-extrabold mt-6 mb-3">My applications & repayment history</h3>
+      </>)}
+      {view === 'history' && (<>
+      {sectionHead('Loan History', 'Every application and loan in one place — including processing-fee payments.')}
+      <h3 className="font-extrabold mt-2 mb-3">All applications & loans</h3>
       {myLoans.length === 0 ? <Card><Empty title="No loans yet" /></Card> : (
         <div className="space-y-2">{myLoans.map(l => (
           <Card key={l.id} className="p-4 flex items-center gap-3">
@@ -326,6 +439,7 @@ export function LoanPage() {
           </Card>
         ))}</div>
       )}
+      </>)}
     </div>
   )
 }
