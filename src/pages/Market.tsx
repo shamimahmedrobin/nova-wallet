@@ -6,16 +6,16 @@ import { useApp } from '../lib/store'
 import { COIN_META, useMarket, type Coin } from '../lib/market'
 import { Badge, Btn, Card, Input, Modal, SkeletonRows , MaxBtn } from '../components/ui'
 import { fmtBDT, fmtPrice, fmtUSDT } from '../lib/utils'
-import { PageHead } from './Services'
+import { PageHead, ResultModal, SuccessModal } from './Services'
 
 export default function Market() {
-  const { user, db, walletOf, buyCrypto, sellCrypto, toggleWatch, toast, t } = useApp()
+  const { user, db, walletOf, buyCrypto, sellCrypto, toggleWatch, t } = useApp()
   const { coins, loading, isLive } = useMarket()
   const [params] = useSearchParams()
   const [q, setQ] = useState(''); const [onlyWatch, setOnlyWatch] = useState(false)
   const [selected, setSelected] = useState<Coin | null>(null)
   const [mode, setMode] = useState<'buy' | 'sell'>(params.get('mode') === 'sell' ? 'sell' : 'buy')
-  const [amount, setAmount] = useState(''); const [coinAmt, setCoinAmt] = useState(''); const [usdtVal, setUsdtVal] = useState('')
+  const [amount, setAmount] = useState(''); const [coinAmt, setCoinAmt] = useState(''); const [usdtVal, setUsdtVal] = useState(''); const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null); const [errMsg, setErrMsg] = useState('')
   const watch = db.watchlist[user?.id ?? ''] ?? []
   const w = user ? walletOf(user.id) : null
   const spendableUSDT = (w?.holdings.USDT ?? 0) + (w?.available ?? 0) / db.settings.bdtPerUsd
@@ -29,14 +29,17 @@ export default function Market() {
   const trade = () => {
     if (!selected) return
     const live = coins.find(c => c.symbol === selected.symbol) ?? selected
+    const sym = selected.symbol
     if (mode === 'buy') {
-      const err = buyCrypto(selected.symbol, Number(amount), live.priceUsd)
-      if (err) return toast({ kind: 'error', title: err })
-      toast({ kind: 'success', title: 'Bought ' + selected.symbol, body: 'Executable price confirmed at trade time: ' + fmtUSDT(live.priceUsd) })
+      const got = buyPreview
+      const err = buyCrypto(sym, Number(amount), live.priceUsd)
+      if (err) return setErrMsg(err)
+      setOkModal({ title: 'Bought ' + sym + ' ✓', rows: [['Paid', sym === 'USDT' ? fmtBDT(Number(amount)) : fmtUSDT(Number(amount))], ['You received', got.toFixed(sym === 'USDT' ? 2 : 6) + ' ' + sym], ['Price', fmtPrice(live.priceUsd)], ['Status', 'Completed']] })
     } else {
-      const err = sellCrypto(selected.symbol, Number(amount), live.priceUsd)
-      if (err) return toast({ kind: 'error', title: err })
-      toast({ kind: 'success', title: 'Sold ' + selected.symbol })
+      const got = sellPreview
+      const err = sellCrypto(sym, Number(amount), live.priceUsd)
+      if (err) return setErrMsg(err)
+      setOkModal({ title: 'Sold ' + sym + ' ✓', rows: [['You sold', Number(amount) + ' ' + sym], ['You received', sym === 'USDT' ? fmtBDT(Math.round(got * db.settings.bdtPerUsd)) : fmtUSDT(got)], ['Price', fmtPrice(live.priceUsd)], ['Status', 'Completed']] })
     }
     setSelected(null)
   }
@@ -134,6 +137,8 @@ export default function Market() {
           </div>
         )}
       </Modal>
+      <SuccessModal open={!!okModal} onClose={() => setOkModal(null)} title={okModal?.title ?? ''} rows={okModal?.rows ?? []} />
+      <ResultModal open={!!errMsg} onClose={() => setErrMsg('')} kind="error" title="Trade failed" body={errMsg} />
     </div>
   )
 }

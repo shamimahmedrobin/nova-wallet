@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Copy, Download, Share2, Upload } from 'lucide-react'
+import { CheckCircle2, Copy, Download, Share2, Upload, XCircle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, CheckLine, CopyBtn, Empty, Input, Modal, PinField, Select, StepBar, WizardNav, statusTone , MaxBtn } from '../components/ui'
@@ -20,6 +20,24 @@ function SuccessModal({ open, onClose, title, rows }: any) {
         {(rows ?? []).map(([k, v]: any) => <div key={k} className="flex justify-between text-sm"><span className="text-slate-500">{k}</span><span className="font-bold text-right">{v}</span></div>)}
       </div>
       <Btn className="w-full mt-4" onClick={onClose}>Done</Btn>
+    </Modal>
+  )
+}
+
+/** Result modal for submit outcomes — success (green check) or failure (red cross,
+ * stays until dismissed so the user always knows whether it worked). */
+function ResultModal({ open, onClose, kind, title, body, rows }: any) {
+  return (
+    <Modal open={open} onClose={onClose} title={kind === 'error' ? 'Something went wrong' : title}>
+      <div className="text-center py-2">{kind === 'error' ? <XCircle size={56} className="mx-auto text-rose-500" /> : <CheckCircle2 size={56} className="mx-auto text-emerald-500" />}</div>
+      {kind === 'error' && <p className="text-center font-extrabold text-lg -mt-1">{title}</p>}
+      {body && <p className="text-center text-sm text-slate-500 mt-1.5 leading-relaxed">{body}</p>}
+      {(rows ?? []).length > 0 && (
+        <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-2 mt-3">
+          {(rows ?? []).map(([k, v]: any) => <div key={k} className="flex justify-between text-sm"><span className="text-slate-500">{k}</span><span className="font-bold text-right">{v}</span></div>)}
+        </div>
+      )}
+      <Btn className="w-full mt-4" variant={kind === 'error' ? 'danger' : 'primary'} onClick={onClose}>{kind === 'error' ? 'Try again' : 'Done'}</Btn>
     </Modal>
   )
 }
@@ -157,7 +175,7 @@ export function AddMoney() {
 export function CashOut() {
   const { requestWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
   const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(''); const [pin, setPin] = useState(''); const [network, setNetwork] = useState('')
-  const [done, setDone] = useState(false); const [cstep, setCstep] = useState(0)
+  const [done, setDone] = useState(false); const [cstep, setCstep] = useState(0); const [errMsg, setErrMsg] = useState('')
   const outMethods = withdrawMethods(currency)
   const activeOut = outMethods.includes(method) ? method : outMethods[0]
   const isCrypto = activeOut === 'Crypto Wallet'
@@ -175,7 +193,7 @@ export function CashOut() {
     if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum cash out is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
     const err = requestWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim(), pin })
-    if (err) return toast({ kind: 'error', title: err })
+    if (err) return setErrMsg(err)
     setDone(true); setAmount(''); setPin(''); setCstep(0)
     toast({ kind: 'success', title: 'Cash out requested', body: 'Amount locked until processed.' })
   }
@@ -242,6 +260,7 @@ export function CashOut() {
       )}
       <SuccessModal open={done} onClose={() => setDone(false)} title="Cash out pending"
         rows={[['Status', 'Pending → Processing → Completed'], ['Track it', 'Withdrawal history above & Transactions']]} />
+      <ResultModal open={!!errMsg} onClose={() => setErrMsg('')} kind="error" title="Cash out failed" body={errMsg} />
     </div>
   )
 }
@@ -251,7 +270,7 @@ export function SendMoney() {
   const navigate = useNavigate()
   const [q, setQ] = useState(''); const [to, setTo] = useState<User | null>(null)
   const [sstep, setSstep] = useState(0)
-  const [amount, setAmount] = useState(''); const [note, setNote] = useState(''); const [pin, setPin] = useState(''); const [receipt, setReceipt] = useState<any>(null)
+  const [amount, setAmount] = useState(''); const [note, setNote] = useState(''); const [pin, setPin] = useState(''); const [receipt, setReceipt] = useState<any>(null); const [errMsg, setErrMsg] = useState('')
   const results = useMemo(() => {
     if (!q.trim()) return []
     const s = q.trim().toLowerCase()
@@ -267,7 +286,7 @@ export function SendMoney() {
     if (!to) return toast({ kind: 'error', title: 'Select a recipient first' })
     if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Minimum send amount is ' + fmtMoney(10) })
     const r = sendMoney({ toUserId: to.id, amount: amtBDT, note: note || undefined, pin })
-    if (typeof r === 'string') return toast({ kind: 'error', title: r })
+    if (typeof r === 'string') return setErrMsg(r)
     setReceipt(r); setPin('')
   }
   return (
@@ -348,6 +367,7 @@ export function SendMoney() {
       </Card>
       <SuccessModal open={!!receipt} onClose={() => { setReceipt(null); navigate('/transactions') }} title="Transfer successful 🎉"
         rows={receipt ? [['Transaction ID', receipt.id], ['To', receipt.counterparty], ['Amount', fmtMoney(receipt.amount)], ['Fee', fmtMoney(receipt.fee)], ['Status', 'Completed']] : []} />
+      <ResultModal open={!!errMsg} onClose={() => setErrMsg('')} kind="error" title="Transfer failed" body={errMsg} />
     </div>
   )
 }
@@ -392,4 +412,4 @@ export function ReceiveMoney() {
     </div>
   )
 }
-export { PageHead, SuccessModal }
+export { PageHead, SuccessModal, ResultModal }

@@ -8,7 +8,7 @@ import { ADS_PER_DAY, EARN_TASKS, SCRATCH_PER_DAY, SPINS_PER_DAY } from '../lib/
 import { COIN_META, useMarket } from '../lib/market'
 import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select, TxDirIcon , StepBar, WizardNav } from '../components/ui'
 import { fmtBDT, fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
-import { PageHead, SuccessModal } from './Services'
+import { PageHead, ResultModal, SuccessModal } from './Services'
 
 export function Level2GateModal({ open, onClose, feature }: { open: boolean; onClose: () => void; feature: string }) {
   const navigate = useNavigate()
@@ -35,7 +35,7 @@ export function DirectWithdraw() {
   const [gate, setGate] = useState(false)
   const [dwStep, setDwStep] = useState(0)
   const [done, setDone] = useState(false)
-  const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null)
+  const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null); const [errMsg, setErrMsg] = useState('')
   const amt = Number(amount) || 0
   const amtBDT = Math.round(toBDT(amt))
   const disc = db.levels.find(l => l.level === user?.level)?.feeDiscountPct ?? 0
@@ -52,7 +52,7 @@ export function DirectWithdraw() {
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
     if (user && user.level < 2) return setGate(true)
     const err = directWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim() })
-    if (err) return toast({ kind: 'error', title: err })
+    if (err) return setErrMsg(err)
     setLastTx({ amount: amtBDT, method: fullMethod }); setDone(true); setAmount(''); setDwStep(0)
     toast({ kind: 'success', title: 'Withdrawal completed', body: 'Money sent instantly — no admin review needed.' })
   }
@@ -109,6 +109,7 @@ export function DirectWithdraw() {
       <Level2GateModal open={gate} onClose={() => setGate(false)} feature="Direct Withdraw" />
       <SuccessModal open={done} onClose={() => setDone(false)} title="Withdrawal completed ⚡"
         rows={lastTx ? [['Amount', fmtMoney(lastTx.amount)], ['Method', lastTx.method], ['Speed', 'Instant'], ['Status', 'Completed']] : []} />
+      <ResultModal open={!!errMsg} onClose={() => setErrMsg('')} kind="error" title="Withdrawal failed" body={errMsg} />
     </div>
   )
 }
@@ -122,7 +123,7 @@ const PLANS = [
 export function EarnPage() {
   const { user, db, walletOf, stake, unstake, toast, earnInfo, addTicket, replyTicket } = useApp()
   const [amount, setAmount] = useState(''); const [plan, setPlan] = useState(1)
-  const [relReq, setRelReq] = useState<any>(null); const [relMsg, setRelMsg] = useState('')
+  const [relReq, setRelReq] = useState<any>(null); const [relMsg, setRelMsg] = useState(''); const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null); const [errMsg, setErrMsg] = useState('')
   if (!user) return null
   const einfo = earnInfo()
   const usd = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
@@ -161,8 +162,8 @@ export function EarnPage() {
   const submit = () => {
     if (!amt || amt < 1) return toast({ kind: 'error', title: 'Minimum stake is $1.00' })
     const err = stake(amtBDT, PLANS[plan].apy, PLANS[plan].days)
-    if (err) return toast({ kind: 'error', title: err })
-    setAmount(''); toast({ kind: 'success', title: 'Staked successfully', body: 'Your money is now earning ' + PLANS[plan].apy + '% APY.' })
+    if (err) return setErrMsg(err)
+    setAmount(''); setOkModal({ title: 'Staked successfully ✓', rows: [['Amount', fmtUSDT(amt)], ['Plan', PLANS[plan].label + ' · ' + PLANS[plan].apy + '% APY'], ['Status', 'Active — earning daily']] })
   }
   return (
     <div>
@@ -215,11 +216,13 @@ export function EarnPage() {
                       <span className="text-[11px] font-semibold text-slate-400">{Math.ceil((unlockAt(s) - Date.now()) / 86_400_000)} days left</span>
                       <Btn variant="outline" className="!py-2 !text-xs" onClick={() => openRelease(s)}>Request early release</Btn>
                     </div>
-                  : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const e = unstake(s.id); if (e) toast({ kind: 'error', title: e }); else toast({ kind: 'success', title: 'Unstaked', body: 'Principal + interest returned to your available balance.' }) }}>Unstake</Btn>}
+                  : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { const back = s.amount + accrued(s); const e = unstake(s.id); if (e) setErrMsg(e); else setOkModal({ title: 'Unstaked ✓', rows: [['Returned to balance', usd(back)], ['Principal', usd(s.amount)], ['Interest earned', usd(accrued(s))], ['Status', 'Completed']] }) }}>Unstake</Btn>}
             </div>
           </Card>
         ))}</div>
       )}
+      <SuccessModal open={!!okModal} onClose={() => setOkModal(null)} title={okModal?.title ?? ''} rows={okModal?.rows ?? []} />
+      <ResultModal open={!!errMsg} onClose={() => setErrMsg('')} kind="error" title="That didn't work" body={errMsg} />
       <Modal open={!!relReq} onClose={() => setRelReq(null)} title="Request early release">
         {relReq && (
           <div className="space-y-4">
@@ -241,7 +244,7 @@ export function EarnPage() {
 export function SwapPage() {
   const { user, db, walletOf, swap, toast } = useApp()
   const { coins } = useMarket()
-  const [from, setFrom] = useState('USDT'); const [to, setTo] = useState('BTC'); const [amount, setAmount] = useState(''); const [receiveAmt, setReceiveAmt] = useState('')
+  const [from, setFrom] = useState('USDT'); const [to, setTo] = useState('BTC'); const [amount, setAmount] = useState(''); const [receiveAmt, setReceiveAmt] = useState(''); const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null); const [errMsg, setErrMsg] = useState('')
   if (!user) return null
   const w = walletOf(user.id)
   const prices = useMemo(() => Object.fromEntries(coins.map(c => [c.symbol, c.priceUsd])), [coins])
@@ -259,8 +262,9 @@ export function SwapPage() {
   const submit = () => {
     if (!amt) return toast({ kind: 'error', title: 'Enter an amount' })
     const err = swap(from, to, amt, prices)
-    if (err) return toast({ kind: 'error', title: err })
-    setAmount(''); setReceiveAmt(''); toast({ kind: 'success', title: 'Swap completed', body: 'Your balance has been updated.' })
+    if (err) return setErrMsg(err)
+    setOkModal({ title: 'Swap completed ✓', rows: [['You swapped', fmtAmt(from, amt)], ['You receive (approx.)', fmtAmt(to, Number(receiveAmt) || 0)], ['Swap fee (0.5%)', fmtUSDT(usdGross * 0.005)], ['Status', 'Completed']] })
+    setAmount(''); setReceiveAmt('')
   }
   return (
     <div>
@@ -293,6 +297,8 @@ export function SwapPage() {
         </div>
         <Btn className="w-full py-3.5" onClick={submit}>Swap now</Btn>
       </Card>
+      <SuccessModal open={!!okModal} onClose={() => setOkModal(null)} title={okModal?.title ?? ''} rows={okModal?.rows ?? []} />
+      <ResultModal open={!!errMsg} onClose={() => setErrMsg('')} kind="error" title="Swap failed" body={errMsg} />
     </div>
   )
 }

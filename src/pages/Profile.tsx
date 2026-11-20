@@ -7,6 +7,7 @@ import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalR
 import { depositMethods, CRYPTO_NETWORK_LABELS, payMethodTitle, payMethodValue } from '../lib/localPayments'
 import { fileToScaledDataUrl, fmtUSDT, fmtDateTime } from '../lib/utils'
 import { LANGUAGES } from '../lib/i18n'
+import { SuccessModal } from './Services'
 import { CURRENCIES, PINNED, currencyName } from '../lib/currencies'
 
 // Support contact channels (placeholder handles — replace with the real ones any time)
@@ -22,7 +23,7 @@ export default function Profile() {
   const navigate = useNavigate()
   const location = useLocation()
   const confirm = useConfirm()
-  const [modal, setModal] = useState<string | null>(null)
+  const [modal, setModal] = useState<string | null>(null); const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null)
 
   useEffect(() => {
     if ((location.state as any)?.openLevels) { setModal('levels'); navigate(location.pathname, { replace: true, state: null }) }
@@ -198,6 +199,7 @@ export default function Profile() {
         className="w-full mt-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 font-bold py-4 flex items-center justify-center gap-2"><LogOut size={18} /> {t('sign_out')}</button>
       {confirm.el}
 
+      <SuccessModal open={!!okModal} onClose={() => setOkModal(null)} title={okModal?.title ?? ''} rows={okModal?.rows ?? []} />
       <Modal open={modal === 'levels'} onClose={() => setModal(null)} title={t('account_levels')}>
         <ModalDesc>Higher levels unlock bigger daily and loan limits with lower fees. Upgrades are reviewed by an admin — never automatic.</ModalDesc>
         <div className="space-y-2.5">
@@ -231,7 +233,7 @@ export default function Profile() {
                     <Btn variant="outline" className="w-full mt-2.5" onClick={() => setModal('kyc')}>{t('kyc_do_now')}</Btn>
                   </div>
                 )}
-                {isNext && !(l.level === 2 && user.kyc === 'unverified') && <Btn className="w-full mt-3" disabled={pending || depShort} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); toast({ kind: 'success', title: 'Upgrade requested', body: 'An admin will review your request.' }) } }}>{pending ? 'Request pending…' : depShort ? 'Deposit required first' : 'Request upgrade to Level ' + l.level}</Btn>}
+                {isNext && !(l.level === 2 && user.kyc === 'unverified') && <Btn className="w-full mt-3" disabled={pending || depShort} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setOkModal({ title: 'Upgrade requested ✓', rows: [['Target', 'Level ' + l.level], ['Status', 'Pending review'], ['Note', 'An admin will review your request.']] }) } }}>{pending ? 'Request pending…' : depShort ? 'Deposit required first' : 'Request upgrade to Level ' + l.level}</Btn>}
               </div>
             )
           })}
@@ -449,7 +451,7 @@ export default function Profile() {
                 </ModalRow>
                 <div className="flex gap-2">
                   <Btn variant="ghost" className="flex-1 py-3.5" onClick={() => setKycStep(2)}>{t('kyc_back')}</Btn>
-                  <Btn className="flex-1 py-3.5" onClick={() => { submitKyc({ docType: kycDocType, docNumber: kycDocNumber.trim(), docPhoto: kycDocPhoto, facePhoto: kycFacePhoto }); setModal(null); toast({ kind: 'success', title: 'KYC submitted', body: 'Your documents are now pending admin approval.' }) }}>{t('kyc_submit_approval')}</Btn>
+                  <Btn className="flex-1 py-3.5" onClick={() => { submitKyc({ docType: kycDocType, docNumber: kycDocNumber.trim(), docPhoto: kycDocPhoto, facePhoto: kycFacePhoto }); setModal(null); setOkModal({ title: 'KYC submitted ✓', rows: [['Document', kycDocType], ['Status', 'Pending review'], ['Note', 'You will be notified when an admin approves it.']] }) }}>{t('kyc_submit_approval')}</Btn>
                 </div>
               </div>
             )}

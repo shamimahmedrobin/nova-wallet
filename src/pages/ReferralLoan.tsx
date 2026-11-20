@@ -4,7 +4,7 @@ import { useApp } from '../lib/store'
 import { Avatar, Badge, Btn, Card, CheckLine, Empty, Input, Modal, ModalDesc, ModalRow, PinField, Select, StepBar, WizardNav } from '../components/ui'
 import { emiCalc, fmtDate, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
 import { depositMethods, payMethodTitle, payMethodValue } from '../lib/localPayments'
-import { PageHead } from './Services'
+import { PageHead, ResultModal, SuccessModal } from './Services'
 
 export function Referral() {
   const { user, db, toast, t, fmtMoney } = useApp()
@@ -81,7 +81,7 @@ export function LoanPage() {
   const [gName, setGName] = useState(''); const [gPhone, setGPhone] = useState('')
   const [feePay, setFeePay] = useState<string | null>(null); const [feeMethod, setFeeMethod] = useState(''); const [feeRef, setFeeRef] = useState('')
   const [wstep, setWstep] = useState(0); const [ack, setAck] = useState(false); const [submittedApp, setSubmittedApp] = useState(false)
-  const [view, setView] = useState<'hub' | 'apply' | 'active' | 'repay' | 'close' | 'noc' | 'history'>('hub'); const [closeDone, setCloseDone] = useState(false); const [closeArm, setCloseArm] = useState(false); const [txPin, setTxPin] = useState('')
+  const [view, setView] = useState<'hub' | 'apply' | 'active' | 'repay' | 'close' | 'noc' | 'history'>('hub'); const [closeDone, setCloseDone] = useState(false); const [closeArm, setCloseArm] = useState(false); const [txPin, setTxPin] = useState(''); const [okModal, setOkModal] = useState<{ title: string; rows: [string, string][] } | null>(null); const [errMsg, setErrMsg] = useState('')
   if (!user) return null
   const s = db.settings
   const effLoanLimit = user?.loanLimitOverride ?? db.levels.find(l => l.level === user?.level)?.loanLimit ?? s.loanLimit
@@ -129,12 +129,12 @@ export function LoanPage() {
     return true
   }
   const submit = () => {
-    const pinErr = verifyTxPin(txPin); if (pinErr) return toast({ kind: 'error', title: pinErr })
+    const pinErr = verifyTxPin(txPin); if (pinErr) return setErrMsg(pinErr)
     if (!validateDocs()) return
     if (amtBDT < s.minLoan || amtBDT > s.maxLoan) return toast({ kind: 'error', title: `Loan amount must be between ${fmtMoney(s.minLoan)} and ${fmtMoney(s.maxLoan)}` })
     if (amtBDT > effLoanLimit) return toast({ kind: 'error', title: user.loanLimitOverride ? `Your personal loan limit is ${fmtMoney(effLoanLimit)}.` : `Your Level ${user.level} loan limit is ${fmtMoney(effLoanLimit)} — upgrade your level for a higher limit.` })
     applyLoan(amtBDT, mo, { applicantName: appName.trim(), phone: code + ' ' + phoneNum.trim(), whatsapp: whatsapp.trim(), nid: nid.trim(), photo, guarantorName: gName.trim(), guarantorPhone: gPhone.trim(), idType, idPhoto })
-    setSubmittedApp(true); setTxPin(''); toast({ kind: 'success', title: 'Application submitted for approval', body: 'An admin will review your information. Loans are never auto-approved.' })
+    setSubmittedApp(true); setTxPin(''); setOkModal({ title: 'Application submitted 🎉', rows: [['Amount', fmtMoney(amtBDT)], ['Duration', mo + ' months'], ['Monthly EMI', fmtMoney(calc.emi)], ['Status', 'Pending approval'], ['Note', 'Loans are never auto-approved — an admin reviews every application.']] })
   }
   // --- wizard derived state ---
   const eligAmountOk = amtBDT >= s.minLoan && amtBDT <= s.maxLoan
@@ -147,6 +147,8 @@ export function LoanPage() {
   return (
     <div>
       {view === 'hub' && <PageHead title={t('loan_title')} sub={t('loan_sub')} />}
+      <SuccessModal open={!!okModal} onClose={() => setOkModal(null)} title={okModal?.title ?? ''} rows={okModal?.rows ?? []} />
+      <ResultModal open={!!errMsg} onClose={() => setErrMsg('')} kind="error" title="That didn't work" body={errMsg} />
       <Modal open={!!feePay} onClose={() => setFeePay(null)} title="Pay processing fee">
         {(() => {
           const loan = db.loans.find(l => l.id === feePay); if (!loan) return null
@@ -170,7 +172,7 @@ export function LoanPage() {
                 </div>
               )}
               <div className="mt-4"><Input label="Your TrxID / sender number" value={feeRef} onChange={e => setFeeRef(e.target.value)} /></div>
-              <Btn className="w-full py-3.5 mt-4" onClick={() => { if (!feeRef.trim()) return toast({ kind: 'error', title: 'Enter the TrxID or sender number' }); submitLoanFee(loan.id, sel ? payMethodTitle(sel) : '', feeRef.trim()); setFeePay(null); toast({ kind: 'success', title: 'Payment submitted', body: 'The admin will confirm your payment shortly.' }) }}>Submit payment</Btn>
+              <Btn className="w-full py-3.5 mt-4" onClick={() => { if (!feeRef.trim()) return toast({ kind: 'error', title: 'Enter the TrxID or sender number' }); submitLoanFee(loan.id, sel ? payMethodTitle(sel) : '', feeRef.trim()); setFeePay(null); setOkModal({ title: 'Processing fee submitted ✓', rows: [['Loan', loan.id], ['Fee', fmtMoney(loan.processingFee ?? 0)], ['Status', 'Pending verification'], ['Note', 'The admin will confirm your payment shortly.']] }) }}>Submit payment</Btn>
             </div>
           )
         })()}
@@ -257,7 +259,7 @@ export function LoanPage() {
             <PinField pin={txPin} setPin={setTxPin} />
             <div className="flex gap-2">
               <div className="flex-1"><Input label="Repay amount" type="number" placeholder="e.g. 50" value={repayAmt[active.id] ?? ''} onChange={e => setRepayAmt(r => ({ ...r, [active.id]: e.target.value }))} /></div>
-              <Btn className="self-end !py-3" onClick={() => { const pinErr = verifyTxPin(txPin); if (pinErr) return toast({ kind: 'error', title: pinErr }); const err = repayLoan(active, Math.round(toBDT(Number(repayAmt[active.id]) || 0))); if (err) toast({ kind: 'error', title: err }); else { toast({ kind: 'success', title: 'Repayment recorded' }); setRepayAmt(r => ({ ...r, [active.id]: '' })); setTxPin('') } }}>Repay</Btn>
+              <Btn className="self-end !py-3" onClick={() => { const pinErr = verifyTxPin(txPin); if (pinErr) return setErrMsg(pinErr); const payAmt = Math.round(toBDT(Number(repayAmt[active.id]) || 0)); const err = repayLoan(active, payAmt); if (err) setErrMsg(err); else { setOkModal({ title: 'Repayment successful ✓', rows: [['Loan', active.id], ['You paid', fmtMoney(payAmt)], ['Remaining after this', fmtMoney(Math.max(outstanding - payAmt, 0))], ['Status', outstanding - payAmt <= 0 ? 'Fully repaid 🎉' : 'Active']] }); setRepayAmt(r => ({ ...r, [active.id]: '' })); setTxPin('') } }}>Repay</Btn>
             </div>
             <button onClick={() => setRepayAmt(r => ({ ...r, [active.id]: String(Math.round(fromBDT(active.emi) * 100) / 100) }))} className="text-xs font-bold text-violet-600">Use EMI amount ({fmtMoney(active.emi)})</button>
           </Card>
@@ -289,7 +291,7 @@ export function LoanPage() {
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">Closing pays the entire remaining balance from your wallet at once. The loan is marked repaid immediately — no more EMIs.</p>
             <PinField pin={txPin} setPin={setTxPin} />
-            <Btn variant="danger" className="w-full py-3.5" onClick={() => { if (!closeArm) { setCloseArm(true); setTimeout(() => setCloseArm(false), 4000); return } const pinErr = verifyTxPin(txPin); if (pinErr) { toast({ kind: 'error', title: pinErr }); setCloseArm(false); return } const err = repayLoan(active, outstanding); if (err) { toast({ kind: 'error', title: err }); setCloseArm(false) } else { setCloseArm(false); setCloseDone(true); setTxPin(''); toast({ kind: 'success', title: 'Loan closed', body: 'Your loan has been fully repaid.' }) } }}>{closeArm ? '⚠️ Tap again to confirm — pay ' + fmtMoney(outstanding) + ' and close' : 'Close loan — pay ' + fmtMoney(outstanding)}</Btn>
+            <Btn variant="danger" className="w-full py-3.5" onClick={() => { if (!closeArm) { setCloseArm(true); setTimeout(() => setCloseArm(false), 4000); return } const pinErr = verifyTxPin(txPin); if (pinErr) { setErrMsg(pinErr); setCloseArm(false); return } const err = repayLoan(active, outstanding); if (err) { toast({ kind: 'error', title: err }); setCloseArm(false) } else { setCloseArm(false); setCloseDone(true); setTxPin(''); setOkModal({ title: 'Loan closed 🎉', rows: [['Loan', active.id], ['Paid off', fmtMoney(outstanding)], ['Status', 'Closed'], ['Next step', 'Request your NOC from the Loan hub']] }); toast({ kind: 'success', title: 'Loan closed', body: 'Your loan has been fully repaid.' }) } }}>{closeArm ? '⚠️ Tap again to confirm — pay ' + fmtMoney(outstanding) + ' and close' : 'Close loan — pay ' + fmtMoney(outstanding)}</Btn>
           </Card>
         ) : repaidLoans.length > 0 ? (
           <Card className="p-5 text-center"><CheckCircle2 size={44} className="mx-auto text-emerald-500" /><p className="font-extrabold mt-3">Already closed</p><p className="text-sm text-slate-500 mt-1">Your loan {repaidLoans[0].id} is fully repaid. Head to Request NOC for your certificate.</p></Card>
@@ -311,7 +313,7 @@ export function LoanPage() {
               ) : (
                 <>
                 <PinField pin={txPin} setPin={setTxPin} />
-                <Btn className="w-full" onClick={() => { const pinErr = verifyTxPin(txPin); if (pinErr) return toast({ kind: 'error', title: pinErr }); setTxPin(''); addTicket('NOC request — ' + l.id, 'Hello, I have fully repaid my loan ' + l.id + ' (' + fmtMoney(l.amount) + ', total paid ' + fmtMoney(l.totalPayable) + '). Please issue my No Objection Certificate (NOC).'); toast({ kind: 'success', title: 'NOC requested', body: 'Our team will prepare your certificate and reply in Support.' }) }}>Request NOC for {l.id}</Btn>
+                <Btn className="w-full" onClick={() => { const pinErr = verifyTxPin(txPin); if (pinErr) return setErrMsg(pinErr); setTxPin(''); setOkModal({ title: 'NOC requested ✓', rows: [['Loan', l.id], ['Status', 'Requested'], ['Delivery', 'Your certificate arrives in the Support chat']] }); addTicket('NOC request — ' + l.id, 'Hello, I have fully repaid my loan ' + l.id + ' (' + fmtMoney(l.amount) + ', total paid ' + fmtMoney(l.totalPayable) + '). Please issue my No Objection Certificate (NOC).'); toast({ kind: 'success', title: 'NOC requested', body: 'Our team will prepare your certificate and reply in Support.' }) }}>Request NOC for {l.id}</Btn>
                 </>
               )}
             </Card>)})}
