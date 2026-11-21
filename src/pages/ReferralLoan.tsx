@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Award, CheckCircle2, Coins, Copy, FilePlus2, HandCoins, History as HistoryIcon, Share2, Trophy, Wallet, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, CheckLine, Empty, Input, Modal, ModalDesc, ModalRow, PinField, Select, StepBar, WizardNav } from '../components/ui'
+import { Avatar, Badge, Btn, Card, CheckLine, Empty, FeatureOff, Input, Modal, ModalDesc, ModalRow, PinField, Select, StepBar, WizardNav } from '../components/ui'
 import { emiCalc, fmtDate, fmtDateTime, fmtUSDT, fileToScaledDataUrl } from '../lib/utils'
 import { depositMethods, payMethodTitle, payMethodValue } from '../lib/localPayments'
 import { PageHead, ResultModal, SuccessModal } from './Services'
@@ -315,7 +315,11 @@ export function LoanPage({ view = 'hub' }: { view?: LoanView }) {
           </div>
         )}
       </>)}
-      {view === 'apply' && (<>
+      {view === 'apply' && db.settings.features?.loans === false && (<>
+      {sectionHead('Apply Loan', 'A step-by-step application — eligibility, documents, verification, approval.')}
+      <FeatureOff label="Loan applications" />
+      </>)}
+      {view === 'apply' && db.settings.features?.loans !== false && (<>
       {sectionHead('Apply Loan', 'A step-by-step application — eligibility, documents, verification, approval.')}
       <Card className="p-5">
         <h3 className="font-extrabold mb-4">Loan application</h3>

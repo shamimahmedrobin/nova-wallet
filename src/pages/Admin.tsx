@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowLeftRight, Bell, Check, CheckCheck, Copy, CreditCard, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
@@ -21,18 +21,46 @@ const TABS = [
   { id: 'support', label: 'Support Chat', icon: MessageCircle },
   { id: 'content', label: 'News & Banners', icon: Newspaper },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
+  { id: 'reports', label: 'Reports & Export', icon: BarChart3 },
+  { id: 'health', label: 'System Health', icon: Activity },
   { id: 'payments', label: 'Payment Methods', icon: CreditCard },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ] as const
 
+/** Which tabs each admin scope may see. 'full' (the owner) sees all.
+ * The Worker enforces the same boundaries on the API itself. */
+const SCOPE_TABS: Record<string, string[]> = {
+  finance: ['overview', 'finance', 'txs', 'users', 'loans', 'referrals', 'levels', 'reports', 'audit'],
+  content: ['overview', 'users', 'support', 'content', 'audit'],
+  support: ['overview', 'users', 'support'],
+}
+
 export default function Admin() {
-  const { user, db, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead } = useApp()
+  const { user, db, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead, broadcast, setAdminScope, setAdminRole, adminErrors } = useApp()
   const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const byDateDesc = <T extends { createdAt: string }>(arr: T[]): T[] => [...arr].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   const { coins } = useMarket(30_000)
   const priceOfA = (sym: string) => sym === 'USDT' ? 1 : coins.find(c => c.symbol === sym)?.priceUsd ?? 0
   const [tab, setTab] = useState<string>('overview')
   const [menuOpen, setMenuOpen] = useState(false)
+  // RBAC: a scoped admin only sees their tabs (the server enforces too).
+  const myScope = user?.adminScope ?? 'full'
+  const visibleTabs = TABS.filter(t => myScope === 'full' || (SCOPE_TABS[myScope] ?? []).includes(t.id))
+  useEffect(() => { if (!visibleTabs.some(t => t.id === tab)) setTab('overview') }, [tab, myScope])
+  // Phase 3 UI state: feature switches, broadcast composer, global
+  // search and the System Health API probe.
+  const [feat, setFeat] = useState<any>(null)
+  useEffect(() => { if (tab === 'settings' && feat === null) setFeat({ deposits: true, withdrawals: true, trading: true, loans: true, registration: true, ...(db.settings.features ?? {}) }) }, [tab, feat, db.settings.features])
+  const [bcTitle, setBcTitle] = useState(''); const [bcBody, setBcBody] = useState(''); const [bcBusy, setBcBusy] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false); const [searchQ, setSearchQ] = useState('')
+  const [apiHealth, setApiHealth] = useState<any>(null)
+  useEffect(() => { if (tab !== 'health') return; setApiHealth(null); apiGet('/health').then(r => setApiHealth(r)).catch(() => setApiHealth({ ok: false })) }, [tab])
+  const downloadCsv = (name: string, rows: Record<string, any>[]) => {
+    if (!rows.length) return toast({ kind: 'error', title: 'Nothing to export yet' })
+    const keys = Object.keys(rows[0])
+    const csv = [keys.join(','), ...rows.map(r => keys.map(k => '"' + String(r[k] ?? '').replace(/"/g, '""') + '"').join(','))].join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = name; a.click(); URL.revokeObjectURL(a.href)
+  }
   const [notifOpen, setNotifOpen] = useState(false)
   const [userQ, setUserQ] = useState('')
   const [txQ, setTxQ] = useState(''); const [selTx, setSelTx] = useState<Tx | null>(null)
@@ -125,11 +153,46 @@ export default function Admin() {
           <h1 className="font-extrabold text-lg flex items-center gap-2"><ShieldCheck className="text-amber-500" /> Admin Panel</h1>
           <Badge tone="amber">Secure · RBAC</Badge>
           <div className="ml-auto flex gap-2">
+            <button onClick={() => setSearchOpen(true)} aria-label="Search" className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><Search size={18} /></button>
             <button onClick={() => setNotifOpen(true)} aria-label="Notifications" className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><Bell size={18} />{myUnread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{myUnread}</span>}</button>
             <Link to="/" className="hidden sm:inline-flex lg:hidden items-center rounded-2xl px-4 py-2.5 text-sm font-semibold bg-violet-600 text-white">User app</Link>
           </div>
         </div>
       </header>
+
+      <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search everything">
+        {(() => {
+          const sq = searchQ.trim().toLowerCase()
+          const sUsers = sq ? db.users.filter(u => (u.name + ' ' + u.email + ' ' + u.username + ' ' + u.id).toLowerCase().includes(sq)).slice(0, 5) : []
+          const sTxs = sq ? db.txs.filter(t => (t.id + ' ' + t.title + ' ' + (t.method ?? '') + ' ' + (t.counterparty ?? '')).toLowerCase().includes(sq)).slice(0, 5) : []
+          return (
+            <div className="space-y-4">
+              <Input placeholder="Name, email, username, transaction ID…" value={searchQ} onChange={e => setSearchQ(e.target.value)} />
+              {sq && sUsers.length === 0 && sTxs.length === 0 && <Empty title="No matches" body="Try a name, an email or a transaction ID like TXN-…" />}
+              {sUsers.length > 0 && <div>
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-slate-400 mb-2">Users</p>
+                <div className="space-y-1.5">{sUsers.map(u => (
+                  <button key={u.id} onClick={() => { setSearchOpen(false); setSearchQ(''); openUser(u) }} className="w-full flex items-center gap-3 rounded-2xl border border-slate-200/70 dark:border-slate-800 p-3 text-left hover:border-violet-300 transition">
+                    <Avatar name={u.name} photo={u.photo} />
+                    <span className="flex-1 min-w-0"><span className="block font-bold text-sm truncate">{u.name}</span><span className="block text-xs text-slate-400 truncate">{u.email} · @{u.username}</span></span>
+                    <Badge tone={u.role === 'admin' ? 'amber' : 'slate'}>{u.role === 'admin' ? 'Admin' : 'Level ' + u.level}</Badge>
+                  </button>
+                ))}</div>
+              </div>}
+              {sTxs.length > 0 && <div>
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-slate-400 mb-2">Transactions</p>
+                <div className="space-y-1.5">{sTxs.map(t => (
+                  <button key={t.id} onClick={() => { setSearchOpen(false); setSearchQ(''); setSelTx(t) }} className="w-full flex items-center gap-3 rounded-2xl border border-slate-200/70 dark:border-slate-800 p-3 text-left hover:border-violet-300 transition">
+                    <TxDirIcon dir={txDirection(t.category, t.amount)} />
+                    <span className="flex-1 min-w-0"><span className="block font-bold text-sm truncate">{t.title}</span><span className="block text-xs text-slate-400 truncate">{t.id} · {fmtDateTime(t.createdAt)}</span></span>
+                    <span className={`font-extrabold text-sm ${txAmountCls(txDirection(t.category, t.amount))}`}>{txSign(txDirection(t.category, t.amount))}{usdt(Math.abs(t.amount))}</span>
+                  </button>
+                ))}</div>
+              </div>}
+            </div>
+          )
+        })()}
+      </Modal>
 
       <Modal open={notifOpen} onClose={() => setNotifOpen(false)} title="Admin notifications">
         <div className="space-y-2">
@@ -154,7 +217,7 @@ export default function Admin() {
             <button onClick={() => setMenuOpen(false)} aria-label="Close menu" className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 lg:hidden"><X size={15} /></button>
           </div>
           <nav className="space-y-1">
-            {TABS.map(t => (
+            {visibleTabs.map(t => (
               <button key={t.id} onClick={() => { setTab(t.id); setMenuOpen(false) }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${tab === t.id ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
                 <t.icon size={18} className="shrink-0" /> <span className="flex-1 text-left">{t.label}</span>
                 {(tabBadges[t.id] ?? 0) > 0 && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{tabBadges[t.id]}</span>}
@@ -325,6 +388,15 @@ export default function Admin() {
 
         {tab === 'content' && (
           <div className="anim-fade-up space-y-6">
+            <Card className="p-5">
+              <h3 className="font-extrabold flex items-center gap-2"><Send size={17} className="text-violet-500" /> Broadcast to all users</h3>
+              <p className="text-xs text-slate-400 mt-1 mb-4">Sends a notification to every account ({db.users.length} users). It appears in their notification list on every device — use it for maintenance notices and announcements.</p>
+              <div className="space-y-3">
+                <Input label="Title" placeholder="Scheduled maintenance tonight" value={bcTitle} onChange={e => setBcTitle(e.target.value)} />
+                <Input label="Message" placeholder="The app will be unavailable from 2:00–2:30 AM. Your funds are safe." value={bcBody} onChange={e => setBcBody(e.target.value)} />
+                <Btn className="w-full" disabled={bcBusy} onClick={async () => { if (!bcTitle.trim() || !bcBody.trim()) return toast({ kind: 'error', title: 'Write a title and a message' }); setBcBusy(true); const e = await broadcast(bcTitle.trim(), bcBody.trim()); setBcBusy(false); if (e) return toast({ kind: 'error', title: e }); setBcTitle(''); setBcBody(''); toast({ kind: 'success', title: 'Broadcast sent', body: 'Every user will see it in their notifications.' }) }}>{bcBusy ? 'Sending…' : 'Send broadcast'}</Btn>
+              </div>
+            </Card>
             <section>
               <div className="flex items-center justify-between mb-3"><h3 className="font-extrabold">News</h3><Btn onClick={() => setNewsForm({ title: '', category: 'Bitcoin', excerpt: '', body: '', source: 'Nova Market Desk', featured: false, gradient: 'from-violet-500 to-purple-700', coin: 'BTC' })}>+ Publish news</Btn></div>
               {db.news.map(n => (
@@ -485,6 +557,69 @@ export default function Admin() {
           </div>
         )}
 
+        {tab === 'reports' && (() => {
+          const since30 = Date.now() - 30 * 864e5
+          const in30 = (iso: string) => new Date(iso).getTime() > since30
+          const sum = (rows: any[], f: (r: any) => number) => rows.reduce((s, r) => s + f(r), 0)
+          const depA = db.deposits.filter(d => d.status === 'approved')
+          const wdA = db.withdrawals.filter(w => w.status === 'completed')
+          const feeTotal = db.txs.filter(t => t.status === 'completed').reduce((s, t) => s + (t.fee || 0), 0)
+          const fee30 = db.txs.filter(t => t.status === 'completed' && in30(t.createdAt)).reduce((s, t) => s + (t.fee || 0), 0)
+          const stats: [string, string, string][] = [
+            ['Deposits approved (30d)', usdt(sum(depA.filter(d => in30(d.createdAt)), d => d.amount)), 'All time ' + usdt(sum(depA, d => d.amount))],
+            ['Withdrawals paid (30d)', usdt(sum(wdA.filter(w => in30(w.createdAt)), w => w.amount)), 'All time ' + usdt(sum(wdA, w => w.amount))],
+            ['Fee revenue (30d)', usdt(fee30), 'All time ' + usdt(feeTotal)],
+            ['New users (30d)', String(db.users.filter(u => in30(u.createdAt)).length), 'Total ' + db.users.length + ' users'],
+          ]
+          return (
+            <div className="anim-fade-up space-y-4">
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                {stats.map(([label, value, sub]) => (
+                  <Card key={label} className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">{label}</p><p className="text-xl font-extrabold mt-1">{value}</p><p className="text-xs text-slate-400 mt-0.5">{sub}</p></Card>
+                ))}
+              </div>
+              <Card className="p-5">
+                <h3 className="font-extrabold flex items-center gap-2"><Download size={17} className="text-violet-500" /> Export data (CSV)</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-4">Downloads open in Excel or Google Sheets — handy for accounting and tax records.</p>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <Btn variant="outline" onClick={() => downloadCsv('novawallet-transactions.csv', db.txs.map(t => ({ id: t.id, date: t.createdAt, user: db.users.find(u => u.id === t.userId)?.email ?? t.userId, category: t.category, title: t.title, amount_bdt: t.amount, fee_bdt: t.fee || 0, status: t.status })))}>Transactions ({db.txs.length})</Btn>
+                  <Btn variant="outline" onClick={() => downloadCsv('novawallet-users.csv', db.users.map(u => ({ id: u.id, name: u.name, username: u.username, email: u.email, role: u.role, level: u.level, kyc: u.kyc, status: u.status, joined: u.createdAt })))}>Users ({db.users.length})</Btn>
+                  <Btn variant="outline" onClick={() => downloadCsv('novawallet-deposits.csv', db.deposits.map(d => ({ id: d.id, date: d.createdAt, user: db.users.find(u => u.id === d.userId)?.email ?? d.userId, method: d.method, amount_bdt: d.amount, trx_id: d.trxId, status: d.status })))}>Deposits ({db.deposits.length})</Btn>
+                  <Btn variant="outline" onClick={() => downloadCsv('novawallet-withdrawals.csv', db.withdrawals.map(w => ({ id: w.id, date: w.createdAt, user: db.users.find(u => u.id === w.userId)?.email ?? w.userId, method: w.method, amount_bdt: w.amount, fee_bdt: w.fee, destination: w.destination, status: w.status })))}>Withdrawals ({db.withdrawals.length})</Btn>
+                </div>
+              </Card>
+            </div>
+          )
+        })()}
+
+        {tab === 'health' && (
+          <div className="anim-fade-up space-y-4">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+              <Card className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">API server</p><p className="text-xl font-extrabold mt-1">{apiHealth === null ? 'Checking…' : apiHealth.ok ? '🟢 Online' : '🔴 Unreachable'}</p><p className="text-xs text-slate-400 mt-0.5">{apiHealth?.ok ? 'novawallet-api · v' + (apiHealth.version ?? '') : 'Live status of the backend'}</p></Card>
+              <Card className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Registered users</p><p className="text-xl font-extrabold mt-1">{db.users.length}</p><p className="text-xs text-slate-400 mt-0.5">Synced from the server</p></Card>
+              <Card className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Open support chats</p><p className="text-xl font-extrabold mt-1">{db.tickets.filter(t => t.status !== 'resolved').length}</p><p className="text-xs text-slate-400 mt-0.5">Waiting in Support Chat</p></Card>
+              <Card className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Crash reports</p><p className="text-xl font-extrabold mt-1">{adminErrors.length}</p><p className="text-xs text-slate-400 mt-0.5">Latest 50 app errors</p></Card>
+            </div>
+            <Card className="p-5">
+              <h3 className="font-extrabold mb-1">App crash reports</h3>
+              <p className="text-xs text-slate-400 mb-4">Errors users hit in the app are recorded automatically — newest first.</p>
+              {adminErrors.length === 0 ? <Empty title="No crash reports" body="When a user's app hits an error, it will show up here with the page and the message." /> : (
+                <div className="space-y-2">{adminErrors.map(e => { const eu = db.users.find(u => u.id === e.userId || (u as any).fbUid === e.userId); return (
+                  <div key={e.id} className="rounded-2xl border border-slate-200/70 dark:border-slate-800 p-3.5">
+                    <p className="font-bold text-sm text-rose-500">{e.message}</p>
+                    <p className="text-xs text-slate-400 mt-1">{eu ? eu.name + ' · ' + eu.email : 'Unknown user'} · {e.url ?? ''} · {fmtDateTime(e.createdAt)}</p>
+                  </div>
+                ) })}</div>
+              )}
+            </Card>
+            <Card className="p-5">
+              <h3 className="font-extrabold flex items-center gap-2"><Download size={17} className="text-violet-500" /> Database backup</h3>
+              <p className="text-xs text-slate-400 mt-1 mb-4">Download a full JSON snapshot of the live database — users, wallets, transactions, deposits, withdrawals, loans, KYC, tickets and settings. Keep it somewhere safe.</p>
+              <Btn onClick={async () => { try { const r = await apiGet('/v1/admin/backup'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(r.backup, null, 1)], { type: 'application/json' })); a.download = 'novawallet-backup.json'; a.click(); URL.revokeObjectURL(a.href); toast({ kind: 'success', title: 'Backup downloaded' }) } catch (e: any) { toast({ kind: 'error', title: e.message }) } }}>Download backup</Btn>
+            </Card>
+          </div>
+        )}
+
         {tab === 'settings' && (
           <div className="anim-fade-up">
             <Card className="p-5 space-y-4">
@@ -506,7 +641,16 @@ export default function Admin() {
               <label className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 font-semibold text-sm">Maintenance mode
                 <input type="checkbox" checked={setForm.maintenance} onChange={e => setSetForm(s => ({ ...s, maintenance: e.target.checked }))} className="w-5 h-5 accent-violet-600" /></label>
               <Btn className="w-full" onClick={() => { updateSettings(setForm); toast({ kind: 'success', title: 'Settings saved' }) }}>Save settings</Btn>
-              <p className="text-xs text-slate-400">Payment methods supported: Bank Transfer and Crypto Deposit — the same in every region. Cryptocurrencies: 32 coins with live market data. Admin roles: Super Admin (full), Finance (approvals), Content (news/banners) — enforced via RLS in production.</p>
+              <p className="text-xs text-slate-400">Payment methods supported: Bank Transfer and Crypto Deposit — the same in every region. Cryptocurrencies: 32 coins with live market data. Admin roles: Full (owner), Finance, Content, Support — enforced by the server on every request.</p>
+            </Card>
+            <Card className="p-5 mt-4 space-y-3">
+              <h3 className="font-extrabold">Feature switches</h3>
+              <p className="text-xs text-slate-400">Pause a service for maintenance — the server blocks it for everyone right away and the app shows a maintenance notice instead of the form.</p>
+              {feat && ([['deposits', '💰 Deposits — Add Money'], ['withdrawals', '🏧 Withdrawals — Cash Out & Direct Withdraw'], ['trading', '📈 Trading — Buy, Sell & Swap'], ['loans', '🏦 New loan applications'], ['registration', '🆕 New account registrations']] as const).map(([k, label]) => (
+                <label key={k} className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 font-semibold text-sm">{label}
+                  <input type="checkbox" checked={!!feat[k]} onChange={e => setFeat((f: any) => ({ ...f, [k]: e.target.checked }))} className="w-5 h-5 accent-violet-600" /></label>
+              ))}
+              <Btn className="w-full" onClick={() => { if (feat) updateSettings({ features: feat }); toast({ kind: 'success', title: 'Feature switches saved' }) }}>Save feature switches</Btn>
             </Card>
             <Card className="p-5 mt-4">
               <h3 className="font-extrabold text-rose-600 mb-2">Danger zone</h3>
@@ -581,6 +725,29 @@ export default function Admin() {
                   {selUser.status !== 'frozen' ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Unfreeze</Btn>}
                   {selUser.status !== 'suspended' ? <Btn variant="danger" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'suspended')}>Suspend</Btn> : <Btn variant="success" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Activate</Btn>}
                 </div>
+              )}
+              {/* Admin access (RBAC) — only the owner (full scope) can grant
+                  or change admin roles; the server enforces the scopes. */}
+              {myScope === 'full' && selUser.id !== user?.id && (
+                <div className="rounded-2xl border border-amber-200/70 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-500/5 p-4">
+                  <p className="font-extrabold text-sm mb-1">🛡️ Admin access</p>
+                  <p className="text-xs text-slate-400 mb-3">Scopes decide what a teammate can see and do — Finance approves money, Content manages news & broadcasts, Support handles KYC & chats. Full = owner access.</p>
+                  {selUser.role !== 'admin' ? (
+                    <Btn variant="outline" className="!py-2 !text-xs" onClick={() => { setAdminRole(selUser.id, 'admin'); toast({ kind: 'success', title: 'Admin access granted', body: selUser.name + ' is now an admin (Support scope to start — widen it here anytime).' }) }}>Make admin</Btn>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        {(['full', 'finance', 'content', 'support'] as const).map(sc => (
+                          <button key={sc} onClick={() => setAdminScope(selUser.id, sc)} className={`px-3 py-1.5 rounded-full text-xs font-bold capitalize transition active:scale-95 ${(selUser.adminScope ?? 'full') === sc ? 'bg-violet-600 text-white shadow' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}>{sc === 'full' ? 'Full (Owner)' : sc}</button>
+                        ))}
+                      </div>
+                      <Btn variant="danger" className="!py-2 !text-xs" onClick={() => { setAdminRole(selUser.id, 'user'); toast({ kind: 'info', title: 'Admin access removed', body: selUser.name + ' is a regular user again.' }) }}>Remove admin access</Btn>
+                    </div>
+                  )}
+                </div>
+              )}
+              {selUser.role === 'admin' && myScope !== 'full' && (
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm flex justify-between"><span className="text-slate-500">Admin scope</span><span className="font-bold capitalize">{selUser.adminScope ?? 'full'}</span></div>
               )}
               {/* Level */}
               <div>

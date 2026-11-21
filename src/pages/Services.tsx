@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Copy, Download, Share2, Upload, XCircle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, CheckLine, CopyBtn, Empty, Input, Modal, PinField, Select, StepBar, WizardNav, statusTone , MaxBtn } from '../components/ui'
+import { Avatar, Badge, Btn, Card, CheckLine, CopyBtn, Empty, FeatureOff, Input, Modal, PinField, Select, StepBar, WizardNav, statusTone , MaxBtn } from '../components/ui'
 import { fmtDateTime, fmtUSDT } from '../lib/utils'
 import type { User } from '../lib/types'
 
@@ -80,6 +80,12 @@ export function AddMoney() {
       </div>
     </div>
   ) : null
+  if (db.settings.features?.deposits === false) return (
+    <div>
+      <PageHead title={t('add_title')} sub={t('add_sub')} />
+      <FeatureOff label="Add Money" />
+    </div>
+  )
   return (
     <div>
       <PageHead title={t('add_title')} sub={t('add_sub')} />
@@ -198,6 +204,12 @@ export function CashOut() {
     setDone(true); setAmount(''); setPin(''); setCstep(0)
     toast({ kind: 'success', title: 'Cash out requested', body: 'Amount locked until processed.' })
   }
+  if (db.settings.features?.withdrawals === false) return (
+    <div>
+      <PageHead title={t('cashout_title')} sub="Withdraw to your bank account or crypto wallet" />
+      <FeatureOff label="Cash Out" />
+    </div>
+  )
   return (
     <div>
       <PageHead title={t('cashout_title')} sub={`${t('available')} (cash): ${fmtMoney(w?.available ?? 0)}${(w?.holdings.USDT ?? 0) > 0 ? ` · Incl. USDT: ${fmtMoney((w?.available ?? 0) + (w?.holdings.USDT ?? 0) * db.settings.bdtPerUsd)}` : ''} · Fee ${Number(effPct.toFixed(2))}%${disc ? ` (Level ${user?.level} −${disc}%)` : ''} · Daily limit ${fmtMoney(db.levels.find(l => l.level === user?.level)?.dailyLimit ?? 0)}`} />

@@ -233,7 +233,7 @@ export default function Profile() {
                     <Btn variant="outline" className="w-full mt-2.5" onClick={() => setModal('kyc')}>{t('kyc_do_now')}</Btn>
                   </div>
                 )}
-                {isNext && !(l.level === 2 && user.kyc === 'unverified') && <Btn className="w-full mt-3" disabled={pending || depShort} onClick={() => { const e = requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setOkModal({ title: 'Upgrade requested ✓', rows: [['Target', 'Level ' + l.level], ['Status', 'Pending review'], ['Note', 'An admin will review your request.']] }) } }}>{pending ? 'Request pending…' : depShort ? 'Deposit required first' : 'Request upgrade to Level ' + l.level}</Btn>}
+                {isNext && !(l.level === 2 && user.kyc === 'unverified') && <Btn className="w-full mt-3" disabled={pending || depShort} onClick={async () => { const e = await requestUpgrade(l.level); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setOkModal({ title: 'Upgrade requested ✓', rows: [['Target', 'Level ' + l.level], ['Status', 'Pending review'], ['Note', 'An admin will review your request.']] }) } }}>{pending ? 'Request pending…' : depShort ? 'Deposit required first' : 'Request upgrade to Level ' + l.level}</Btn>}
               </div>
             )
           })}
@@ -558,7 +558,7 @@ export default function Profile() {
               <div className="space-y-4">
                 <Input label="Subject" value={ticket.subject} onChange={e => setTicket(x => ({ ...x, subject: e.target.value }))} />
                 <Input label="Message" value={ticket.message} onChange={e => setTicket(x => ({ ...x, message: e.target.value }))} />
-                <Btn className="w-full py-3.5" onClick={() => { if (!ticket.subject.trim() || !ticket.message.trim()) return toast({ kind: 'error', title: 'Write a subject and your message' }); addTicket(ticket.subject.trim(), ticket.message.trim()); setTicket({ subject: '', message: '' }); toast({ kind: 'success', title: 'Support chat started', body: 'Status: Pending — we usually reply within 24 hours.' }) }}>{t('chat_start')}</Btn>
+                <Btn className="w-full py-3.5" onClick={async () => { if (!ticket.subject.trim() || !ticket.message.trim()) return toast({ kind: 'error', title: 'Write a subject and your message' }); const err = await addTicket(ticket.subject.trim(), ticket.message.trim()); if (err) return toast({ kind: 'error', title: err }); setTicket({ subject: '', message: '' }); toast({ kind: 'success', title: 'Support chat started', body: 'Status: Pending — we usually reply within 24 hours.' }) }}>{t('chat_start')}</Btn>
               </div>
               {mine.length > 0 && <>
                 <p className="font-extrabold text-sm mt-6 mb-2.5">{t('chat_history')}</p>

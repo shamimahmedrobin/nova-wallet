@@ -13,6 +13,9 @@ export interface User {
   referralCode: string; referredBy: string | null; twoFA: boolean; level: number; loanLimitOverride?: number
   /** Firebase UID once the account is linked to the backend (Phase 1+). */
   fbUid?: string
+  /** RBAC scope for admin accounts (server-side, D1 users.admin_scope):
+      'full' (owner) | 'finance' | 'content' | 'support'. Absent = full. */
+  adminScope?: string
   /** Directory-only record hydrated from the server (not a local account):
       exists so Send/Admin can find real users across devices. Never a
       login target. */
@@ -93,6 +96,9 @@ export interface Settings {
   loanRatePct: number; minLoan: number; maxLoan: number; loanLimit: number
   bdtPerUsd: number; maintenance: boolean; platformName: string
   payMethods: PayMethod[]
+  /** Per-feature switches the owner can flip from Admin → Settings.
+   * The Worker enforces them server-side; the app only mirrors them. */
+  features?: { deposits: boolean; withdrawals: boolean; trading: boolean; loans: boolean; registration: boolean }
 }
 export interface Audit { id: string; actor: string; action: string; detail: string; createdAt: string }
 export interface ChatMsg { id: string; from: 'user' | 'admin'; text: string; at: string }

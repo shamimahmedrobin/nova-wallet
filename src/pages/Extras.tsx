@@ -6,7 +6,7 @@ import { useApp } from '../lib/store'
 import { withdrawMethods, CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
 import { ADS_PER_DAY, EARN_TASKS, SCRATCH_PER_DAY, SPINS_PER_DAY } from '../lib/earn'
 import { COIN_META, useMarket } from '../lib/market'
-import { Badge, Btn, Card, Empty, Input, MaxBtn, Modal, Select, TxDirIcon , StepBar, WizardNav } from '../components/ui'
+import { Badge, Btn, Card, Empty, FeatureOff, Input, MaxBtn, Modal, Select, TxDirIcon , StepBar, WizardNav } from '../components/ui'
 import { fmtBDT, fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
 import { PageHead, ResultModal, SuccessModal } from './Services'
 
@@ -57,6 +57,12 @@ export function DirectWithdraw() {
     toast({ kind: 'success', title: 'Withdrawal completed', body: 'Money sent instantly — no admin review needed.' })
   }
   if (!user) return null
+  if (db.settings.features?.withdrawals === false) return (
+    <div>
+      <PageHead title="Direct Withdraw" sub="Instant · No PIN needed · Level 2" />
+      <FeatureOff label="Direct Withdraw" />
+    </div>
+  )
   return (
     <div>
       <PageHead title="Direct Withdraw" sub={`Instant · No PIN needed · Level 2 · ${t('available')} (cash): ${fmtMoney(w?.available ?? 0)}${(w?.holdings.USDT ?? 0) > 0 ? ` · Incl. USDT: ${fmtMoney((w?.available ?? 0) + (w?.holdings.USDT ?? 0) * db.settings.bdtPerUsd)}` : ''}`} />
@@ -310,6 +316,7 @@ export function TradePage() {
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [amount, setAmount] = useState(''); const [coinAmt, setCoinAmt] = useState(''); const [usdtVal, setUsdtVal] = useState('')
   if (!user) return null
+  if (db.settings.features?.trading === false) return <FeatureOff label="Trading" />
   const w = walletOf(user.id)
   const coin = coins.find(c => c.symbol === sel) ?? coins[0]
   const amt = Number(amount) || 0

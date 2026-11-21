@@ -218,7 +218,7 @@ function txStmt(db, t) {
 const isoOf = (s) => (s && s.includes("T") ? s : (s || "").replace(" ", "T") + "Z");
 
 // Maps D1 rows into the app's client shapes.
-async function loadState(db, uid) {
+async function loadState(db, uid, lite = false) {
   const me = await getUserRow(db, uid);
   if (!me) return null;
   const wallet = await getWallet(db, uid);
@@ -242,10 +242,11 @@ async function loadState(db, uid) {
   const loanRows = await db.prepare("SELECT * FROM loans WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all();
   const stkRows = await db.prepare("SELECT * FROM stakes WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all();
   const kycRow = await db.prepare("SELECT status, doc_type, doc_number, created_at FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(uid).first();
-  return {
+  const state = {
     profile: {
       id: me.id, email: me.email, username: me.username, name: me.full_name || "",
       role: me.role, status: me.status, level: Number(me.level), referralCode: me.referral_code,
+      ...(me.admin_scope ? { adminScope: me.admin_scope } : {}),
       kyc: kycRow?.status ?? "unverified",
       ...(kycRow ? { kycDocType: kycRow.doc_type, kycDocNumber: kycRow.doc_number, kycSubmittedAt: isoOf(kycRow.created_at) } : {}),
     },
@@ -280,11 +281,21 @@ async function loadState(db, uid) {
       termDays: Number(s.term_days), startAt: isoOf(s.start_at), status: s.status,
     })),
   };
+  if (!lite) {
+    // Phase 3 slices: platform content, own support tickets, own level
+    // requests and server-side notifications (broadcasts, admin alerts,
+    // decision notices) — merged by the client store on every pull.
+    state.content = await loadContent(db);
+    state.tickets = await loadTickets(db, uid);
+    state.levelRequests = await loadLevelRequests(db, uid);
+    state.notifications = await loadServerNotifications(db, uid);
+  }
+  return state;
 }
 
 async function loadDirectory(db) {
   const rows = await db.prepare(
-    `SELECT u.id, u.email, u.username, u.role, u.status, u.level, u.referral_code, u.created_at, p.full_name,
+    `SELECT u.id, u.email, u.username, u.role, u.status, u.level, u.referral_code, u.admin_scope, u.created_at, p.full_name,
        (SELECT status FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_status,
        (SELECT doc_type FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_doc_type,
        (SELECT doc_number FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_doc_number,
@@ -294,6 +305,7 @@ async function loadDirectory(db) {
   return rows.results.map((u) => ({
     id: u.id, email: u.email, username: u.username, name: u.full_name || "",
     role: u.role, status: u.status, level: Number(u.level), referralCode: u.referral_code,
+    ...(u.admin_scope ? { adminScope: u.admin_scope } : {}),
     createdAt: isoOf(u.created_at),
     kyc: u.kyc_status || "unverified",
     ...(u.kyc_status ? { kycDocType: u.kyc_doc_type, kycDocNumber: u.kyc_doc_number, kycSubmittedAt: isoOf(u.kyc_created_at) } : {}),
@@ -304,7 +316,7 @@ async function loadOverview(db) {
   const users = await loadDirectory(db);
   const wallets = {}, transactions = [], deposits = [], withdrawals = [], loans = [], stakes = [];
   for (const u of users) {
-    const st = await loadState(db, u.id);
+    const st = await loadState(db, u.id, true);
     if (!st) continue;
     wallets[u.id] = st.wallet;
     transactions.push(...st.transactions);
@@ -315,7 +327,14 @@ async function loadOverview(db) {
   }
   const byDate = (a, b) => (a.createdAt < b.createdAt ? 1 : -1);
   transactions.sort(byDate); deposits.sort(byDate); withdrawals.sort(byDate); loans.sort(byDate); stakes.sort(byDate);
-  return { users, wallets, transactions, deposits, withdrawals, loans, stakes };
+  const errRows = await db.prepare("SELECT * FROM client_errors ORDER BY created_at DESC LIMIT 50").all();
+  return {
+    users, wallets, transactions, deposits, withdrawals, loans, stakes,
+    tickets: await loadTickets(db, null),
+    levelRequests: await loadLevelRequests(db, null),
+    content: await loadContent(db),
+    errors: errRows.results.map((e) => ({ id: e.id, userId: e.user_id, message: e.message, url: e.url, createdAt: isoOf(e.created_at) })),
+  };
 }
 
 // ---- Identity endpoints -----------------------------------------------------
@@ -329,6 +348,9 @@ async function handleBootstrap(request, env, auth) {
       created: false,
       user: { id: existing.id, email: existing.email, username: existing.username, role: existing.role },
     });
+  }
+  if (await featureOff(db, "registration")) {
+    return json(request, { error: "New registrations are temporarily closed. Please try again later." }, 403);
   }
   let body = {};
   try { body = await request.json(); } catch { /* empty body */ }
@@ -487,6 +509,7 @@ async function handleSend(request, env, auth, body) {
 
 async function handleDeposit(request, env, auth, body) {
   const db = env.DB;
+  if (await featureOff(db, "deposits")) return json(request, { error: "Deposits are temporarily unavailable. Please try again later." }, 403);
   const { method, amount, trxId } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   if (!method || !trxId) return json(request, { error: "Method and transaction ID are required." }, 400);
@@ -502,11 +525,13 @@ async function handleDeposit(request, env, auth, body) {
     if (String(e?.message || e).includes("UNIQUE")) return json(request, { error: "This transaction ID has already been submitted." }, 400);
     return json(request, { error: "Deposit failed: " + String(e?.message || e) }, 500);
   }
+  await notifyAdminsServer(db, "deposit", "💰 New deposit request", "A deposit of " + amount + " via " + method + " is waiting for review.", "/admin?tab=finance");
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
 async function handleWithdraw(request, env, auth, body) {
   const db = env.DB;
+  if (await featureOff(db, "withdrawals")) return json(request, { error: "Withdrawals are temporarily unavailable. Please try again later." }, 403);
   const { method, amount, destination, pin } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   const pinErr = await checkPin(db, auth.uid, pin);
@@ -531,11 +556,13 @@ async function handleWithdraw(request, env, auth, body) {
   } catch (e) {
     return json(request, { error: "Cash out failed: " + String(e?.message || e) }, 500);
   }
+  await notifyAdminsServer(db, "withdraw", "🏧 New cash out request", "A cash out of " + amount + " to " + method + " is waiting for review.", "/admin?tab=finance");
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
 async function handleDirectWithdraw(request, env, auth, body) {
   const db = env.DB;
+  if (await featureOff(db, "withdrawals")) return json(request, { error: "Withdrawals are temporarily unavailable. Please try again later." }, 403);
   const { method, amount, destination } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   const me = await getUserRow(db, auth.uid);
@@ -564,6 +591,7 @@ async function handleDirectWithdraw(request, env, auth, body) {
 
 async function handleTrade(request, env, auth, body, side) {
   const db = env.DB;
+  if (auth.role !== "admin" && await featureOff(db, "trading")) return json(request, { error: "Trading is temporarily unavailable. Please try again later." }, 403);
   const { symbol, priceUsd } = body;
   if (!symbol || !(priceUsd > 0)) return json(request, { error: "Enter a valid amount." }, 400);
   const target = body.forUserId && auth.role === "admin" ? body.forUserId : auth.uid;
@@ -583,6 +611,7 @@ async function handleTrade(request, env, auth, body, side) {
 
 async function handleSwap(request, env, auth, body) {
   const db = env.DB;
+  if (await featureOff(db, "trading")) return json(request, { error: "Trading is temporarily unavailable. Please try again later." }, 403);
   const { fromSym, toSym, amountFrom, prices } = body;
   if (fromSym === toSym) return json(request, { error: "Choose two different assets." }, 400);
   if (badAmount(amountFrom)) return json(request, { error: "Enter a valid amount." }, 400);
@@ -672,6 +701,7 @@ async function handleUnstake(request, env, auth, body) {
 
 async function handleLoanApply(request, env, auth, body) {
   const db = env.DB;
+  if (await featureOff(db, "loans")) return json(request, { error: "Loan applications are temporarily unavailable. Please try again later." }, 403);
   const { amount, months, info } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   const settings = await getSettings(db);
@@ -685,6 +715,7 @@ async function handleLoanApply(request, env, auth, body) {
   } catch (e) {
     return json(request, { error: "Loan application failed: " + String(e?.message || e) }, 500);
   }
+  await notifyAdminsServer(db, "loan", "🏦 New loan application", "A loan application of " + amount + " is waiting for review.", "/admin?tab=loans");
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
@@ -766,6 +797,305 @@ async function handleEarnClaim(request, env, auth, body) {
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
+// ---- Phase 3: content, tickets, levels, notifications, RBAC --------------------
+
+async function getSettingKey(db, key, fallback) {
+  const row = await db.prepare("SELECT value FROM platform_settings WHERE key = ?").bind(key).first();
+  if (!row) return fallback;
+  try { return JSON.parse(row.value); } catch { return fallback; }
+}
+async function setSettingKey(db, key, value) {
+  await db.prepare("INSERT INTO platform_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .bind(key, JSON.stringify(value)).run();
+}
+
+const FEATURE_DEFAULTS = { deposits: true, withdrawals: true, trading: true, loans: true, registration: true };
+async function getFeatures(db) {
+  return { ...FEATURE_DEFAULTS, ...(await getSettingKey(db, "features", {})) };
+}
+async function featureOff(db, name) {
+  const f = await getFeatures(db);
+  return f[name] === false;
+}
+
+async function loadContent(db) {
+  const s = await getSettings(db);
+  const maint = await getSettingKey(db, "maintenance", { enabled: false });
+  const plat = await getSettingKey(db, "platform", { name: "NovaWallet" });
+  const payMethods = await getSettingKey(db, "paymethods", []);
+  const newsRows = await db.prepare("SELECT * FROM news ORDER BY created_at DESC LIMIT 50").all();
+  const bannerRows = await db.prepare("SELECT * FROM banners ORDER BY sort_order ASC").all();
+  return {
+    settings: {
+      sendFeePct: s.sendPct, cashoutFeePct: s.cashoutPct, referralPct: s.referralPct,
+      loanRatePct: s.loanRatePct, minLoan: s.minLoan, maxLoan: s.maxLoan, loanLimit: s.loanLimit,
+      bdtPerUsd: s.bdtPerUsd, maintenance: !!maint.enabled, platformName: plat.name || "NovaWallet",
+      features: await getFeatures(db), payMethods,
+    },
+    news: newsRows.results.map((n) => ({
+      id: n.id, title: n.title, category: n.category, excerpt: n.excerpt, body: n.body,
+      source: n.source, date: isoOf(n.created_at), featured: !!n.featured,
+      gradient: n.gradient || "from-violet-600 via-purple-600 to-indigo-600",
+      ...(n.coin ? { coin: n.coin } : {}),
+    })),
+    banners: bannerRows.results.map((b) => ({
+      id: b.id, title: b.title, subtitle: b.subtitle, gradient: b.gradient, active: !!b.is_active,
+    })),
+  };
+}
+
+async function loadTickets(db, uid) {
+  const rows = uid
+    ? await db.prepare("SELECT * FROM support_tickets WHERE user_id = ? ORDER BY COALESCE(updated_at, created_at) DESC").bind(uid).all()
+    : await db.prepare("SELECT * FROM support_tickets ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 100").all();
+  const out = [];
+  for (const t of rows.results) {
+    const msgs = await db.prepare("SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC").bind(t.id).all();
+    out.push({
+      id: t.id, userId: t.user_id, subject: t.subject, status: t.status,
+      createdAt: isoOf(t.created_at), updatedAt: isoOf(t.updated_at || t.created_at),
+      messages: msgs.results.map((m) => ({ id: m.id, from: m.sender, text: m.text, at: isoOf(m.created_at) })),
+    });
+  }
+  return out;
+}
+
+async function loadLevelRequests(db, uid) {
+  const rows = uid
+    ? await db.prepare("SELECT * FROM level_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all()
+    : await db.prepare("SELECT * FROM level_upgrade_requests ORDER BY created_at DESC LIMIT 100").all();
+  return rows.results.map((r) => ({
+    id: r.id, userId: r.user_id, fromLevel: Number(r.from_level), toLevel: Number(r.to_level),
+    status: r.status, createdAt: isoOf(r.created_at),
+  }));
+}
+
+async function loadServerNotifications(db, uid) {
+  const rows = await db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").bind(uid).all();
+  return rows.results.map((n) => ({
+    id: n.id, userId: n.user_id, title: n.title, body: n.body, kind: n.kind,
+    read: !!n.is_read, createdAt: isoOf(n.created_at), ...(n.link ? { link: n.link } : {}),
+  }));
+}
+
+async function notifyServer(db, userId, kind, title, body, link) {
+  try {
+    await db.prepare("INSERT INTO notifications (id, user_id, kind, title, body, link) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(pubId("NTF"), userId, kind, title, body, link || null).run();
+  } catch { /* notifications never block the money path */ }
+}
+async function notifyAdminsServer(db, kind, title, body, link) {
+  const rows = await db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
+  for (const r of rows.results) await notifyServer(db, r.id, kind, title, body, link);
+}
+async function auditLog(db, auth, action, detail) {
+  try {
+    await db.prepare("INSERT INTO audit_logs (id, actor, action, detail) VALUES (?, ?, ?, ?)")
+      .bind(pubId("AUD"), auth.uid, action, String(detail || "").slice(0, 300)).run();
+  } catch { /* best effort */ }
+}
+function scopeAllowed(auth, scopes) {
+  return auth.role === "admin" && (auth.scope === "full" || scopes.includes(auth.scope));
+}
+
+// ---- Phase 3 handlers -----------------------------------------------------------
+
+async function handleTicketCreate(request, env, auth, body) {
+  const db = env.DB;
+  const subject = String(body.subject || "").trim().slice(0, 120);
+  const message = String(body.message || "").trim().slice(0, 2000);
+  if (!subject || !message) return json(request, { error: "Subject and message are required." }, 400);
+  const id = pubId("TKT");
+  await db.prepare("INSERT INTO support_tickets (id, user_id, subject, message, status, updated_at) VALUES (?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)")
+    .bind(id, auth.uid, subject, message).run();
+  await db.prepare("INSERT INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, 'user', ?)")
+    .bind(pubId("MSG"), id, message).run();
+  const me = await getUserRow(db, auth.uid);
+  await notifyAdminsServer(db, "support", "New support chat", (me?.username || "A user") + " opened a support chat: " + subject, "/admin?tab=support");
+  return json(request, { ok: true, ticketId: id, state: await loadState(db, auth.uid) });
+}
+
+async function handleTicketReply(request, env, auth, body) {
+  const db = env.DB;
+  const ticketId = String(body.ticketId || "");
+  const text = String(body.text || "").trim().slice(0, 2000);
+  if (!text) return json(request, { error: "Message is empty." }, 400);
+  const tk = await db.prepare("SELECT * FROM support_tickets WHERE id = ?").bind(ticketId).first();
+  if (!tk) return json(request, { error: "Ticket not found." }, 404);
+  const asAdmin = auth.role === "admin" && tk.user_id !== auth.uid;
+  if (!asAdmin && tk.user_id !== auth.uid) return json(request, { error: "Not your ticket." }, 403);
+  if (asAdmin && !scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
+  if (tk.status === "resolved") return json(request, { error: "This chat is resolved and closed." }, 400);
+  await db.prepare("INSERT INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, ?, ?)")
+    .bind(pubId("MSG"), ticketId, asAdmin ? "admin" : "user", text).run();
+  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ? WHERE id = ?")
+    .bind(asAdmin && tk.status === "pending" ? "processing" : tk.status, ticketId).run();
+  if (asAdmin) {
+    await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);
+    return json(request, { ok: true, overview: await loadOverview(db) });
+  }
+  await notifyAdminsServer(db, "support", "Support chat reply", "New reply in: " + tk.subject, "/admin?tab=support");
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handleTicketResolve(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
+  const ticketId = String(body.ticketId || "");
+  const tk = await db.prepare("SELECT * FROM support_tickets WHERE id = ?").bind(ticketId).first();
+  if (!tk) return json(request, { error: "Ticket not found." }, 404);
+  await db.prepare("UPDATE support_tickets SET status = 'resolved', updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(ticketId).run();
+  await notifyServer(db, tk.user_id, "support", "Support chat resolved", "Your support chat \"" + tk.subject + "\" was marked resolved and closed.", null);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleLevelRequest(request, env, auth, body) {
+  const db = env.DB;
+  const toLevel = Number(body.toLevel);
+  const me = await getUserRow(db, auth.uid);
+  if (!me) return json(request, { error: "profile_not_bootstrapped" }, 404);
+  const cur = Number(me.level);
+  if (toLevel !== cur + 1 || toLevel > 4) return json(request, { error: "You can only request the next level." }, 400);
+  if (toLevel === 2) {
+    const kycRow = await db.prepare("SELECT status FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(auth.uid).first();
+    if (kycRow?.status !== "verified") return json(request, { error: "KYC required: submit your ID first (Profile → KYC verification)." }, 400);
+  }
+  const pending = await db.prepare("SELECT id FROM level_upgrade_requests WHERE user_id = ? AND status = 'pending'").bind(auth.uid).first();
+  if (pending) return json(request, { error: "You already have a pending upgrade request." }, 400);
+  const id = pubId("LVR");
+  await db.prepare("INSERT INTO level_upgrade_requests (id, user_id, from_level, to_level, status) VALUES (?, ?, ?, ?, 'pending')")
+    .bind(id, auth.uid, cur, toLevel).run();
+  await notifyAdminsServer(db, "upgrade", "⬆️ Level upgrade request", (me.username || "A user") + " requested Level " + toLevel + " — review it in Levels.", "/admin?tab=levels");
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handleAdminLevelDecide(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
+  const row = await db.prepare("SELECT * FROM level_upgrade_requests WHERE id = ?").bind(String(body.id || "")).first();
+  if (!row || row.status !== "pending") return json(request, { error: "Request not found or already decided." }, 404);
+  const ok = !!body.ok;
+  await db.prepare("UPDATE level_upgrade_requests SET status = ?, reviewed_by = ? WHERE id = ?")
+    .bind(ok ? "approved" : "rejected", auth.uid, row.id).run();
+  if (ok) await db.prepare("UPDATE users SET level = ? WHERE id = ?").bind(Number(row.to_level), row.user_id).run();
+  await auditLog(db, auth, ok ? "level.approve" : "level.reject", row.user_id + " → Level " + row.to_level);
+  await notifyServer(db, row.user_id, "security", ok ? "🎉 Level upgraded" : "Upgrade request rejected",
+    ok ? "Your account is now Level " + row.to_level + ". Higher limits are active." : "Your upgrade request was not approved. Check the level requirements and try again.", null);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminNewsSave(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["content"])) return json(request, { error: "scope_denied" }, 403);
+  const n = body.item || {};
+  const title = String(n.title || "").trim().slice(0, 200);
+  if (!title) return json(request, { error: "A headline is required." }, 400);
+  const fields = [title, String(n.category || "Market").slice(0, 40), String(n.excerpt || "").slice(0, 300),
+    String(n.body || "").slice(0, 8000), String(n.source || "NovaWallet").slice(0, 60),
+    n.featured ? 1 : 0, n.coin ? String(n.coin).slice(0, 10) : null, String(n.gradient || "from-violet-600 via-purple-600 to-indigo-600").slice(0, 80)];
+  if (n.id) {
+    await db.prepare("UPDATE news SET title = ?, category = ?, excerpt = ?, body = ?, source = ?, featured = ?, coin = ?, gradient = ? WHERE id = ?")
+      .bind(...fields, String(n.id)).run();
+  } else {
+    await db.prepare("INSERT INTO news (id, title, category, excerpt, body, source, featured, coin, published_by, gradient) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(pubId("NEWS"), ...fields.slice(0, 6), fields[6], auth.uid, fields[7]).run();
+  }
+  await auditLog(db, auth, "news.publish", title);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminNewsDelete(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["content"])) return json(request, { error: "scope_denied" }, 403);
+  await db.prepare("DELETE FROM news WHERE id = ?").bind(String(body.id || "")).run();
+  await auditLog(db, auth, "news.delete", String(body.id || ""));
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminBannerToggle(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["content"])) return json(request, { error: "scope_denied" }, 403);
+  await db.prepare("UPDATE banners SET is_active = 1 - is_active WHERE id = ?").bind(String(body.id || "")).run();
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminSettings(request, env, auth, body) {
+  const db = env.DB;
+  if (auth.scope !== "full") return json(request, { error: "scope_denied" }, 403);
+  const s = body.settings || {};
+  if (s.sendFeePct != null || s.cashoutFeePct != null) {
+    const cur = await getSettingKey(db, "fees", {});
+    await setSettingKey(db, "fees", { send_pct: s.sendFeePct ?? cur.send_pct ?? 0.5, cashout_pct: s.cashoutFeePct ?? cur.cashout_pct ?? 1.5 });
+  }
+  if (s.referralPct != null) await setSettingKey(db, "referral", { commission_pct: s.referralPct });
+  if (s.loanRatePct != null || s.minLoan != null || s.maxLoan != null || s.loanLimit != null) {
+    const cur = await getSettingKey(db, "loan", {});
+    await setSettingKey(db, "loan", { rate_pct: s.loanRatePct ?? cur.rate_pct ?? 12, min: s.minLoan ?? cur.min ?? 1000, max: s.maxLoan ?? cur.max ?? 100000, limit: s.loanLimit ?? cur.limit ?? 100000 });
+  }
+  if (s.bdtPerUsd != null) await setSettingKey(db, "rates", { bdt_per_usd: s.bdtPerUsd });
+  if (s.maintenance != null) await setSettingKey(db, "maintenance", { enabled: !!s.maintenance });
+  if (s.platformName != null) await setSettingKey(db, "platform", { name: String(s.platformName).slice(0, 40) });
+  if (s.features != null) await setSettingKey(db, "features", { ...FEATURE_DEFAULTS, ...s.features });
+  if (Array.isArray(s.payMethods)) await setSettingKey(db, "paymethods", s.payMethods);
+  await auditLog(db, auth, "settings.update", Object.keys(s).join(","));
+  return json(request, { ok: true, overview: await loadOverview(db), state: await loadState(db, auth.uid) });
+}
+
+async function handleAdminBroadcast(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["content"])) return json(request, { error: "scope_denied" }, 403);
+  const title = String(body.title || "").trim().slice(0, 120);
+  const text = String(body.body || "").trim().slice(0, 500);
+  if (!title || !text) return json(request, { error: "Title and message are required." }, 400);
+  const users = await db.prepare("SELECT id FROM users").all();
+  const stmts = users.results.map((u) => db.prepare("INSERT INTO notifications (id, user_id, kind, title, body, link) VALUES (?, ?, 'announcement', ?, ?, NULL)")
+    .bind(pubId("NTF"), u.id, title, text));
+  if (stmts.length) await db.batch(stmts);
+  await auditLog(db, auth, "broadcast", title + " → " + users.results.length + " users");
+  return json(request, { ok: true, sent: users.results.length, overview: await loadOverview(db) });
+}
+
+async function handleAdminSetScope(request, env, auth, body) {
+  const db = env.DB;
+  if (auth.scope !== "full") return json(request, { error: "scope_denied" }, 403);
+  const target = String(body.userId || "");
+  const scope = ["full", "finance", "content", "support"].includes(body.scope) ? body.scope : null;
+  if (!scope) return json(request, { error: "Invalid scope." }, 400);
+  const row = await getUserRow(db, target);
+  if (!row || row.role !== "admin") return json(request, { error: "Target is not an admin." }, 400);
+  await db.prepare("UPDATE users SET admin_scope = ? WHERE id = ?").bind(scope === "full" ? null : scope, target).run();
+  await auditLog(db, auth, "admin.scope", target + " → " + scope);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminSetRole(request, env, auth, body) {
+  const db = env.DB;
+  if (auth.scope !== "full") return json(request, { error: "scope_denied" }, 403);
+  const target = String(body.userId || "");
+  if (target === auth.uid) return json(request, { error: "You cannot change your own role." }, 400);
+  const role = body.role === "admin" ? "admin" : "user";
+  const row = await getUserRow(db, target);
+  if (!row) return json(request, { error: "User not found." }, 404);
+  await db.prepare("UPDATE users SET role = ?, admin_scope = ? WHERE id = ?")
+    .bind(role, role === "admin" ? (row.admin_scope || "support") : null, target).run();
+  await auditLog(db, auth, "admin.role", target + " → " + role);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminBackup(request, env, auth) {
+  const db = env.DB;
+  if (auth.scope !== "full") return json(request, { error: "scope_denied" }, 403);
+  const tables = ["users", "user_profiles", "wallets", "wallet_balances", "transactions", "deposits", "withdrawals", "loans", "stakes", "kyc_submissions", "support_tickets", "ticket_messages", "level_upgrade_requests", "notifications", "news", "banners", "platform_settings"];
+  const dump = { exportedAt: new Date().toISOString(), service: "novawallet-backup", tables: {} };
+  for (const t of tables) {
+    const rows = await db.prepare(`SELECT * FROM ${t}`).all();
+    dump.tables[t] = rows.results;
+  }
+  // Returned as JSON; the admin client turns it into a file download so
+  // the normal CORS/JSON path applies.
+  return json(request, { ok: true, backup: dump });
+}
+
 // ---- KYC ----------------------------------------------------------------------
 // Submissions live in kyc_submissions (photos as data URLs in doc_url /
 // face_url). The latest row's status IS the user's KYC status — state and
@@ -784,6 +1114,7 @@ async function handleKycSubmit(request, env, auth, body) {
   const id = pubId("KYC");
   await db.prepare("INSERT INTO kyc_submissions (id, user_id, doc_type, doc_number, doc_url, face_url, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')")
     .bind(id, auth.uid, docType, docNumber, docPhoto, facePhoto).run();
+  await notifyAdminsServer(db, "security", "🪪 New KYC submission", "A user submitted KYC documents (" + docType + ") for review.", "/admin?tab=users");
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
@@ -801,11 +1132,13 @@ async function handleAdminKycGet(request, env, auth, targetUid) {
 
 async function handleAdminKycDecide(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
   const target = String(body.userId || "");
   const row = await db.prepare("SELECT id FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(target).first();
   if (!row) return json(request, { error: "No KYC submission found for this user." }, 404);
   await db.prepare("UPDATE kyc_submissions SET status = ?, reviewed_by = ? WHERE id = ?")
     .bind(body.ok ? "verified" : "unverified", auth.uid, row.id).run();
+  await notifyServer(db, target, "security", body.ok ? "✅ KYC verified" : "KYC not approved", body.ok ? "Your identity is verified. All limits and features are unlocked." : "Your KYC submission was not approved. Please check your documents and submit again.", null);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
@@ -813,6 +1146,7 @@ async function handleAdminKycDecide(request, env, auth, body) {
 
 async function handleDecideDeposit(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
   const dep = await db.prepare("SELECT * FROM deposits WHERE id = ?").bind(body.id).first();
   if (!dep || dep.status !== "pending") return json(request, { error: "Deposit not pending." }, 400);
   const ok = !!body.ok;
@@ -845,11 +1179,13 @@ async function handleDecideDeposit(request, env, auth, body) {
     }
   }
   try { await db.batch(stmts); } catch (e) { return json(request, { error: "Decision failed: " + String(e?.message || e) }, 500); }
+  await notifyServer(db, dep.user_id, "deposit", ok ? "Deposit approved" : "Deposit rejected", ok ? "Your deposit of " + dep.amount + " was approved and credited." : "Your deposit of " + dep.amount + " was rejected. Please check the details and try again.", null);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
 async function handleDecideWithdraw(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
   const wd = await db.prepare("SELECT * FROM withdrawals WHERE id = ?").bind(body.id).first();
   if (!wd || wd.status !== "pending") return json(request, { error: "Withdrawal not pending." }, 400);
   const ok = !!body.ok;
@@ -860,11 +1196,13 @@ async function handleDecideWithdraw(request, env, auth, body) {
     db.prepare("UPDATE transactions SET status = ? WHERE user_id = ? AND category = 'cash_out' AND status = 'pending' AND amount = ?").bind(ok ? "completed" : "rejected", wd.user_id, wd.amount),
   ];
   try { await db.batch(stmts); } catch (e) { return json(request, { error: "Decision failed: " + String(e?.message || e) }, 500); }
+  await notifyServer(db, wd.user_id, "withdraw", ok ? "Cash out completed" : "Cash out rejected", ok ? "Your cash out of " + wd.amount + " has been sent." : "Your cash out of " + wd.amount + " was rejected and the amount returned to your balance.", null);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
 async function handleDecideLoan(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
   const loan = await db.prepare("SELECT * FROM loans WHERE id = ?").bind(body.id).first();
   if (!loan || loan.status !== "pending") return json(request, { error: "Loan not pending." }, 400);
   const ok = !!body.ok;
@@ -876,11 +1214,13 @@ async function handleDecideLoan(request, env, auth, body) {
     stmts.push(t.stmt);
   }
   try { await db.batch(stmts); } catch (e) { return json(request, { error: "Decision failed: " + String(e?.message || e) }, 500); }
+  await notifyServer(db, loan.user_id, "loan", ok ? "Loan approved" : "Loan rejected", ok ? "Your loan of " + loan.principal + " was approved and credited to your wallet." : "Your loan application of " + loan.principal + " was not approved.", null);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
 async function handleAdminAdjust(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
   const { userId, amount, title, note } = body;
   if (!userId || !amount || !isFinite(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   if (!title) return json(request, { error: "A title is required." }, 400);
@@ -899,6 +1239,7 @@ async function handleAdminAdjust(request, env, auth, body) {
 
 async function handleAdminReleaseStake(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
   const r = await unstakeCore(db, body.userId, body.stakeId, true);
   if (r.error) return json(request, { error: r.error }, 400);
   try { await db.batch(r.stmts); } catch (e) { return json(request, { error: "Release failed: " + String(e?.message || e) }, 500); }
@@ -907,6 +1248,7 @@ async function handleAdminReleaseStake(request, env, auth, body) {
 
 async function handleAdminClearLocked(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
   const uid = body.userId;
   const wallet = await getWallet(db, uid);
   if (!wallet) return json(request, { error: "Wallet not found." }, 404);
@@ -972,7 +1314,7 @@ export default {
     // The D1 row is the source of truth for role/status (Firebase tokens
     // carry neither), so admin checks read it fresh per request.
     const meRow = await getUserRow(env.DB, auth.uid);
-    if (meRow) { auth.role = meRow.role; auth.status = meRow.status; }
+    if (meRow) { auth.role = meRow.role; auth.status = meRow.status; auth.scope = meRow.admin_scope || (meRow.role === "admin" ? "full" : null); }
 
     const bodyOf = async () => { try { return await request.json(); } catch { return {}; } };
 
@@ -995,6 +1337,10 @@ export default {
         if (auth.role !== "admin") return json(request, { error: "admin_only" }, 403);
         return await handleAdminKycGet(request, env, auth, decodeURIComponent(path.slice("/v1/admin/kyc/".length)));
       }
+      if (path === "/v1/admin/backup" && request.method === "GET") {
+        if (auth.role !== "admin") return json(request, { error: "admin_only" }, 403);
+        return await handleAdminBackup(request, env, auth);
+      }
       if (request.method === "POST") {
         const body = await bodyOf();
         switch (path) {
@@ -1012,6 +1358,10 @@ export default {
           case "/v1/loan/fee": return await handleLoanFee(request, env, auth, body);
           case "/v1/earn/claim": return await handleEarnClaim(request, env, auth, body);
           case "/v1/kyc/submit": return await handleKycSubmit(request, env, auth, body);
+          case "/v1/tickets": return await handleTicketCreate(request, env, auth, body);
+          case "/v1/tickets/reply": return await handleTicketReply(request, env, auth, body);
+          case "/v1/tickets/resolve": return await handleTicketResolve(request, env, auth, body);
+          case "/v1/levels/request": return await handleLevelRequest(request, env, auth, body);
         }
         if (path.startsWith("/v1/admin/")) {
           if (auth.role !== "admin") return json(request, { error: "admin_only" }, 403);
@@ -1024,6 +1374,14 @@ export default {
             case "/v1/admin/release-stake": return await handleAdminReleaseStake(request, env, auth, body);
             case "/v1/admin/clear-locked": return await handleAdminClearLocked(request, env, auth, body);
             case "/v1/admin/kyc/decide": return await handleAdminKycDecide(request, env, auth, body);
+            case "/v1/admin/levels/decide": return await handleAdminLevelDecide(request, env, auth, body);
+            case "/v1/admin/news": return await handleAdminNewsSave(request, env, auth, body);
+            case "/v1/admin/news/delete": return await handleAdminNewsDelete(request, env, auth, body);
+            case "/v1/admin/banners/toggle": return await handleAdminBannerToggle(request, env, auth, body);
+            case "/v1/admin/settings": return await handleAdminSettings(request, env, auth, body);
+            case "/v1/admin/broadcast": return await handleAdminBroadcast(request, env, auth, body);
+            case "/v1/admin/set-scope": return await handleAdminSetScope(request, env, auth, body);
+            case "/v1/admin/set-role": return await handleAdminSetRole(request, env, auth, body);
           }
         }
       }

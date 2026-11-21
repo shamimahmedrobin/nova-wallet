@@ -135,14 +135,21 @@ interface Ctx {
   deleteNews: (id: string) => void
   updateSettings: (s: Partial<DB['settings']>) => void
   toggleBanner: (id: string) => void
-  requestUpgrade: (toLevel: number) => string | null
+  requestUpgrade: (toLevel: number) => Promise<string | null>
   decideUpgrade: (id: string, ok: boolean) => void
   updateLevelDef: (level: number, patch: Partial<DB['levels'][number]>) => void
   setUserLevel: (userId: string, level: number) => void
   setUserLoanLimit: (userId: string, bdt: number | null) => void
-  addTicket: (subject: string, message: string) => void
+  addTicket: (subject: string, message: string) => Promise<string | null>
   replyTicket: (ticketId: string, text: string, as: 'user' | 'admin') => void
   resolveTicket: (ticketId: string) => void
+  /** Send a notification to EVERY user (server broadcast). Returns an error string or null. */
+  broadcast: (title: string, body: string) => Promise<string | null>
+  /** RBAC: change an admin's scope, or promote/demote a user (owner only, server-enforced). */
+  setAdminScope: (userId: string, scope: string) => void
+  setAdminRole: (userId: string, role: 'admin' | 'user') => void
+  /** Latest app crash reports from the server (admin overview), for the System Health tab. */
+  adminErrors: { id: number; userId: string | null; message: string; url: string | null; createdAt: string }[]
   resetDemo: () => void
 }
 const AppCtx = createContext<Ctx | null>(null)
@@ -174,6 +181,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch { /* ignore */ }
   }, [locked, userId])
   const [, setQuickTick] = useState(0)
+  const [adminErrors, setAdminErrors] = useState<Ctx['adminErrors']>([])
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
   const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
   const [currencyPref, setCurrencyPref] = useState<string | null>(() => localStorage.getItem('nova.currency'))
@@ -313,6 +321,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     id: su.id, fbUid: su.id, stub: true, name: su.name || su.username, username: su.username, email: su.email,
     phone: '', passwordHash: '', pinHash: '', role: su.role, status: su.status, kyc: su.kyc ?? 'unverified',
     ...(su.kycDocType ? { kycDocType: su.kycDocType, kycDocNumber: su.kycDocNumber, kycSubmittedAt: su.kycSubmittedAt } : {}),
+    ...(su.adminScope ? { adminScope: su.adminScope } : {}),
     referralCode: su.referralCode || '', referredBy: null, twoFA: false, level: su.level || 1, language: 'en',
     createdAt: su.createdAt || nowISO(), lastLogin: su.createdAt || nowISO(), sessions: [],
   })
@@ -329,6 +338,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         existing.level = su.level ?? existing.level
         existing.status = su.status ?? existing.status
         existing.role = su.role ?? existing.role
+        if (su.adminScope) existing.adminScope = su.adminScope; else if (existing.role !== 'admin') delete existing.adminScope
         if (su.kycDocType) { existing.kycDocType = su.kycDocType; existing.kycDocNumber = su.kycDocNumber; existing.kycSubmittedAt = su.kycSubmittedAt }
         continue
       }
@@ -393,9 +403,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const lu = d.users.find(x => x.id === localId)
     if (lu && state.profile) {
       lu.role = state.profile.role; lu.level = state.profile.level; lu.status = state.profile.status
+      if (state.profile.adminScope) lu.adminScope = state.profile.adminScope
       if (state.profile.kyc) lu.kyc = state.profile.kyc
       if (state.profile.kycDocType) { lu.kycDocType = state.profile.kycDocType; lu.kycDocNumber = state.profile.kycDocNumber; lu.kycSubmittedAt = state.profile.kycSubmittedAt }
       if (!lu.fbUid) lu.fbUid = state.profile.id
+    }
+    // Phase 3 slices: platform content is server-authoritative; own
+    // tickets/level requests merge with any pre-migration local ones
+    // (local-only chats stay readable; the server copy wins by id).
+    if (state.content) {
+      d.settings = { ...d.settings, ...state.content.settings }
+      d.news = state.content.news
+      d.banners = state.content.banners
+    }
+    if (state.tickets) {
+      const serverIds = new Set(state.tickets.map((t: any) => t.id))
+      d.tickets = [...mine(state.tickets), ...d.tickets.filter(t => t.userId === localId && !serverIds.has(t.id)), ...d.tickets.filter(t => t.userId !== localId)]
+    }
+    if (state.levelRequests) {
+      const serverIds = new Set(state.levelRequests.map((r: any) => r.id))
+      d.levelRequests = [...mine(state.levelRequests), ...d.levelRequests.filter(r => r.userId === localId && !serverIds.has(r.id)), ...d.levelRequests.filter(r => r.userId !== localId)]
+    }
+    if (state.notifications) {
+      const have = new Set(d.notifications.map(n => n.id))
+      const fresh = state.notifications.filter((n: any) => !have.has(n.id)).map((n: any) => ({ ...n, userId: localId }))
+      if (fresh.length) d.notifications = [...fresh, ...d.notifications]
     }
     canonicalizeSelf(d, localId)
   }
@@ -419,6 +451,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
     d.wallets = fix(d.wallets); d.txs = fix(d.txs); d.deposits = fix(d.deposits)
     d.withdrawals = fix(d.withdrawals); d.loans = fix(d.loans); d.stakes = fix(d.stakes)
+    // Phase 3 slices (admin view): all tickets + level requests, platform
+    // content, and the crash-report list for the System Health tab.
+    if (ov.content) {
+      d.settings = { ...d.settings, ...ov.content.settings }
+      d.news = ov.content.news
+      d.banners = ov.content.banners
+    }
+    if (ov.tickets) {
+      const serverIds = new Set(ov.tickets.map((t: any) => t.id))
+      const ownLocal = d.tickets.filter(t => t.userId === userIdRef.current && !serverIds.has(t.id))
+      d.tickets = [...fix(mapRows(ov.tickets)), ...ownLocal]
+    }
+    if (ov.levelRequests) d.levelRequests = fix(mapRows(ov.levelRequests))
+    if (ov.errors) setAdminErrors(ov.errors)
     canonicalizeSelf(d, userIdRef.current)
   }
   const applyMoneyResult = (r: any) => {
@@ -1179,45 +1225,68 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const markAllRead = () => { if (user) mutate(d => d.notifications.forEach(n => { if (n.userId === user.id) n.read = true })) }
   const markRead = (id: string) => mutate(d => { const n = d.notifications.find(x => x.id === id); if (n) n.read = true })
-  const publishNews: Ctx['publishNews'] = (n) => mutate(d => {
-    if (n.id) { const ex = d.news.find(x => x.id === n.id); if (ex) Object.assign(ex, n) }
-    else d.news.unshift({ ...n, id: uid('NEWS'), date: nowISO() })
-    audit(d, 'admin', 'news.publish', n.title)
-  })
-  const deleteNews = (id: string) => mutate(d => { d.news = d.news.filter(x => x.id !== id) })
-  const updateSettings: Ctx['updateSettings'] = (s) => mutate(d => {
+  // Phase 3: news, banners and settings are server-authoritative — the
+  // admin's edits go to the Worker and come back inside the overview, so
+  // every device and every user sees the same content within seconds.
+  const publishNews: Ctx['publishNews'] = (n) => {
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/news', { item: n }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
+  const deleteNews = (id: string) => {
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/news/delete', { id }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
+  const updateSettings: Ctx['updateSettings'] = (s) => {
     const clean = { ...s }
     ;(['minLoan', 'maxLoan', 'loanLimit'] as const).forEach(k => { if (typeof clean[k] === 'number') clean[k] = Math.round(clean[k]) })
-    Object.assign(d.settings, clean); audit(d, 'admin', 'settings.update', JSON.stringify(clean))
-  })
-  const toggleBanner = (id: string) => mutate(d => { const b = d.banners.find(x => x.id === id); if (b) b.active = !b.active })
-  const addTicket: Ctx['addTicket'] = (subject, message) => {
-    if (!user) return
-    mutate(d => {
-      d.tickets.unshift({ id: uid('TKT'), userId: user.id, subject, status: 'pending', createdAt: nowISO(), updatedAt: nowISO(), messages: [{ id: uid('MSG'), from: 'user', text: message, at: nowISO() }] })
-      d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'New support chat', user.name + ' opened a support chat: ' + subject, 'support', '/admin?tab=support'))
-    })
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/settings', { settings: clean }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
+  const toggleBanner = (id: string) => {
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/banners/toggle', { id }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
+  const addTicket: Ctx['addTicket'] = async (subject, message) => {
+    if (!user) return 'Not signed in'
+    try { const r = await apiPost('/v1/tickets', { subject, message }); applyMoneyResult(r); return null }
+    catch (e: any) { return e.message }
   }
   const replyTicket: Ctx['replyTicket'] = (ticketId, text, as) => {
     if (!user || !text.trim()) return
-    mutate(d => {
-      const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
-      const from = as
-      tk.messages.push({ id: uid('MSG'), from, text: text.trim(), at: nowISO() })
-      tk.updatedAt = nowISO()
-      if (from === 'admin' && tk.status === 'pending') tk.status = 'processing'
-      if (from === 'admin') notify(d, tk.userId, 'Support replied', 'The support team replied to your chat: ' + tk.subject, 'support')
-      else d.users.filter(u => u.role === 'admin').forEach(a => notify(d, a.id, 'Support chat reply', user.name + ' replied in: ' + tk.subject, 'support', '/admin?tab=support'))
-    })
+    void (async () => {
+      try { const r = await apiPost('/v1/tickets/reply', { ticketId, text: text.trim() }); applyMoneyResult(r) }
+      catch {
+        // Legacy local-only ticket (created before the server migration)
+        // or a network failure: keep the conversation going locally.
+        mutate(d => {
+          const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
+          tk.messages.push({ id: uid('MSG'), from: as, text: text.trim(), at: nowISO() })
+          tk.updatedAt = nowISO()
+          if (as === 'admin' && tk.status === 'pending') tk.status = 'processing'
+        })
+      }
+    })()
   }
   const resolveTicket: Ctx['resolveTicket'] = (ticketId) => {
-    mutate(d => {
-      const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
-      tk.status = 'resolved'; tk.updatedAt = nowISO()
-      notify(d, tk.userId, 'Support chat resolved', 'Your support chat "' + tk.subject + '" was marked resolved and closed.', 'support')
-    })
+    void (async () => {
+      try { const r = await apiPost('/v1/tickets/resolve', { ticketId }); applyMoneyResult(r) }
+      catch {
+        mutate(d => {
+          const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
+          tk.status = 'resolved'; tk.updatedAt = nowISO()
+        })
+      }
+    })()
   }
-  const requestUpgrade: Ctx['requestUpgrade'] = (toLevel) => {
+  const requestUpgrade: Ctx['requestUpgrade'] = async (toLevel) => {
     if (!user) return 'Not signed in'
     if (toLevel === 2 && user.kyc === 'unverified') return 'KYC required: submit your ID first (Profile → KYC verification).'
     if (toLevel !== user.level + 1) return 'You can only request the next level.'
@@ -1228,20 +1297,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const deposited = dbRef.current.deposits.filter(x => x.userId === user.id && x.status === 'approved').reduce((s2, x) => s2 + x.amount, 0)
       if (deposited < depReq) return 'Level ' + toLevel + ' requires total deposits of ' + fmtMoney(depReq) + '. You have deposited ' + fmtMoney(deposited) + ' so far — deposit ' + fmtMoney(depReq - deposited) + ' more from Add Money, then request again.'
     }
-    mutate(d => {
-      d.levelRequests.unshift({ id: uid('LVR'), userId: user.id, fromLevel: user.level, toLevel, status: 'pending', createdAt: nowISO() })
-      notify(d, user.id, 'Upgrade requested', 'Your request to reach Level ' + toLevel + ' is pending admin review.', 'security')
-      notifyAdmins(d, '⬆️ Level upgrade request', user.name + ' requested Level ' + toLevel + ' — review it in Levels.', 'upgrade', '/admin?tab=levels')
-    })
-    return null
+    try { const r = await apiPost('/v1/levels/request', { toLevel }); applyMoneyResult(r); return null }
+    catch (e: any) { return e.message }
   }
-  const decideUpgrade: Ctx['decideUpgrade'] = (id, ok) => mutate(d => {
-    const r = d.levelRequests.find(x => x.id === id); if (!r || r.status !== 'pending') return
-    r.status = ok ? 'approved' : 'rejected'
-    if (ok) { const u = d.users.find(x => x.id === r.userId); if (u) u.level = r.toLevel }
-    audit(d, 'admin', ok ? 'level.approve' : 'level.reject', `${r.userId} → Level ${r.toLevel}`)
-    notify(d, r.userId, ok ? '🎉 Level upgraded' : 'Upgrade request rejected', ok ? 'Your account is now Level ' + r.toLevel + '. Higher limits are active.' : 'Your upgrade request was not approved. Check the level requirements and try again.', 'security')
-  })
+  const decideUpgrade: Ctx['decideUpgrade'] = (id, ok) => {
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/levels/decide', { id, ok }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
+  const broadcast: Ctx['broadcast'] = async (title, body) => {
+    try { await apiPost('/v1/admin/broadcast', { title, body }); return null }
+    catch (e: any) { return e.message }
+  }
+  const setAdminScope: Ctx['setAdminScope'] = (userId2, scope) => {
+    const suid = serverUidOf(userId2); if (!suid) return
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/set-scope', { userId: suid, scope }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
+  const setAdminRole: Ctx['setAdminRole'] = (userId2, role) => {
+    const suid = serverUidOf(userId2); if (!suid) return
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/set-role', { userId: suid, role }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
   const updateLevelDef: Ctx['updateLevelDef'] = (level, patch) => mutate(d => {
     const def = d.levels.find(x => x.level === level); if (!def) return
     const clean = { ...patch }
@@ -1264,7 +1346,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, verifyTxPin, buyCrypto, sellCrypto,
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
-    publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, resetDemo,
+    publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
     locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }

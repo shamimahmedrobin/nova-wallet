@@ -4,6 +4,15 @@ import { AlertTriangle, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Check, Chec
 import { useApp } from '../lib/store'
 import { gradientFor, initials } from '../lib/utils'
 
+/** Shown instead of a money form when the owner has switched that
+    feature off in Admin → Settings (the Worker enforces it too). */
+export const FeatureOff = ({ label }: { label: string }) => (
+  <div className="rounded-3xl border border-amber-200/70 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 p-6 text-center">
+    <div className="text-3xl mb-2">🛠️</div>
+    <p className="font-extrabold">{label} is temporarily unavailable</p>
+    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">This service is paused for maintenance. Please check back soon — your money stays safe in your wallet.</p>
+  </div>
+)
 export const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
   <div className={`bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/70 dark:border-slate-800 shadow-[0_2px_16px_rgba(15,23,42,0.05)] ${className}`}>{children}</div>
 )
