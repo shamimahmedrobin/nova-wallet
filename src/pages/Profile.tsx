@@ -121,7 +121,7 @@ export default function Profile() {
         <p className="text-sm text-slate-500">@{user.username} · {user.email}</p>
         <p className="text-sm text-slate-500">{user.phone} · ID {user.id}</p>
         <div className="flex gap-2 justify-center mt-3">
-          <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? '✅ ' + t('verified') : t('non_kyc')}</Badge>
+          <Badge tone={user.kyc === 'verified' ? 'green' : user.kyc === 'pending' ? 'amber' : 'slate'}>{user.kyc === 'verified' ? '✅ ' + t('verified') : user.kyc === 'pending' ? '⏳ Pending' : t('non_kyc')}</Badge>
           <Badge tone={user.status === 'active' ? 'green' : 'red'}>{user.status}</Badge>
           <Badge tone="violet">{fmtMoney(totalBdtP)} {t('wallet')}</Badge>
         </div>
@@ -159,7 +159,7 @@ export default function Profile() {
           <button key={id} onClick={() => setModal(id)} className="w-full flex items-center gap-3 p-3.5 font-semibold text-[15px] hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-2xl text-left">
             <span className="text-violet-600">{icon}</span> {t(key)}
             {id === 'login' && <Badge tone={(devicePinSet || fingerprintSet) ? 'green' : 'slate'}>{(devicePinSet || fingerprintSet) ? t('on') : t('off')}</Badge>}
-            {id === 'kyc' && <Badge tone={user.kyc === 'verified' ? 'green' : 'slate'}>{user.kyc === 'verified' ? t('verified') : t('non_kyc')}</Badge>}
+            {id === 'kyc' && <Badge tone={user.kyc === 'verified' ? 'green' : user.kyc === 'pending' ? 'amber' : 'slate'}>{user.kyc === 'verified' ? t('verified') : user.kyc === 'pending' ? '⏳ Pending' : t('non_kyc')}</Badge>}
             {id === 'lang' && <span className="ml-auto text-sm text-slate-400">{LANGUAGES.find(l => l.code === lang)?.native ?? 'English'}</span>}
             {id === 'currency' && <span className="ml-auto text-lg font-extrabold text-violet-600">{currency}{currencyIsAuto ? <span className="text-[10px] font-bold text-slate-400 align-middle"> · AUTO</span> : ''}</span>}
             <ChevronRight size={17} className="ml-auto text-slate-300" />
