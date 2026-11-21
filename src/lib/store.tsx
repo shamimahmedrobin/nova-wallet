@@ -334,17 +334,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const existing = d.users.find(x => x.id === su.id) ?? d.users.find(x => x.fbUid && x.fbUid === su.id) ?? d.users.find(x => x.email === su.email)
       if (existing) {
         if (!existing.fbUid) existing.fbUid = su.id
-        if (existing.stub) {
-          // Refresh the stub's server-synced fields — KYC status, level,
-          // role/scope and account status all move on the server after
-          // first sight.
-          existing.kyc = su.kyc ?? existing.kyc
-          existing.level = su.level ?? existing.level
-          existing.status = su.status ?? existing.status
-          existing.role = su.role ?? existing.role
-          if (su.adminScope) existing.adminScope = su.adminScope; else if (existing.role !== 'admin') delete existing.adminScope
-          if (su.kycDocType) { existing.kycDocType = su.kycDocType; existing.kycDocNumber = su.kycDocNumber; existing.kycSubmittedAt = su.kycSubmittedAt }
-        }
+        // Refresh the server-owned fields on ANY matched record, stub or
+        // real: KYC status, level, role/scope and account status all move
+        // on the server after first sight. (Real records occur when the
+        // account was created on this very device — gating the refresh
+        // on stubs left those frozen at their registration-time values.)
+        existing.kyc = su.kyc ?? existing.kyc
+        existing.level = su.level ?? existing.level
+        existing.status = su.status ?? existing.status
+        existing.role = su.role ?? existing.role
+        if (su.adminScope) existing.adminScope = su.adminScope; else if (existing.role !== 'admin') delete existing.adminScope
+        if (su.kycDocType) { existing.kycDocType = su.kycDocType; existing.kycDocNumber = su.kycDocNumber; existing.kycSubmittedAt = su.kycSubmittedAt }
         continue
       }
       d.users.push(stubFrom(su))
