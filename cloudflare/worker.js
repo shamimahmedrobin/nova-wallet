@@ -1114,7 +1114,7 @@ async function handleKycSubmit(request, env, auth, body) {
   const id = pubId("KYC");
   await db.prepare("INSERT INTO kyc_submissions (id, user_id, doc_type, doc_number, doc_url, face_url, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')")
     .bind(id, auth.uid, docType, docNumber, docPhoto, facePhoto).run();
-  await notifyAdminsServer(db, "security", "🪪 New KYC submission", "A user submitted KYC documents (" + docType + ") for review.", "/admin?tab=users");
+  await notifyAdminsServer(db, "security", "🪪 New KYC submission", "A user submitted KYC documents (" + docType + ") for review.", "/admin?tab=kyc");
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 

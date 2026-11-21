@@ -14,7 +14,8 @@ const TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'finance', label: 'Deposits & Withdrawals', icon: Wallet },
   { id: 'txs', label: 'Transactions', icon: ArrowLeftRight },
-  { id: 'users', label: 'Users & KYC', icon: Users },
+  { id: 'users', label: 'Users', icon: Users },
+  { id: 'kyc', label: 'KYC Verification', icon: ShieldCheck },
   { id: 'loans', label: 'Loans', icon: HandCoins },
   { id: 'referrals', label: 'Referrals', icon: Gift },
   { id: 'levels', label: 'Levels', icon: Award },
@@ -32,7 +33,7 @@ const TABS = [
 const SCOPE_TABS: Record<string, string[]> = {
   finance: ['overview', 'finance', 'txs', 'users', 'loans', 'referrals', 'levels', 'reports', 'audit'],
   content: ['overview', 'users', 'support', 'content', 'audit'],
-  support: ['overview', 'users', 'support'],
+  support: ['overview', 'users', 'kyc', 'support'],
 }
 
 export default function Admin() {
@@ -76,14 +77,14 @@ export default function Admin() {
   const selUser = selUserId ? db.users.find(x => x.id === selUserId) ?? null : null
   const selWallet = selUser ? db.wallets.find(x => x.userId === selUser.id) : null
   // KYC photos live on the server (too heavy for the directory sync) —
-  // fetch them on demand when reviewing a pending submission.
-  const [kycDocs, setKycDocs] = useState<{ docPhoto?: string; facePhoto?: string } | null>(null)
-  useEffect(() => {
-    setKycDocs(null)
-    if (!selUser || selUser.kyc !== 'pending' || selUser.kycDocPhoto) return
-    const uid = (selUser as any).fbUid ?? selUser.id
-    apiGet('/v1/admin/kyc/' + uid).then(r => { if (r?.kyc) setKycDocs({ docPhoto: r.kyc.docPhoto ?? undefined, facePhoto: r.kyc.facePhoto ?? undefined }) }).catch(() => { /* ignore */ })
-  }, [selUser?.id, selUser?.kyc])
+  // the KYC Verification tab fetches them on demand per submission.
+  const [kycPhotos, setKycPhotos] = useState<Record<string, { docPhoto?: string; facePhoto?: string } | 'loading'>>({})
+  const loadKycPhotos = (u: any) => {
+    if (kycPhotos[u.id]) return
+    setKycPhotos(m => ({ ...m, [u.id]: 'loading' }))
+    const uid = u.fbUid ?? u.id
+    apiGet('/v1/admin/kyc/' + uid).then(r => setKycPhotos(m => ({ ...m, [u.id]: { docPhoto: r?.kyc?.docPhoto ?? u.kycDocPhoto, facePhoto: r?.kyc?.facePhoto ?? u.kycFacePhoto } }))).catch(() => setKycPhotos(m => ({ ...m, [u.id]: { docPhoto: u.kycDocPhoto, facePhoto: u.kycFacePhoto } })))
+  }
   // Deep links from notifications: /admin?tab=finance|loans|levels|users|support — and
   // ?user=<id> opens that customer's Manage modal straight away (KYC / new-user alerts).
   useEffect(() => {
@@ -121,7 +122,7 @@ export default function Admin() {
   }, [db])
   const tabBadges: Record<string, number> = {
     finance: stats.pendingDeposits.length + stats.pendingWithdrawals.length,
-    users: stats.pendingKyc.length,
+    kyc: stats.pendingKyc.length,
     loans: stats.pendingLoans.length,
     levels: pendingLevels,
     support: db.tickets.filter(t => t.status === 'pending').length,
@@ -137,7 +138,7 @@ export default function Admin() {
     markRead(n.id); setNotifOpen(false)
     const link = n.link ?? ''
     const tabM = link.match(/tab=([a-z]+)/); const userM = link.match(/user=([A-Za-z0-9-]+)/)
-    const kindTab: Record<string, string> = { support: 'support', deposit: 'finance', withdraw: 'finance', loan: 'loans', kyc: 'users', upgrade: 'levels' }
+    const kindTab: Record<string, string> = { support: 'support', deposit: 'finance', withdraw: 'finance', loan: 'loans', kyc: 'kyc', upgrade: 'levels' }
     const target = tabM?.[1] ?? kindTab[n.kind] ?? 'overview'
     if (TABS.some(x => x.id === target)) setTab(target)
     if (userM) { const du = db.users.find(x => x.id === userM[1]); if (du) openUser(du) }
@@ -300,18 +301,8 @@ export default function Admin() {
                     <div className="flex flex-wrap items-center gap-3 cursor-pointer" onClick={() => openUser(u)} title="Click to manage this account">
                       <Avatar name={u.name} photo={u.photo} />
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {usdt((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
-                      <Badge tone={statusTone(u.kyc)}>KYC {u.kyc}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
+                      <Badge tone={statusTone(u.kyc)}>{u.kyc === 'verified' ? '✅ Verified' : u.kyc === 'pending' ? '⏳ KYC pending' : 'KYC unverified'}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
                     </div>
-                    {u.kycDocType && (
-                      <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3">
-                        <p className="text-xs font-bold text-slate-500">📄 {u.kycDocType === 'passport' ? 'Passport' : u.kycDocType === 'driving' ? 'Driving Licence' : 'National ID'} · <span className="font-mono">{u.kycDocNumber}</span>{u.kycSubmittedAt ? ' · submitted ' + fmtDateTime(u.kycSubmittedAt) : ''}</p>
-                        <div className="flex gap-2 mt-2">
-                          {u.kycDocPhoto && <a href={u.kycDocPhoto} target="_blank" rel="noreferrer"><img src={u.kycDocPhoto} alt="KYC document" className="h-16 w-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
-                          {u.kycFacePhoto && <a href={u.kycFacePhoto} target="_blank" rel="noreferrer"><img src={u.kycFacePhoto} alt="KYC face scan" className="h-16 w-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
-                        </div>
-                        {u.kyc === 'pending' && <div className="flex gap-2 mt-2"><Btn variant="success" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, false)}>Reject KYC</Btn></div>}
-                      </div>
-                    )}
                     {u.role === 'user' && (
                       <div className="flex flex-wrap gap-2 mt-3">
                         {u.status !== 'frozen' ? <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'active')}>Unfreeze</Btn>}
@@ -325,6 +316,78 @@ export default function Admin() {
             </div>
           </div>
         )}
+
+        {tab === 'kyc' && (() => {
+          const pending = db.users.filter(u => u.kyc === 'pending')
+          const verified = db.users.filter(u => u.kyc === 'verified')
+          const none = db.users.filter(u => u.kyc !== 'pending' && u.kyc !== 'verified')
+          const docLabel = (t?: string) => t === 'passport' ? 'Passport' : t === 'driving' ? 'Driving Licence' : 'National ID'
+          return (
+            <div className="anim-fade-up space-y-5">
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Pending review</p><p className="text-xl font-extrabold mt-1">{pending.length}</p><p className="text-xs text-slate-400 mt-0.5">Waiting for a decision</p></Card>
+                <Card className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Verified</p><p className="text-xl font-extrabold mt-1">{verified.length}</p><p className="text-xs text-slate-400 mt-0.5">Identity confirmed</p></Card>
+                <Card className="p-4"><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Not submitted</p><p className="text-xl font-extrabold mt-1">{none.length}</p><p className="text-xs text-slate-400 mt-0.5">No documents yet</p></Card>
+              </div>
+              <section>
+                <h3 className="font-extrabold mb-3">⏳ Waiting for review</h3>
+                {pending.length === 0 ? <Empty title="No pending submissions" body="New KYC submissions will appear here with their documents and face photo." /> : (
+                  <div className="space-y-2">{pending.map(u => {
+                    const photos = kycPhotos[u.id]
+                    return (
+                      <Card key={u.id} className="p-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Avatar name={u.name} photo={u.photo} />
+                          <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · {u.email}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">📄 {docLabel(u.kycDocType)} · <span className="font-mono">{u.kycDocNumber ?? '—'}</span>{u.kycSubmittedAt ? ' · submitted ' + fmtDateTime(u.kycSubmittedAt) : ''}</p></div>
+                          <Badge tone="amber">pending</Badge>
+                        </div>
+                        {photos === undefined ? (
+                          <Btn variant="outline" className="!py-2 !text-xs mt-3" onClick={() => loadKycPhotos(u)}>View documents & face photo</Btn>
+                        ) : photos === 'loading' ? <p className="text-xs text-slate-400 mt-3">Loading photos…</p> : (
+                          <div className="flex flex-wrap gap-3 mt-3">
+                            {(photos.docPhoto || u.kycDocPhoto) && <figure><a href={photos.docPhoto || u.kycDocPhoto} target="_blank" rel="noreferrer"><img src={photos.docPhoto || u.kycDocPhoto} alt="KYC document" className="h-32 w-48 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a><figcaption className="text-[11px] text-slate-400 mt-1 text-center">{docLabel(u.kycDocType)}</figcaption></figure>}
+                            {(photos.facePhoto || u.kycFacePhoto) && <figure><a href={photos.facePhoto || u.kycFacePhoto} target="_blank" rel="noreferrer"><img src={photos.facePhoto || u.kycFacePhoto} alt="KYC face scan" className="h-32 w-32 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a><figcaption className="text-[11px] text-slate-400 mt-1 text-center">Face photo</figcaption></figure>}
+                            {!photos.docPhoto && !photos.facePhoto && !u.kycDocPhoto && !u.kycFacePhoto && <p className="text-xs text-slate-400">No photos found on the server for this submission.</p>}
+                          </div>
+                        )}
+                        <div className="flex gap-2 mt-3">
+                          <Btn variant="success" className="!py-2 !text-xs" onClick={() => decideKyc(u.id, true)}>✅ Verify KYC</Btn>
+                          <Btn variant="danger" className="!py-2 !text-xs" onClick={() => decideKyc(u.id, false)}>Reject</Btn>
+                        </div>
+                      </Card>
+                    )
+                  })}</div>
+                )}
+              </section>
+              <section>
+                <h3 className="font-extrabold mb-3">✅ Verified users</h3>
+                {verified.length === 0 ? <Empty title="No verified users yet" body="Users you verify will be listed here with their document details." /> : (
+                  <div className="space-y-2">{verified.map(u => (
+                    <Card key={u.id} className="p-4"><div className="flex flex-wrap items-center gap-3">
+                      <Avatar name={u.name} photo={u.photo} />
+                      <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · {u.email}</p>
+                        {u.kycDocType && <p className="text-xs text-slate-400 mt-0.5">📄 {docLabel(u.kycDocType)} · <span className="font-mono">{u.kycDocNumber}</span>{u.kycSubmittedAt ? ' · submitted ' + fmtDateTime(u.kycSubmittedAt) : ''}</p>}</div>
+                      <Badge tone="green">✅ Verified</Badge>
+                    </div></Card>
+                  ))}</div>
+                )}
+              </section>
+              {none.length > 0 && (
+                <section>
+                  <h3 className="font-extrabold mb-3">Not submitted</h3>
+                  <div className="space-y-2">{none.map(u => (
+                    <Card key={u.id} className="p-4"><div className="flex flex-wrap items-center gap-3">
+                      <Avatar name={u.name} photo={u.photo} />
+                      <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · {u.email}</p></div>
+                      <Badge tone="slate">Not submitted</Badge>
+                    </div></Card>
+                  ))}</div>
+                </section>
+              )}
+            </div>
+          )
+        })()}
 
         {tab === 'loans' && (
           <div className="anim-fade-up space-y-2">
@@ -714,17 +777,15 @@ export default function Admin() {
                   </div>
                 )}
               </div>
-              {(selUser.kycDocType || selUser.kycDocPhoto || kycDocs?.docPhoto) && (
-                <div>
-                  <p className="font-extrabold text-sm mb-2">KYC documents{selUser.kycDocType ? ' · ' + (selUser.kycDocType === 'passport' ? 'Passport' : selUser.kycDocType === 'driving' ? 'Driving Licence' : 'National ID') : ''}{selUser.kycDocNumber ? ' · ' + selUser.kycDocNumber : ''}{selUser.kycSubmittedAt ? ' · submitted ' + fmtDateTime(selUser.kycSubmittedAt) : ''}</p>
-                  <div className="flex gap-2">
-                    {(selUser.kycDocPhoto || kycDocs?.docPhoto) && <a href={selUser.kycDocPhoto || kycDocs?.docPhoto} target="_blank" rel="noreferrer"><img src={selUser.kycDocPhoto || kycDocs?.docPhoto} alt="KYC document" className="h-24 w-36 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
-                    {(selUser.kycFacePhoto || kycDocs?.facePhoto) && <a href={selUser.kycFacePhoto || kycDocs?.facePhoto} target="_blank" rel="noreferrer"><img src={selUser.kycFacePhoto || kycDocs?.facePhoto} alt="KYC face scan" className="h-24 w-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
-                    {!selUser.kycDocPhoto && !kycDocs?.docPhoto && <p className="text-xs text-slate-400">Loading photos…</p>}
-                  </div>
-                  {selUser.kyc === 'pending' && <div className="flex gap-2 mt-2"><Btn variant="success" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, false)}>Reject KYC</Btn></div>}
-                </div>
-              )}
+              {/* KYC data lives in the KYC Verification tab — here only the
+                  status shows, per the owner's layout. */}
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm flex items-center justify-between gap-3">
+                <span className="text-slate-500">KYC status</span>
+                <span className="flex items-center gap-2">
+                  <span className="font-bold">{selUser.kyc === 'verified' ? '✅ Verified' : selUser.kyc === 'pending' ? '⏳ Pending review' : 'Not verified'}</span>
+                  {selUser.kyc === 'pending' && <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => { setSelUserId(null); setTab('kyc') }}>Review in KYC tab →</Btn>}
+                </span>
+              </div>
               {selUser.role === 'user' && (
                 <div className="flex flex-wrap gap-2">
                   {selUser.status !== 'frozen' ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Unfreeze</Btn>}
