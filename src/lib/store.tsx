@@ -162,7 +162,7 @@ interface Ctx {
   setUserLevel: (userId: string, level: number) => void
   setUserLoanLimit: (userId: string, bdt: number | null) => void
   addTicket: (subject: string, message: string) => Promise<string | null>
-  replyTicket: (ticketId: string, text: string, as: 'user' | 'admin') => void
+  replyTicket: (ticketId: string, text: string, as: 'user' | 'admin') => Promise<void>
   deleteMessage: (ticketId: string, messageId: string, asAdmin: boolean) => void
   resolveTicket: (ticketId: string) => void
   /** Send a notification to EVERY user (server broadcast). Returns an error string or null. */
@@ -204,6 +204,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [locked, userId])
   const [, setQuickTick] = useState(0)
   const [adminErrors, setAdminErrors] = useState<Ctx['adminErrors']>([])
+  // Global submit state for money actions: while one runs, a full-screen
+  // loading overlay covers the app (the user sees the tap worked and
+  // cannot double-tap), and a second action call is refused outright.
+  const [busyLabel, setBusyLabel] = useState<string | null>(null)
+  const busyRef = useRef(false)
+  const withBusy = async <T,>(label: string, fn: () => Promise<T>): Promise<T> => {
+    busyRef.current = true; setBusyLabel(label)
+    try { return await fn() } finally { busyRef.current = false; setBusyLabel(null) }
+  }
+  const guardBusy = <A extends unknown[], R>(label: string, fn: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
+    if (busyRef.current) return 'A transaction is already processing — please wait for it to finish.' as unknown as R // surfaced as the error string by actions that return one; ignored by void actions
+    return withBusy(label, () => fn(...args))
+  }
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nova.theme') as any) || 'dark')
   const [langPref, setLangPref] = useState<string>(() => localStorage.getItem('nova.lang') || 'en')
   const [currencyPref, setCurrencyPref] = useState<string | null>(() => localStorage.getItem('nova.currency'))
@@ -1416,7 +1429,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     catch (e: any) { return e.message }
   }
   const inflightSendsRef = useRef(new Map<string, number>())
-  const replyTicket: Ctx['replyTicket'] = (ticketId, text, as) => {
+  const replyTicket: Ctx['replyTicket'] = async (ticketId, text, as) => {
     if (!user || !text.trim()) return
     const tkNow = dbRef.current.tickets.find(x => x.id === ticketId)
     if (!tkNow || tkNow.status === 'resolved') return
@@ -1436,7 +1449,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tk.updatedAt = nowISO()
       if (as === 'admin' && tk.status === 'pending') tk.status = 'processing'
     })
-    void (async () => {
+    await (async () => {
       try { const r = await apiPost('/v1/tickets/reply', { ticketId, text: text.trim(), asAdmin: as === 'admin', clientId: tempId }); applyMoneyResult(r) }
       catch (e: any) {
         mutate(d => {
@@ -1541,12 +1554,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, walletOf,
-    addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, verifyTxPin, buyCrypto, sellCrypto,
-    applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
+    addDeposit: guardBusy('Adding money…', addDeposit), decideDeposit, settleDepositExternal, requestWithdraw: guardBusy('Requesting cash out…', requestWithdraw), decideWithdraw, directWithdraw: guardBusy('Processing withdrawal…', directWithdraw), stake: guardBusy('Staking…', stake), unstake, swap: guardBusy('Swapping…', swap), sendMoney: guardBusy('Sending money…', sendMoney), verifyTxPin, buyCrypto: guardBusy('Buying crypto…', buyCrypto), sellCrypto: guardBusy('Selling crypto…', sellCrypto),
+    applyLoan: guardBusy('Submitting loan application…', applyLoan), earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan: guardBusy('Processing repayment…', repayLoan), setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
     updateProfile, changePassword, changePin, stepUp, revokeSession, markTicketRead, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, saveBanner, deleteBanner, addTicket, replyTicket, deleteMessage, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
     locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
-  return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
+  return (
+    <AppCtx.Provider value={value}>
+      {children}
+      {busyLabel && (
+        <div className="fixed inset-0 z-[95] flex flex-col items-center justify-center gap-4 bg-slate-950/60 backdrop-blur-[2px]">
+          <div className="relative h-16 w-16">
+            <div className="absolute inset-0 rounded-full border-4 border-white/15" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-violet-400 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center text-xl font-black text-white">N</div>
+          </div>
+          <p className="text-sm font-bold text-white">{busyLabel}</p>
+          <p className="text-xs text-slate-300 -mt-2">Please wait — do not press back or tap again</p>
+        </div>
+      )}
+    </AppCtx.Provider>
+  )
 }

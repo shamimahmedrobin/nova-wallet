@@ -254,6 +254,26 @@ const rand = (n) => {
 };
 const pubId = (prefix) => prefix + "-" + rand(8);
 const badAmount = (n) => !(typeof n === "number" && isFinite(n) && n > 0);
+
+// Duplicate-transaction guard (his rule): the same user cannot repeat the
+// same type of transaction with the same amount within 10 minutes — an
+// accidental double-submit lands here even if it slips past the client.
+// A different amount always goes through. Timestamps are parsed in JS
+// because rows mix ISO strings and SQLite CURRENT_TIMESTAMP values.
+const DUP_ERR = "You already made this same transaction (same type and amount) within the last 10 minutes. Please wait 10 minutes, or use a different amount.";
+async function recentDup(db, sql, binds) {
+  try {
+    const rows = await db.prepare(sql).bind(...binds).all();
+    const now = Date.now();
+    for (const r of rows.results) {
+      const raw = String(r.created_at || "");
+      const t = Date.parse(raw.includes("T") ? raw : raw.replace(" ", "T") + "Z");
+      if (!isNaN(t) && now - t >= -60000 && now - t < 10 * 60000) return true;
+    }
+  } catch { /* the guard never blocks a transaction on its own failure */ }
+  return false;
+}
+const dupTx = (db, uid, category, amount) => recentDup(db, "SELECT created_at FROM transactions WHERE user_id = ? AND category = ? AND ABS(amount) = ? AND status NOT IN ('cancelled', 'rejected') ORDER BY created_at DESC LIMIT 5", [uid, category, amount]);
 const round2 = (n) => Math.round(n * 100) / 100;
 
 function emiCalc(principal, annualRatePct, months) {
@@ -686,6 +706,7 @@ async function handleSend(request, env, auth, body) {
   if (pinErr) return json(request, { error: pinErr }, 400);
   const suErr = await stepUpGate(db, auth.uid, amount);
   if (suErr) return json(request, suErr, 403);
+  if (await dupTx(db, auth.uid, "send", amount)) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
   const sender = await getUserRow(db, auth.uid);
   if (!sender) return json(request, { error: "Account not found." }, 404);
   if (sender.status === "frozen") return json(request, { error: "Your wallet is frozen." }, 400);
@@ -728,6 +749,7 @@ async function handleDeposit(request, env, auth, body) {
   const { method, amount, trxId } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   if (!method || !trxId) return json(request, { error: "Method and transaction ID are required." }, 400);
+  if (await recentDup(db, "SELECT created_at FROM deposits WHERE user_id = ? AND amount = ? AND status IN ('pending', 'approved') ORDER BY created_at DESC LIMIT 5", [auth.uid, amount])) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
   const id = pubId("DEP");
   const t = txStmt(db, { userId: auth.uid, category: "add_money", title: "Add Money via " + method, amount, status: "pending", method });
   try {
@@ -753,6 +775,7 @@ async function handleWithdraw(request, env, auth, body) {
   if (pinErr) return json(request, { error: pinErr }, 400);
   const suErr = await stepUpGate(db, auth.uid, amount);
   if (suErr) return json(request, suErr, 403);
+  if (await dupTx(db, auth.uid, "cash_out", amount)) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
   const me = await getUserRow(db, auth.uid);
   if (!me) return json(request, { error: "Account not found." }, 404);
   if (me.status === "frozen") return json(request, { error: "Your wallet is frozen. Contact support." }, 400);
@@ -790,6 +813,7 @@ async function handleDirectWithdraw(request, env, auth, body) {
   if (me.status === "suspended") return json(request, { error: "Your account is suspended. Contact support." }, 400);
   const suErr = await stepUpGate(db, auth.uid, amount);
   if (suErr) return json(request, suErr, 403);
+  if (await dupTx(db, auth.uid, "direct_withdraw", amount)) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
   const settings = await getSettings(db);
   const disc = await feeDiscount(db, Number(me.level));
   const fee = Math.round(amount * (settings.cashoutPct * (1 - disc / 100)) / 100);
@@ -816,6 +840,19 @@ async function handleTrade(request, env, auth, body, side) {
   const { symbol, priceUsd } = body;
   if (!symbol || !(priceUsd > 0)) return json(request, { error: "Enter a valid amount." }, 400);
   const target = body.forUserId && auth.role === "admin" ? body.forUserId : auth.uid;
+  if (target === auth.uid) {
+    // Duplicate guard, compared on the BDT value the trade will record.
+    if (side === "buy" && !badAmount(body.amount)) {
+      const rate = (await getSettings(db)).bdtPerUsd;
+      const exp = symbol === "USDT" ? body.amount : Math.round(body.amount * rate);
+      if (await dupTx(db, auth.uid, "crypto_buy", exp)) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
+    }
+    if (side === "sell" && !badAmount(body.coinAmount)) {
+      const rate = (await getSettings(db)).bdtPerUsd;
+      const exp = symbol === "USDT" ? Math.round(body.coinAmount * rate) : Math.round(body.coinAmount * priceUsd * rate);
+      if (await dupTx(db, auth.uid, "crypto_sell", exp)) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
+    }
+  }
   if (target === auth.uid) { const sg = await statusGate(db, auth.uid); if (sg) return json(request, { error: sg }, 400); }
   let r;
   if (side === "buy") {
@@ -865,6 +902,7 @@ async function handleSwap(request, env, auth, body) {
   const note = amountFrom + " " + fromSym + " → " + (toSym === "BDT" ? Math.round(toAmt) : toSym === "USDT" ? toAmt.toFixed(2) : toAmt.toFixed(6)) + " " + toSym;
   const t = txStmt(db, { userId: auth.uid, category: "swap", title: "Swap " + fromSym + " → " + toSym, amount: Math.round(usdGross * rate), fee: Math.round(feeUsd * rate), note });
   stmts.push(t.stmt);
+  if (await recentDup(db, "SELECT created_at FROM transactions WHERE user_id = ? AND category = 'swap' AND title = ? AND ABS(amount) = ? AND status NOT IN ('cancelled', 'rejected') ORDER BY created_at DESC LIMIT 5", [auth.uid, "Swap " + fromSym + " → " + toSym, Math.round(usdGross * rate)])) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
   try { await db.batch(stmts); } catch (e) { return json(request, { error: "Swap failed: " + String(e?.message || e) }, 500); }
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
@@ -875,6 +913,7 @@ async function handleStake(request, env, auth, body) {
   if (sgk) return json(request, { error: sgk }, 400);
   const { amount, apy, termDays } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
+  if (await recentDup(db, "SELECT start_at AS created_at FROM stakes WHERE user_id = ? AND amount = ? ORDER BY start_at DESC LIMIT 5", [auth.uid, amount])) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
   const settings = await getSettings(db);
   const rate = settings.bdtPerUsd;
   const wallet = await getWallet(db, auth.uid);
@@ -937,6 +976,7 @@ async function handleLoanApply(request, env, auth, body) {
   const settings = await getSettings(db);
   if (amount < settings.minLoan || amount > settings.maxLoan) return json(request, { error: "Loan amount must be between ৳" + settings.minLoan.toLocaleString() + " and ৳" + settings.maxLoan.toLocaleString() + "." }, 400);
   if (!(months >= 1 && months <= 36)) return json(request, { error: "Choose a term between 1 and 36 months." }, 400);
+  if (await recentDup(db, "SELECT created_at FROM loans WHERE user_id = ? AND principal = ? AND status != 'rejected' ORDER BY created_at DESC LIMIT 5", [auth.uid, amount])) return json(request, { error: DUP_ERR, code: "duplicate_recent" }, 400);
   const { emi, total } = emiCalc(amount, settings.loanRatePct, months);
   const id = pubId("LOAN");
   try {

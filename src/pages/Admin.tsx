@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Server, Lock, Pause, Play, RotateCcw, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award, Trash2 } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Server, Lock, Pause, Play, RotateCcw, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award, Trash2, Loader2 } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
@@ -1117,6 +1117,7 @@ function SupportChat() {
   const [sel, setSel] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [delId, setDelId] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const scrollRefDesk = useRef<HTMLDivElement | null>(null)
   // Desktop shows the open chat beside the list; phones keep the modal.
@@ -1131,7 +1132,7 @@ function SupportChat() {
   const tk = sel ? db.tickets.find(x => x.id === sel) : undefined
   useEffect(() => { if (sel) void markTicketRead(sel, true) }, [sel])
   useEffect(() => { for (const r of [scrollRef, scrollRefDesk]) if (r.current) r.current.scrollTop = r.current.scrollHeight })
-  const send = () => { if (tk && text.trim()) { replyTicket(tk.id, text, 'admin'); setText('') } }
+  const send = () => { if (tk && text.trim() && !sending) { setSending(true); void replyTicket(tk.id, text, 'admin').finally(() => setSending(false)); setText('') } }
   const tku = tk ? userOf(tk.userId) : undefined
   // One thread renderer, two homes: a tall side pane on desktop, the
   // modal on phones. It reads the ticket live from the store, so new
@@ -1160,7 +1161,7 @@ function SupportChat() {
       ) : (
         <div className="flex gap-2 shrink-0">
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send() }} placeholder="Type your reply… (first reply: Pending → Processing)" className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
-          <Btn className="!px-5 shrink-0" onClick={send}>Send</Btn>
+          <Btn className="!px-5 shrink-0" disabled={sending} onClick={send}>{sending ? <Loader2 size={16} className="animate-spin" /> : 'Send'}</Btn>
         </div>
       )}
     </div>

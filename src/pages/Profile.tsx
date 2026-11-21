@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound, Trash2 } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound, Trash2, Loader2 } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { apiPost } from '../lib/api'
 import { useMarket } from '../lib/market'
@@ -71,6 +71,7 @@ export default function Profile() {
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
   const [delId, setDelId] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
   const [pinEdit, setPinEdit] = useState(false); const [pinVal, setPinVal] = useState(''); const [pinValConfirm, setPinValConfirm] = useState('')
   const [viewTicket, setViewTicket] = useState<string | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
@@ -584,8 +585,8 @@ export default function Profile() {
                 <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3">{t('chat_closed_note')}</p>
               ) : (
                 <div className="flex gap-2">
-                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { replyTicket(tk.id, chatText, 'user'); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
-                  <Btn className="!px-4 shrink-0" onClick={() => { if (chatText.trim()) { replyTicket(tk.id, chatText, 'user'); setChatText('') } }}><Send size={16} /></Btn>
+                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim() && !sending) { setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => setSending(false)); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
+                  <Btn className="!px-4 shrink-0" disabled={sending} onClick={() => { if (chatText.trim() && !sending) { setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => setSending(false)); setChatText('') } }}>{sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}</Btn>
                 </div>
               )}
             </div>
