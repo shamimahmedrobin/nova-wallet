@@ -1,7 +1,7 @@
 export type Role = 'user' | 'admin'
 export type UserStatus = 'active' | 'suspended' | 'frozen'
 export type KycStatus = 'unverified' | 'pending' | 'verified'
-export type TxStatus = 'pending' | 'processing' | 'completed' | 'approved' | 'rejected' | 'active' | 'repaid'
+export type TxStatus = 'pending' | 'processing' | 'completed' | 'approved' | 'rejected' | 'active' | 'repaid' | 'held' | 'cancelled'
 export type TxCategory =
   | 'add_money' | 'cash_out' | 'send' | 'receive' | 'referral'
   | 'loan_disbursement' | 'loan_repayment' | 'crypto_buy' | 'crypto_sell' | 'adjustment'

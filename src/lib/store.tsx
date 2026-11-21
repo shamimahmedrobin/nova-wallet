@@ -120,6 +120,9 @@ interface Ctx {
   submitKyc: (p: { docType: string; docNumber: string; docPhoto?: string; facePhoto?: string }) => Promise<string | null>; decideKyc: (userId: string, ok: boolean) => Promise<string | null>
   setUserStatus: (userId: string, status: User['status']) => void
   adjustBalance: (userId: string, amount: number, title: string, note?: string) => Promise<void>
+  txHold: (txId: string) => Promise<string | null>
+  txUnhold: (txId: string) => Promise<string | null>
+  txCancel: (txId: string) => Promise<string | null>
   /** Support-desk trading on a customer's account (server-settled). */
   adminBuyCrypto: (userId: string, symbol: string, usdtAmount: number, priceUsd: number) => Promise<string | null>
   adminSellCrypto: (userId: string, symbol: string, coinAmount: number, priceUsd: number) => Promise<string | null>
@@ -1214,6 +1217,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       applyMoneyResult(r)
     } catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
+  const txHold: Ctx['txHold'] = async (txId) => {
+    try { const r = await apiPost('/v1/admin/tx/hold', { txId }); applyMoneyResult(r); return null }
+    catch (e: any) { return e.message }
+  }
+  const txUnhold: Ctx['txUnhold'] = async (txId) => {
+    try { const r = await apiPost('/v1/admin/tx/unhold', { txId }); applyMoneyResult(r); return null }
+    catch (e: any) { return e.message }
+  }
+  const txCancel: Ctx['txCancel'] = async (txId) => {
+    try { const r = await apiPost('/v1/admin/tx/cancel', { txId }); applyMoneyResult(r); return null }
+    catch (e: any) { return e.message }
+  }
   const adminBuyCrypto: Ctx['adminBuyCrypto'] = async (userId2, symbol, usdtAmount, priceUsd) => {
     if (badAmount(usdtAmount) || badQty(priceUsd)) return 'Enter a valid amount.'
     const tUid = serverUidOf(userId2)
@@ -1420,7 +1435,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value: Ctx = {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, walletOf,
     addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, verifyTxPin, buyCrypto, sellCrypto,
-    applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
+    applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,

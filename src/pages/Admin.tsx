@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Server, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Server, Lock, Pause, Play, RotateCcw, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
@@ -8,7 +8,7 @@ import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, TxDirIcon, statu
 import { fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
 import { COIN_META, useMarket } from '../lib/market'
 import { CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
-import type { PayMethod, Tx } from '../lib/types'
+import type { PayMethod } from '../lib/types'
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -37,7 +37,7 @@ const SCOPE_TABS: Record<string, string[]> = {
 }
 
 export default function Admin() {
-  const { user, db, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead, broadcast, setAdminScope, setAdminRole, adminErrors } = useApp()
+  const { user, db, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead, broadcast, setAdminScope, setAdminRole, adminErrors } = useApp()
   const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const byDateDesc = <T extends { createdAt: string }>(arr: T[]): T[] => [...arr].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   const { coins } = useMarket(30_000)
@@ -77,7 +77,7 @@ export default function Admin() {
   }
   const [notifOpen, setNotifOpen] = useState(false)
   const [userQ, setUserQ] = useState('')
-  const [txQ, setTxQ] = useState(''); const [selTx, setSelTx] = useState<Tx | null>(null)
+  const [txQ, setTxQ] = useState(''); const [selTxId, setSelTxId] = useState<string | null>(null); const [txCancelArm, setTxCancelArm] = useState(false)
   const copyTxId = async (id: string) => { try { await navigator.clipboard.writeText(id); toast({ kind: 'success', title: 'Transaction ID copied', body: id }) } catch { toast({ kind: 'error', title: 'Copy failed', body: id }) } }
   const txq = txQ.trim().toLowerCase()
   const filteredTxs = !txq ? byDateDesc(db.txs) : byDateDesc(db.txs).filter(tx => tx.id.toLowerCase().includes(txq) || tx.title.toLowerCase().includes(txq) || (tx.counterparty ?? '').toLowerCase().includes(txq) || (db.users.find(u => u.id === tx.userId)?.name.toLowerCase().includes(txq) ?? false))
@@ -88,6 +88,8 @@ export default function Admin() {
   const [mClearArm, setMClearArm] = useState(false)
   const openUser = (u: any) => { setSelUserId(u.id); setMAdjAmt(''); setMAdjTitle('Charge'); setMAdjNote(''); setMAdjDir('add'); setMTradeAmt(''); setMSide('buy'); setMSym('BTC'); setMClearArm(false); setMLoanLimit(u.loanLimitOverride ? String(Math.round(u.loanLimitOverride / db.settings.bdtPerUsd * 100) / 100) : '') }
   const selUser = selUserId ? db.users.find(x => x.id === selUserId) ?? null : null
+  const selTx = selTxId ? db.txs.find(t => t.id === selTxId) ?? null : null
+  useEffect(() => { setTxCancelArm(false) }, [selTxId])
   const selWallet = selUser ? db.wallets.find(x => x.userId === selUser.id) : null
   // KYC photos live on the server (too heavy for the directory sync) —
   // the KYC Verification tab fetches them on demand per submission.
@@ -195,7 +197,7 @@ export default function Admin() {
               {sTxs.length > 0 && <div>
                 <p className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-slate-400 mb-2">Transactions</p>
                 <div className="space-y-1.5">{sTxs.map(t => (
-                  <button key={t.id} onClick={() => { setSearchOpen(false); setSearchQ(''); setSelTx(t) }} className="w-full flex items-center gap-3 rounded-2xl border border-slate-200/70 dark:border-slate-800 p-3 text-left hover:border-violet-300 transition">
+                  <button key={t.id} onClick={() => { setSearchOpen(false); setSearchQ(''); setSelTxId(t.id) }} className="w-full flex items-center gap-3 rounded-2xl border border-slate-200/70 dark:border-slate-800 p-3 text-left hover:border-violet-300 transition">
                     <TxDirIcon dir={txDirection(t.category, t.amount)} />
                     <span className="flex-1 min-w-0"><span className="block font-bold text-sm truncate">{t.title}</span><span className="block text-xs text-slate-400 truncate">{t.id} · {fmtDateTime(t.createdAt)}</span></span>
                     <span className={`font-extrabold text-sm ${txAmountCls(txDirection(t.category, t.amount))}`}>{txSign(txDirection(t.category, t.amount))}{usdt(Math.abs(t.amount))}</span>
@@ -597,7 +599,7 @@ export default function Admin() {
               <p className="text-xs text-slate-400 mt-2">Built for customer support — every transaction carries its own ID. Search also matches the customer name, title or counterparty. {filteredTxs.length} transaction(s) found.</p>
             </Card>
             {filteredTxs.length === 0 ? <Card><Empty title="No transactions match that search" /></Card> : filteredTxs.slice(0, 100).map(tx => { const tu = db.users.find(u => u.id === tx.userId); const dir = txDirection(tx.category, tx.amount); return (
-              <button key={tx.id} onClick={() => setSelTx(tx)} className="w-full text-left">
+              <button key={tx.id} onClick={() => setSelTxId(tx.id)} className="w-full text-left">
                 <Card className="p-4 hover:border-violet-300 transition">
                   <div className="flex items-start gap-3">
                     <TxDirIcon dir={dir} />
@@ -784,7 +786,7 @@ export default function Admin() {
         </main>
       </div>
 
-      <Modal open={!!selTx} onClose={() => setSelTx(null)} title="Transaction details">
+      <Modal open={!!selTx} onClose={() => setSelTxId(null)} title="Transaction details">
         {selTx && (() => { const tu = db.users.find(u => u.id === selTx.userId); const dir = txDirection(selTx.category, selTx.amount); return (
           <div className="space-y-4">
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-2 text-sm">
@@ -794,6 +796,20 @@ export default function Admin() {
               ))}
               <div className="flex justify-between gap-4 border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">Amount</span><span className={`font-extrabold text-right ${txAmountCls(dir)}`}>{txSign(dir)}{usdt(Math.abs(selTx.amount))}</span></div>
             </div>
+            {selTx.status === 'held' && (
+              <div className="rounded-2xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200/70 dark:border-violet-500/25 p-3.5 text-sm font-semibold text-violet-700 dark:text-violet-300 flex gap-2.5"><Lock size={17} className="shrink-0 mt-0.5" /><span>This transaction is <b>on hold</b> — its amount ({usdt(Math.abs(selTx.amount))}) is locked in the customer's wallet and cannot be spent. Release the hold or cancel to reverse it.</span></div>
+            )}
+            {selTx.status === 'cancelled' && (
+              <div className="rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200/70 dark:border-rose-500/25 p-3.5 text-sm font-semibold text-rose-600 dark:text-rose-300 flex gap-2.5"><RotateCcw size={17} className="shrink-0 mt-0.5" /><span>This transaction was <b>cancelled and reversed</b> — its balance effect has been undone.</span></div>
+            )}
+            {(myScope === 'full' || myScope === 'finance') && (selTx.status === 'completed' || selTx.status === 'held') && (
+              <div className="space-y-2">
+                {selTx.status === 'completed' && <Btn variant="outline" className="w-full" onClick={async () => { const err = await txHold(selTx.id); if (err) return toast({ kind: 'error', title: err }); toast({ kind: 'success', title: 'Transaction held', body: 'The amount is now locked in the customer\'s wallet.' }) }}><Pause size={15} /> Hold transaction — lock the amount</Btn>}
+                {selTx.status === 'held' && <Btn variant="success" className="w-full" onClick={async () => { const err = await txUnhold(selTx.id); if (err) return toast({ kind: 'error', title: err }); toast({ kind: 'success', title: 'Hold released', body: 'The amount is available to the customer again.' }) }}><Play size={15} /> Release hold (unhold)</Btn>}
+                <Btn variant="danger" className="w-full" onClick={async () => { if (!txCancelArm) { setTxCancelArm(true); setTimeout(() => setTxCancelArm(false), 4000); return } const err = await txCancel(selTx.id); setTxCancelArm(false); if (err) return toast({ kind: 'error', title: err }); toast({ kind: 'success', title: 'Transaction cancelled & reversed' }) }}>{txCancelArm ? '⚠️ Tap again to confirm — reverse ' + usdt(Math.abs(selTx.amount)) + '?' : <><RotateCcw size={15} /> Cancel & reverse transaction</>}</Btn>
+                <p className="text-[11px] text-slate-400 text-center">Hold locks the amount in the customer's Locked balance. Cancel fully reverses the transaction — for a send/receive, both sides are reversed together. The customer is notified either way.</p>
+              </div>
+            )}
             <Btn className="w-full" onClick={() => copyTxId(selTx.id)}><Copy size={15} /> Copy Transaction ID</Btn>
           </div>
         ) })()}
@@ -807,50 +823,106 @@ export default function Admin() {
           const cryptoValueBdt = holdings.reduce((sum, [sym, a]) => sum + a * priceOfA(sym) * db.settings.bdtPerUsd, 0)
           const stakes = db.stakes.filter(st => st.userId === selUser.id && st.status === 'active')
           const pendWd = db.withdrawals.filter(x => x.userId === selUser.id && x.status === 'pending')
+          const heldTxs = byDateDesc(db.txs.filter(t => t.userId === selUser.id && t.status === 'held'))
+          const heldSum = heldTxs.reduce((a, t) => a + Math.abs(t.amount), 0)
           const stmt = byDateDesc(db.txs.filter(t => t.userId === selUser.id)).slice(0, 10)
           const ADJ_TITLES = ['Charge', 'Complaint', 'Hold', 'Refund', 'Bonus', 'Compensation', 'Correction']
           const tradePrice = priceOfA(mSym)
           const sellHolding = sw?.holdings[mSym] ?? 0
+          const totalWealth = (sw?.available ?? 0) + (sw?.locked ?? 0) + cryptoValueBdt
           return (
-            <div className="space-y-5">
-              {/* Summary */}
-              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm space-y-1.5">
-                <div className="flex justify-between gap-3"><span className="text-slate-500">User ID</span><span className="font-bold">{selUser.id}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Email</span><span className="font-bold">{selUser.email}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Phone</span><span className="font-bold">{selUser.phone}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Joined</span><span className="font-bold">{fmtDateTime(selUser.createdAt)}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">KYC / Status</span><span className="font-bold capitalize">{selUser.kyc} · {selUser.status}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Cash balance</span><span className="font-bold">{usdt(sw?.available ?? 0)}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Available incl. USDT (customer's Home figure)</span><span className="font-bold">{usdt((sw?.available ?? 0) + (sw?.holdings.USDT ?? 0) * db.settings.bdtPerUsd)}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Locked</span><span className="font-bold">{usdt(sw?.locked ?? 0)}</span></div>
-                <div className="flex justify-between gap-3"><span className="text-slate-500">Crypto value (live)</span><span className="font-bold">{usdt(cryptoValueBdt)}</span></div>
-                {holdings.length > 0 && (
-                  <div className="pt-1.5 space-y-1">
-                    {holdings.map(([sym, a]) => (
-                      <div key={sym} className="flex justify-between gap-3 text-xs"><span className="text-slate-500">{sym} holding</span><span className="font-bold">{a} {sym} · {fmtUSDT(a * priceOfA(sym))}</span></div>
-                    ))}
+            <div className="space-y-4">
+              {/* Header */}
+              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-600 via-purple-600 to-cyan-500 p-4 text-white shadow-lg shadow-violet-600/25">
+                <div className="flex items-center gap-3.5">
+                  <span className="rounded-full ring-2 ring-white/40 shrink-0"><Avatar name={selUser.name} photo={selUser.photo} size={52} /></span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-extrabold text-lg leading-tight truncate">{selUser.name}</p>
+                    <p className="text-white/75 text-xs font-semibold truncate">@{selUser.username} · {selUser.email}</p>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <span className="px-2 py-0.5 rounded-full bg-white/20 text-[11px] font-extrabold">Level {selUser.level}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-white/20 text-[11px] font-extrabold capitalize">{selUser.status}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-white/20 text-[11px] font-extrabold">{selUser.kyc === 'verified' ? '✅ KYC verified' : selUser.kyc === 'pending' ? '⏳ KYC pending' : 'KYC unverified'}</span>
+                      {selUser.role === 'admin' && <span className="px-2 py-0.5 rounded-full bg-amber-300 text-amber-900 text-[11px] font-extrabold capitalize">🛡️ Admin · {selUser.adminScope ?? 'full'}</span>}
+                    </div>
                   </div>
-                )}
+                </div>
+                <div className="mt-3.5 rounded-2xl bg-black/25 px-3.5 py-2.5 flex items-end justify-between gap-3">
+                  <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Total balance · incl. locked + crypto</p><p className="font-extrabold text-xl leading-tight truncate">{usdt(totalWealth)}</p></div>
+                  <p className="text-[11px] font-semibold text-white/60 text-right shrink-0">Joined<br /><span className="text-white/85">{fmtDateTime(selUser.createdAt)}</span></p>
+                </div>
               </div>
-              {/* KYC data lives in the KYC Verification tab — here only the
-                  status shows, per the owner's layout. */}
-              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm flex items-center justify-between gap-3">
-                <span className="text-slate-500">KYC status</span>
+              {/* Balance cards */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5"><Wallet size={13} /> Available cash</p>
+                  <p className="font-extrabold text-lg mt-1">{usdt(sw?.available ?? 0)}</p>
+                  <p className="text-[11px] text-slate-400 font-semibold">Spendable right now</p>
+                </div>
+                <div className={`rounded-3xl border p-3.5 ${(sw?.locked ?? 0) > 0 ? 'border-violet-300/70 dark:border-violet-500/30 bg-violet-50/70 dark:bg-violet-500/5' : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900'}`}>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5"><Lock size={13} /> Locked</p>
+                  <p className="font-extrabold text-lg mt-1">{usdt(sw?.locked ?? 0)}</p>
+                  <p className="text-[11px] text-slate-400 font-semibold">Stakes · cash-outs · holds</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Available incl. USDT</p>
+                  <p className="font-extrabold text-lg mt-1">{usdt((sw?.available ?? 0) + (sw?.holdings.USDT ?? 0) * db.settings.bdtPerUsd)}</p>
+                  <p className="text-[11px] text-slate-400 font-semibold">The customer's Home figure</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Crypto value (live)</p>
+                  <p className="font-extrabold text-lg mt-1">{usdt(cryptoValueBdt)}</p>
+                  <p className="text-[11px] text-slate-400 font-semibold">{holdings.length} asset{holdings.length === 1 ? '' : 's'} held</p>
+                </div>
+              </div>
+              {holdings.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 -mt-1">
+                  {holdings.map(([sym, a]) => (
+                    <span key={sym} className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-extrabold">{sym} · {a} <span className="text-slate-400 font-bold">({fmtUSDT(a * priceOfA(sym))})</span></span>
+                  ))}
+                </div>
+              )}
+              {/* Details */}
+              <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 p-4 text-sm space-y-2">
+                <div className="flex justify-between items-center gap-3"><span className="text-slate-500">User ID</span><span className="flex items-center gap-1.5"><span className="font-bold font-mono text-[13px]">{selUser.id}</span><button onClick={() => copyTxId(selUser.id)} title="Copy user ID" className="p-1.5 rounded-lg bg-violet-100 dark:bg-violet-500/15 text-violet-600"><Copy size={12} /></button></span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Phone</span><span className="font-bold">{selUser.phone}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500">Email</span><span className="font-bold truncate">{selUser.email}</span></div>
+              </div>
+              {/* KYC status — data lives in the KYC Verification tab */}
+              <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 p-4 text-sm flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 font-bold"><ShieldCheck size={17} className="text-violet-500" /> KYC status</span>
                 <span className="flex items-center gap-2">
                   <span className="font-bold">{selUser.kyc === 'verified' ? '✅ Verified' : selUser.kyc === 'pending' ? '⏳ Pending review' : 'Not verified'}</span>
                   {selUser.kyc === 'pending' && <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => { setKycFocus(selUser.id); setSelUserId(null); setUsersOpen(true); setTab('kyc') }}>Review in KYC tab →</Btn>}
                 </span>
               </div>
-              {selUser.role === 'user' && (
-                <div className="flex flex-wrap gap-2">
-                  {selUser.status !== 'frozen' ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Unfreeze</Btn>}
-                  {selUser.status !== 'suspended' ? <Btn variant="danger" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'suspended')}>Suspend</Btn> : <Btn variant="success" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Activate</Btn>}
+              {/* Account controls */}
+              <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 p-4 space-y-3.5">
+                <p className="font-extrabold text-sm">Account controls</p>
+                <div>
+                  <p className="text-xs font-bold text-slate-400 mb-1.5">ACCOUNT LEVEL</p>
+                  <select value={selUser.level} onChange={e => { setUserLevel(selUser.id, Number(e.target.value)); toast({ kind: 'success', title: selUser.name + ' → Level ' + e.target.value }) }} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm font-bold">
+                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>Level {n}</option>)}
+                  </select>
+                  {pendingReq && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/20 p-3">
+                      <p className="flex-1 min-w-[140px] text-xs font-bold text-amber-700 dark:text-amber-300">Upgrade request pending: Level {pendingReq.fromLevel} → Level {pendingReq.toLevel}</p>
+                      <Btn variant="success" className="!py-1.5 !text-xs" onClick={() => { decideUpgrade(pendingReq.id, true); toast({ kind: 'success', title: 'Level upgraded' }) }}>Approve</Btn>
+                      <Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideUpgrade(pendingReq.id, false)}>Reject</Btn>
+                    </div>
+                  )}
                 </div>
-              )}
+                {selUser.role === 'user' && (
+                  <div className="flex flex-wrap gap-2">
+                    {selUser.status !== 'frozen' ? <Btn variant="outline" className="!py-2 !text-xs flex-1" onClick={() => setUserStatus(selUser.id, 'frozen')}>❄️ Freeze wallet</Btn> : <Btn variant="outline" className="!py-2 !text-xs flex-1" onClick={() => setUserStatus(selUser.id, 'active')}>Unfreeze wallet</Btn>}
+                    {selUser.status !== 'suspended' ? <Btn variant="danger" className="!py-2 !text-xs flex-1" onClick={() => setUserStatus(selUser.id, 'suspended')}>Suspend account</Btn> : <Btn variant="success" className="!py-2 !text-xs flex-1" onClick={() => setUserStatus(selUser.id, 'active')}>Activate account</Btn>}
+                  </div>
+                )}
+              </div>
               {/* Admin access (RBAC) — only the owner (full scope) can grant
                   or change admin roles; the server enforces the scopes. */}
               {myScope === 'full' && selUser.id !== user?.id && (
-                <div className="rounded-2xl border border-amber-200/70 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-500/5 p-4">
+                <div className="rounded-3xl border border-amber-200/70 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-500/5 p-4">
                   <p className="font-extrabold text-sm mb-1">🛡️ Admin access</p>
                   <p className="text-xs text-slate-400 mb-3">Scopes decide what a teammate can see and do — Finance approves money, Content manages news & broadcasts, Support handles KYC & chats. Full = owner access.</p>
                   {selUser.role !== 'admin' ? (
@@ -868,25 +940,11 @@ export default function Admin() {
                 </div>
               )}
               {selUser.role === 'admin' && myScope !== 'full' && (
-                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 text-sm flex justify-between"><span className="text-slate-500">Admin scope</span><span className="font-bold capitalize">{selUser.adminScope ?? 'full'}</span></div>
+                <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 p-4 text-sm flex justify-between"><span className="text-slate-500">Admin scope</span><span className="font-bold capitalize">{selUser.adminScope ?? 'full'}</span></div>
               )}
-              {/* Level */}
-              <div>
-                <p className="font-extrabold text-sm mb-2">Account level</p>
-                <select value={selUser.level} onChange={e => { setUserLevel(selUser.id, Number(e.target.value)); toast({ kind: 'success', title: selUser.name + ' → Level ' + e.target.value }) }} className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm font-bold">
-                  {[1, 2, 3, 4].map(n => <option key={n} value={n}>Level {n}</option>)}
-                </select>
-                {pendingReq && (
-                  <div className="flex flex-wrap items-center gap-2 mt-2.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/20 p-3">
-                    <p className="flex-1 min-w-[140px] text-xs font-bold text-amber-700 dark:text-amber-300">Upgrade request pending: Level {pendingReq.fromLevel} → Level {pendingReq.toLevel}</p>
-                    <Btn variant="success" className="!py-1.5 !text-xs" onClick={() => { decideUpgrade(pendingReq.id, true); toast({ kind: 'success', title: 'Level upgraded' }) }}>Approve</Btn>
-                    <Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideUpgrade(pendingReq.id, false)}>Reject</Btn>
-                  </div>
-                )}
-              </div>
               {/* Titled balance adjustment */}
               <div className="rounded-3xl border-2 border-slate-200/80 dark:border-slate-700/60 p-4">
-                <p className="font-extrabold text-sm">Adjust balance <span className="text-slate-400 font-semibold">— shows in the statement with your title</span></p>
+                <p className="font-extrabold text-sm">💰 Adjust balance <span className="text-slate-400 font-semibold">— shows in the statement with your title</span></p>
                 <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mt-3">
                   {([['add', '＋ Add money'], ['deduct', '− Deduct']] as const).map(([d, l]) => (
                     <button key={d} onClick={() => setMAdjDir(d)} className={`py-2 rounded-xl text-sm font-bold transition ${mAdjDir === d ? 'bg-white dark:bg-slate-900 shadow ' + (d === 'add' ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-500'}`}>{l}</button>
@@ -901,10 +959,11 @@ export default function Admin() {
                 <div className="space-y-3 mt-3">
                   <Input label="…or a custom title" value={mAdjTitle} onChange={e => setMAdjTitle(e.target.value)} />
                   <Input label={'Amount (USDT) — ' + (mAdjDir === 'add' ? 'added to Available' : 'deducted from Available')} type="number" value={mAdjAmt} onChange={e => setMAdjAmt(e.target.value)} />
+                  {Number(mAdjAmt) > 0 && <p className={`text-xs font-bold -mt-1 ${mAdjDir === 'add' ? 'text-emerald-600' : 'text-rose-500'}`}>{mAdjDir === 'add' ? '+' : '−'}≈ ৳{Math.round(Number(mAdjAmt) * db.settings.bdtPerUsd).toLocaleString('en-US')} {mAdjDir === 'add' ? 'will be added to' : 'will be deducted from'} the cash balance (available now: {usdt(sw?.available ?? 0)})</p>}
                   <Input label="Note (optional)" placeholder="e.g. Support ticket #123 — service charge" value={mAdjNote} onChange={e => setMAdjNote(e.target.value)} />
-                  <Btn className="w-full" onClick={() => { const a = Number(mAdjAmt); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter an amount' }); if (!mAdjTitle.trim()) return toast({ kind: 'error', title: 'A title is required — it appears in the statement' }); if (mAdjDir === 'deduct' && Math.round(a * db.settings.bdtPerUsd) > (sw?.available ?? 0)) return toast({ kind: 'error', title: 'Deduction exceeds the available balance' }); adjustBalance(selUser.id, (mAdjDir === 'add' ? 1 : -1) * Math.round(a * db.settings.bdtPerUsd), mAdjTitle.trim(), mAdjNote.trim() || undefined); setMAdjAmt(''); setMAdjNote(''); toast({ kind: 'success', title: 'Recorded in the statement as “' + mAdjTitle.trim() + '”' }) }}>Apply — statement title: {mAdjTitle.trim() || '…'}</Btn>
+                  <Btn variant={mAdjDir === 'add' ? 'success' : 'danger'} className="w-full" onClick={() => { const a = Number(mAdjAmt); if (!a || a <= 0) return toast({ kind: 'error', title: 'Enter an amount' }); if (!mAdjTitle.trim()) return toast({ kind: 'error', title: 'A title is required — it appears in the statement' }); if (mAdjDir === 'deduct' && Math.round(a * db.settings.bdtPerUsd) > (sw?.available ?? 0)) return toast({ kind: 'error', title: 'Deduction exceeds the available balance' }); adjustBalance(selUser.id, (mAdjDir === 'add' ? 1 : -1) * Math.round(a * db.settings.bdtPerUsd), mAdjTitle.trim(), mAdjNote.trim() || undefined); setMAdjAmt(''); setMAdjNote(''); toast({ kind: 'success', title: (mAdjDir === 'add' ? 'Added' : 'Deducted') + ' — recorded in the statement as “' + mAdjTitle.trim() + '”' }) }}>{mAdjDir === 'add' ? '＋ Add' : '− Deduct'} — statement title: {mAdjTitle.trim() || '…'}</Btn>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1.5">Writes a statement entry with this exact title + an audit log line, and notifies the customer.</p>
+                <p className="text-[11px] text-slate-400 mt-1.5">Writes a statement entry with this exact title + an audit log line, and notifies the customer. A deduction shows as a red − amount in the customer's statement.</p>
               </div>
               {/* Support crypto trade */}
               <div className="rounded-3xl border-2 border-slate-200/80 dark:border-slate-700/60 p-4">
@@ -931,8 +990,15 @@ export default function Admin() {
               </div>
               {/* Locked manager */}
               <div className="rounded-3xl border-2 border-slate-200/80 dark:border-slate-700/60 p-4">
-                <p className="font-extrabold text-sm">Locked holdings <span className="text-slate-400 font-semibold">— total {usdt(sw?.locked ?? 0)}</span></p>
+                <p className="font-extrabold text-sm">🔒 Locked holdings <span className="text-slate-400 font-semibold">— total {usdt(sw?.locked ?? 0)}</span></p>
                 <div className="space-y-2 mt-3">
+                  {heldTxs.map(tx => (
+                    <div key={tx.id} className="flex items-center gap-2.5 rounded-2xl bg-violet-50 dark:bg-violet-500/10 px-3.5 py-2.5">
+                      <span className="flex-1 min-w-0 text-sm"><b>⏸ Transaction on hold</b> <span className="text-slate-400 text-xs block truncate">{tx.title} · {tx.id} · {fmtDateTime(tx.createdAt)}</span></span>
+                      <b className="text-sm">{usdt(Math.abs(tx.amount))}</b>
+                      <Btn variant="outline" className="!py-1.5 !text-xs" onClick={async () => { const err = await txUnhold(tx.id); if (err) return toast({ kind: 'error', title: err }); toast({ kind: 'success', title: 'Hold released to Available' }) }}>Unhold</Btn>
+                    </div>
+                  ))}
                   {stakes.map(st => (
                     <div key={st.id} className="flex items-center gap-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-3.5 py-2.5">
                       <span className="flex-1 min-w-0 text-sm"><b>🌱 Stake</b> <span className="text-slate-400 text-xs block">{st.apy}% APY · {st.termDays === 0 ? 'Flexible' : st.termDays + ' days'} · since {fmtDateTime(st.startAt)}</span></span>
@@ -946,21 +1012,21 @@ export default function Admin() {
                       <b className="text-sm">{usdt(x.amount)}</b>
                     </div>
                   ))}
-                  {(() => { const rem = (sw?.locked ?? 0) - stakes.reduce((a, st) => a + st.amount, 0) - pendWd.reduce((a, x) => a + x.amount, 0); return rem > 0 ? (
+                  {(() => { const rem = (sw?.locked ?? 0) - stakes.reduce((a, st) => a + st.amount, 0) - pendWd.reduce((a, x) => a + x.amount, 0) - heldSum; return rem > 0 ? (
                     <div className="flex items-center gap-2.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 px-3.5 py-2.5">
-                      <span className="flex-1 min-w-0 text-sm"><b>🔒 Other holds</b> <span className="text-slate-400 text-xs block">No stake or cash-out record behind this part (platform / legacy hold) — Clear ALL below releases it.</span></span>
+                      <span className="flex-1 min-w-0 text-sm"><b>🔒 Other holds</b> <span className="text-slate-400 text-xs block">No stake, hold or cash-out record behind this part (platform / legacy hold) — Clear ALL below releases it.</span></span>
                       <b className="text-sm">{usdt(rem)}</b>
                     </div>) : null })()}
-                  {stakes.length === 0 && pendWd.length === 0 && (sw?.locked ?? 0) === 0 && <p className="text-sm text-slate-400">Nothing locked for this customer.</p>}
-                  {stakes.length === 0 && pendWd.length === 0 && (sw?.locked ?? 0) > 0 && <p className="text-sm text-slate-400">This locked amount has no stake or cash-out record (legacy/other hold) — Clear all releases it.</p>}
+                  {stakes.length === 0 && pendWd.length === 0 && heldTxs.length === 0 && (sw?.locked ?? 0) === 0 && <p className="text-sm text-slate-400">Nothing locked for this customer.</p>}
+                  {stakes.length === 0 && pendWd.length === 0 && heldTxs.length === 0 && (sw?.locked ?? 0) > 0 && <p className="text-sm text-slate-400">This locked amount has no stake, hold or cash-out record (legacy/other hold) — Clear all releases it.</p>}
                 </div>
                 {(sw?.locked ?? 0) > 0 && (
                   <Btn variant="danger" className="w-full mt-3" onClick={() => { if (!mClearArm) { setMClearArm(true); setTimeout(() => setMClearArm(false), 4000); return } adminClearLocked(selUser.id); setMClearArm(false); toast({ kind: 'success', title: 'All locked holdings cleared to Available' }) }}>{mClearArm ? '⚠️ Tap again to confirm — release ALL ' + usdt(sw?.locked ?? 0) + '?' : 'Clear ALL locked holdings'}</Btn>
                 )}
-                <p className="text-[11px] text-slate-400 mt-1.5">Clear-all closes every stake (no interest on a bulk clear — release stakes one by one above to pay interest), cancels pending cash outs, and moves the whole locked amount to Available. Audited + notified.</p>
+                <p className="text-[11px] text-slate-400 mt-1.5">Clear-all closes every stake (no interest on a bulk clear — release stakes one by one above to pay interest), cancels pending cash outs, releases transaction holds, and moves the whole locked amount to Available. Audited + notified.</p>
               </div>
               {/* Loan limit */}
-              <div>
+              <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 p-4">
                 <p className="font-extrabold text-sm mb-2">Loan limit</p>
                 <p className="text-xs text-slate-400 mb-2">Level {selUser.level} default: <b>{usdt(lvlDef?.loanLimit ?? 0)}</b> · Current: <b>{selUser.loanLimitOverride ? usdt(selUser.loanLimitOverride) + ' (custom)' : 'level default'}</b></p>
                 <div className="flex gap-2 items-end">
@@ -971,11 +1037,11 @@ export default function Admin() {
               </div>
               {/* Statement */}
               <div>
-                <p className="font-extrabold text-sm mb-2">Statement <span className="text-slate-400 font-semibold">— latest activity (also in Transactions tab)</span></p>
+                <p className="font-extrabold text-sm mb-2">Statement <span className="text-slate-400 font-semibold">— latest activity · tap a row for details, hold & cancel</span></p>
                 {stmt.length === 0 ? <p className="text-sm text-slate-400">No transactions yet.</p> : (
-                  <div className="rounded-2xl border border-slate-200/70 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
                     {stmt.map(tx => { const dir = txDirection(tx.category, tx.amount); return (
-                      <button key={tx.id} onClick={() => copyTxId(tx.id)} title="Copy transaction ID" className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left">
+                      <button key={tx.id} onClick={() => { setSelUserId(null); setSelTxId(tx.id) }} title="Open transaction details" className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                         <TxDirIcon dir={dir} />
                         <span className="flex-1 min-w-0"><span className="block font-bold text-[13px] truncate">{tx.title}</span><span className="block text-[11px] text-slate-400 truncate">{tx.id} · {fmtDateTime(tx.createdAt)}{tx.note ? ' · ' + tx.note : ''}</span></span>
                         <span className="text-right"><span className={`block font-extrabold text-[13px] ${txAmountCls(dir)}`}>{txSign(dir)}{usdt(Math.abs(tx.amount))}</span><Badge tone={statusTone(tx.status)}>{tx.status}</Badge></span>

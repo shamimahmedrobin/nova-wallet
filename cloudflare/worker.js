@@ -1352,12 +1352,130 @@ async function handleAdminAdjust(request, env, auth, body) {
   if (!wallet) return json(request, { error: "Wallet not found." }, 404);
   const bals = await getBalances(db, wallet.id);
   if (amount < 0 && Math.abs(amount) > balOf(bals, "BDT")) return json(request, { error: "Deduction exceeds the available balance." }, 400);
-  const t = txStmt(db, { userId, category: "adjustment", title: String(title).slice(0, 80), amount: Math.abs(amount), note: note || undefined });
+  const t = txStmt(db, { userId, category: "adjustment", title: String(title).slice(0, 80), amount, note: note || undefined });
   try {
     await db.batch([adjStmt(db, wallet.id, "BDT", amount), t.stmt]);
   } catch (e) {
     return json(request, { error: "Adjustment failed: " + String(e?.message || e) }, 500);
   }
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+// ---- Transaction hold / unhold / cancel (admin ecosystem) -------------------
+// Hold freezes the transaction amount in the owner's Locked balance (it
+// shows in the wallet's Locked figure everywhere). Unhold releases it.
+// Cancel reverses the transaction's balance effect entirely — for a send /
+// receive pair BOTH sides are reversed and marked cancelled together.
+const TX_IN_CATS = ["add_money", "receive", "referral", "loan_disbursement", "crypto_sell", "earn"];
+const TX_OUT_CATS = ["cash_out", "send", "loan_repayment", "crypto_buy", "direct_withdraw", "stake"];
+const TX_CANCELLABLE = ["send", "receive", "referral", "adjustment", "direct_withdraw", "earn"];
+function txDirOf(tx) {
+  if (tx.category === "adjustment") return Number(tx.amount) < 0 ? "out" : "in";
+  if (TX_IN_CATS.includes(tx.category)) return "in";
+  if (TX_OUT_CATS.includes(tx.category)) return "out";
+  return "neutral";
+}
+async function loadTxByPublic(db, pub) {
+  if (!pub) return null;
+  return await db.prepare("SELECT * FROM transactions WHERE public_id = ?").bind(String(pub)).first();
+}
+
+async function handleAdminTxHold(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
+  const tx = await loadTxByPublic(db, body.txId);
+  if (!tx) return json(request, { error: "Transaction not found." }, 404);
+  if (tx.status !== "completed") return json(request, { error: "Only a completed transaction can be held (this one is " + tx.status + ")." }, 400);
+  const wallet = await getWallet(db, tx.user_id);
+  if (!wallet) return json(request, { error: "Wallet not found." }, 404);
+  const amt = Math.abs(Number(tx.amount));
+  const bals = await getBalances(db, wallet.id);
+  if (balOf(bals, tx.currency) < amt) return json(request, { error: "Cannot hold: the money from this transaction is no longer fully available (already spent or locked)." }, 400);
+  try {
+    await db.batch([
+      adjStmt(db, wallet.id, tx.currency, -amt, amt),
+      db.prepare("UPDATE transactions SET status = 'held' WHERE id = ?").bind(tx.id),
+    ]);
+  } catch (e) { return json(request, { error: "Hold failed: " + String(e?.message || e) }, 500); }
+  await auditLog(db, auth, "tx.hold", tx.public_id + " · " + tx.title + " · " + amt + " " + tx.currency);
+  await notifyServer(db, tx.user_id, "tx", "\u{1F512} Transaction held", "Your transaction \"" + tx.title + "\" (" + tx.public_id + ") has been placed on hold. The amount is locked and cannot be spent until it is released.", "/transactions?tx=" + tx.public_id);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminTxUnhold(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
+  const tx = await loadTxByPublic(db, body.txId);
+  if (!tx) return json(request, { error: "Transaction not found." }, 404);
+  if (tx.status !== "held") return json(request, { error: "This transaction is not on hold." }, 400);
+  const wallet = await getWallet(db, tx.user_id);
+  if (!wallet) return json(request, { error: "Wallet not found." }, 404);
+  const amt = Math.abs(Number(tx.amount));
+  const bals = await getBalances(db, wallet.id);
+  if (lockedOf(bals, tx.currency) < amt) return json(request, { error: "This hold was already released (for example via Clear all locked)." }, 400);
+  try {
+    await db.batch([
+      adjStmt(db, wallet.id, tx.currency, amt, -amt),
+      db.prepare("UPDATE transactions SET status = 'completed' WHERE id = ?").bind(tx.id),
+    ]);
+  } catch (e) { return json(request, { error: "Unhold failed: " + String(e?.message || e) }, 500); }
+  await auditLog(db, auth, "tx.unhold", tx.public_id + " · " + tx.title + " · " + amt + " " + tx.currency);
+  await notifyServer(db, tx.user_id, "tx", "\u{1F513} Hold released", "The hold on your transaction \"" + tx.title + "\" (" + tx.public_id + ") has been released. The amount is available again.", "/transactions?tx=" + tx.public_id);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminTxCancel(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
+  const tx = await loadTxByPublic(db, body.txId);
+  if (!tx) return json(request, { error: "Transaction not found." }, 404);
+  if (tx.status === "cancelled") return json(request, { error: "This transaction was already cancelled." }, 400);
+  if (tx.status !== "completed" && tx.status !== "held") return json(request, { error: "Only a completed or held transaction can be cancelled (this one is " + tx.status + ")." }, 400);
+  if (!TX_CANCELLABLE.includes(tx.category)) return json(request, { error: "A " + tx.category + " transaction cannot be cancelled here — it is tied to its own record (deposit / withdrawal / loan / stake / trade). You can still place it on Hold." }, 400);
+  const amt = Math.abs(Number(tx.amount));
+  const fee = Number(tx.fee) || 0;
+  const dir = txDirOf(tx);
+  if (dir === "neutral") return json(request, { error: "This transaction has no reversible balance effect." }, 400);
+  const wallet = await getWallet(db, tx.user_id);
+  if (!wallet) return json(request, { error: "Wallet not found." }, 404);
+  const bals = await getBalances(db, wallet.id);
+  let avail = balOf(bals, tx.currency);
+  const stmts = [];
+  if (tx.status === "held") { stmts.push(adjStmt(db, wallet.id, tx.currency, amt, -amt)); avail += amt; }
+  if (dir === "in") {
+    if (avail < amt) return json(request, { error: "Cannot cancel: the money from this transaction has already been spent." }, 400);
+    stmts.push(adjStmt(db, wallet.id, tx.currency, -amt));
+  } else {
+    stmts.push(adjStmt(db, wallet.id, tx.currency, amt + fee));
+  }
+  // A send / receive pair reverses together.
+  let pair = null;
+  if (tx.category === "send") {
+    const tr = await db.prepare("SELECT * FROM transfers WHERE transaction_id = ?").bind(tx.id).first();
+    if (tr) pair = await db.prepare("SELECT * FROM transactions WHERE user_id = ? AND counterparty = ? AND category = 'receive' AND amount = ? AND status IN ('completed','held') ORDER BY created_at ASC LIMIT 1").bind(tr.to_user, tr.from_user, Number(tx.amount)).first();
+  } else if (tx.category === "receive" && tx.counterparty) {
+    pair = await db.prepare("SELECT * FROM transactions WHERE user_id = ? AND counterparty = ? AND category = 'send' AND amount = ? AND status IN ('completed','held') ORDER BY created_at ASC LIMIT 1").bind(tx.counterparty, tx.user_id, Number(tx.amount)).first();
+  }
+  if (pair) {
+    const pWallet = await getWallet(db, pair.user_id);
+    if (!pWallet) return json(request, { error: "Counterparty wallet not found." }, 404);
+    const pBals = await getBalances(db, pWallet.id);
+    let pAvail = balOf(pBals, pair.currency);
+    if (pair.status === "held") { stmts.push(adjStmt(db, pWallet.id, pair.currency, amt, -amt)); pAvail += amt; }
+    const pDir = txDirOf(pair);
+    if (pDir === "in") {
+      if (pAvail < amt) return json(request, { error: "Cannot cancel: the recipient has already spent this money." }, 400);
+      stmts.push(adjStmt(db, pWallet.id, pair.currency, -amt));
+    } else if (pDir === "out") {
+      stmts.push(adjStmt(db, pWallet.id, pair.currency, amt + (Number(pair.fee) || 0)));
+    }
+    stmts.push(db.prepare("UPDATE transactions SET status = 'cancelled', note = ? WHERE id = ?").bind(((pair.note ? pair.note + " · " : "") + "Cancelled by admin — reversed").slice(0, 300), pair.id));
+  }
+  stmts.push(db.prepare("UPDATE transactions SET status = 'cancelled', note = ? WHERE id = ?").bind(((tx.note ? tx.note + " · " : "") + "Cancelled by admin — reversed").slice(0, 300), tx.id));
+  try { await db.batch(stmts); } catch (e) { return json(request, { error: "Cancel failed: " + String(e?.message || e) }, 500); }
+  await auditLog(db, auth, "tx.cancel", tx.public_id + " · " + tx.title + " · " + amt + " " + tx.currency + (pair ? " · pair " + pair.public_id : ""));
+  await notifyServer(db, tx.user_id, "tx", "\u21A9\uFE0F Transaction cancelled", "Your transaction \"" + tx.title + "\" (" + tx.public_id + ") was cancelled by the NovaWallet team and its amount has been reversed.", "/transactions?tx=" + tx.public_id);
+  if (pair) await notifyServer(db, pair.user_id, "tx", "\u21A9\uFE0F Transaction cancelled", "A transaction involving you (" + pair.public_id + ") was cancelled by the NovaWallet team and its amount has been reversed.", "/transactions?tx=" + pair.public_id);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
@@ -1398,6 +1516,8 @@ async function handleAdminClearLocked(request, env, auth, body) {
     stmts.push(db.prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?").bind(w.id));
     stmts.push(db.prepare("UPDATE transactions SET status = 'rejected' WHERE user_id = ? AND category = 'cash_out' AND status = 'pending' AND amount = ?").bind(uid, w.amount));
   }
+  // Held transactions in BDT release with the rest of the locked balance.
+  stmts.push(db.prepare("UPDATE transactions SET status = 'completed' WHERE user_id = ? AND status = 'held' AND currency = 'BDT'").bind(uid));
   if (locked > 0 || interestTotal > 0) {
     stmts.push(adjStmt(db, wallet.id, "BDT", locked + interestTotal, -locked));
   }
@@ -1496,6 +1616,9 @@ export default {
             case "/v1/admin/decide-withdraw": return await handleDecideWithdraw(request, env, auth, body);
             case "/v1/admin/decide-loan": return await handleDecideLoan(request, env, auth, body);
             case "/v1/admin/adjust": return await handleAdminAdjust(request, env, auth, body);
+            case "/v1/admin/tx/hold": return await handleAdminTxHold(request, env, auth, body);
+            case "/v1/admin/tx/unhold": return await handleAdminTxUnhold(request, env, auth, body);
+            case "/v1/admin/tx/cancel": return await handleAdminTxCancel(request, env, auth, body);
             case "/v1/admin/trade": return await handleTrade(request, env, auth, body, body.side === "sell" ? "sell" : "buy");
             case "/v1/admin/release-stake": return await handleAdminReleaseStake(request, env, auth, body);
             case "/v1/admin/clear-locked": return await handleAdminClearLocked(request, env, auth, body);

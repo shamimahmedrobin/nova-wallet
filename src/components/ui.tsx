@@ -71,7 +71,8 @@ export const Badge = ({ children, tone = 'slate' }: { children: React.ReactNode;
 export const statusTone = (s: string) =>
   ['completed', 'approved', 'active', 'verified'].includes(s) ? 'green'
   : ['pending', 'processing', 'unverified'].includes(s) ? 'amber'
-  : ['rejected', 'suspended'].includes(s) ? 'red' : 'slate'
+  : ['rejected', 'suspended', 'cancelled'].includes(s) ? 'red'
+  : s === 'held' ? 'violet' : 'slate'
 
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   // Lock background page scroll while any modal is open
