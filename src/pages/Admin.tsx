@@ -824,7 +824,11 @@ export default function Admin() {
           const stakes = db.stakes.filter(st => st.userId === selUser.id && st.status === 'active')
           const pendWd = db.withdrawals.filter(x => x.userId === selUser.id && x.status === 'pending')
           const heldTxs = byDateDesc(db.txs.filter(t => t.userId === selUser.id && t.status === 'held'))
-          const heldSum = heldTxs.reduce((a, t) => a + Math.abs(t.amount), 0)
+          // A held SEND locks its money in the RECIPIENT's account, not in
+          // this user's locked balance — keep it out of this user's sum.
+          const selSuid = selUser.fbUid ?? selUser.id
+          const isPairSend = (t: (typeof heldTxs)[number]) => t.category === 'send' && db.txs.some(x => x.category === 'receive' && x.status === 'held' && x.counterparty === selSuid && Math.abs(x.amount) === Math.abs(t.amount))
+          const heldSum = heldTxs.filter(t => !isPairSend(t)).reduce((a, t) => a + Math.abs(t.amount), 0)
           const stmt = byDateDesc(db.txs.filter(t => t.userId === selUser.id)).slice(0, 10)
           const ADJ_TITLES = ['Charge', 'Complaint', 'Hold', 'Refund', 'Bonus', 'Compensation', 'Correction']
           const tradePrice = priceOfA(mSym)
@@ -994,7 +998,7 @@ export default function Admin() {
                 <div className="space-y-2 mt-3">
                   {heldTxs.map(tx => (
                     <div key={tx.id} className="flex items-center gap-2.5 rounded-2xl bg-violet-50 dark:bg-violet-500/10 px-3.5 py-2.5">
-                      <span className="flex-1 min-w-0 text-sm"><b>⏸ Transaction on hold</b> <span className="text-slate-400 text-xs block truncate">{tx.title} · {tx.id} · {fmtDateTime(tx.createdAt)}</span></span>
+                      <span className="flex-1 min-w-0 text-sm"><b>{isPairSend(tx) ? '⏸ Sent transfer on hold — locked at the recipient' : '⏸ Transaction on hold'}</b> <span className="text-slate-400 text-xs block truncate">{tx.title} · {tx.id} · {fmtDateTime(tx.createdAt)}</span></span>
                       <b className="text-sm">{usdt(Math.abs(tx.amount))}</b>
                       <Btn variant="outline" className="!py-1.5 !text-xs" onClick={async () => { const err = await txUnhold(tx.id); if (err) return toast({ kind: 'error', title: err }); toast({ kind: 'success', title: 'Hold released to Available' }) }}>Unhold</Btn>
                     </div>

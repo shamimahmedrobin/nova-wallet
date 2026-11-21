@@ -1413,25 +1413,42 @@ async function loadTxByPublic(db, pub) {
   return await db.prepare("SELECT * FROM transactions WHERE public_id = ?").bind(String(pub)).first();
 }
 
+// The other half of a send/receive pair, if this transfer has one.
+async function findPairTx(db, tx) {
+  if (tx.category === "send") {
+    const tr = await db.prepare("SELECT * FROM transfers WHERE transaction_id = ?").bind(tx.id).first();
+    if (!tr) return null;
+    return await db.prepare("SELECT * FROM transactions WHERE user_id = ? AND counterparty = ? AND category = 'receive' AND amount = ? AND status IN ('completed','held') ORDER BY created_at ASC LIMIT 1").bind(tr.to_user, tr.from_user, Number(tx.amount)).first();
+  }
+  if (tx.category === "receive" && tx.counterparty) {
+    return await db.prepare("SELECT * FROM transactions WHERE user_id = ? AND counterparty = ? AND category = 'send' AND amount = ? AND status IN ('completed','held') ORDER BY created_at ASC LIMIT 1").bind(tx.counterparty, tx.user_id, Number(tx.amount)).first();
+  }
+  return null;
+}
+
 async function handleAdminTxHold(request, env, auth, body) {
   const db = env.DB;
   if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
   const tx = await loadTxByPublic(db, body.txId);
   if (!tx) return json(request, { error: "Transaction not found." }, 404);
   if (tx.status !== "completed") return json(request, { error: "Only a completed transaction can be held (this one is " + tx.status + ")." }, 400);
-  const wallet = await getWallet(db, tx.user_id);
+  const pair = await findPairTx(db, tx);
+  // A sent transfer's money now sits in the RECIPIENT's account, so the
+  // hold locks the receive side — never the sender's remaining balance.
+  const target = pair && tx.category === "send" ? pair : tx;
+  if (target.status !== "completed") return json(request, { error: "This transfer is already on hold." }, 400);
+  const wallet = await getWallet(db, target.user_id);
   if (!wallet) return json(request, { error: "Wallet not found." }, 404);
   const amt = Math.abs(Number(tx.amount));
   const bals = await getBalances(db, wallet.id);
-  if (balOf(bals, tx.currency) < amt) return json(request, { error: "Cannot hold: the money from this transaction is no longer fully available (already spent or locked)." }, 400);
-  try {
-    await db.batch([
-      adjStmt(db, wallet.id, tx.currency, -amt, amt),
-      db.prepare("UPDATE transactions SET status = 'held' WHERE id = ?").bind(tx.id),
-    ]);
-  } catch (e) { return json(request, { error: "Hold failed: " + String(e?.message || e) }, 500); }
-  await auditLog(db, auth, "tx.hold", tx.public_id + " · " + tx.title + " · " + amt + " " + tx.currency);
-  await notifyServer(db, tx.user_id, "tx", "\u{1F512} Transaction held", "Your transaction \"" + tx.title + "\" (" + tx.public_id + ") has been placed on hold. The amount is locked and cannot be spent until it is released.", "/transactions?tx=" + tx.public_id);
+  if (balOf(bals, tx.currency) < amt) return json(request, { error: "Cannot hold: the money from this transaction is no longer fully available in the recipient's account (already spent or locked)." }, 400);
+  const stmts = [adjStmt(db, wallet.id, tx.currency, -amt, amt)];
+  const ids = new Set([target.id, tx.id]); if (pair) ids.add(pair.id);
+  for (const id of ids) stmts.push(db.prepare("UPDATE transactions SET status = 'held' WHERE id = ?").bind(id));
+  try { await db.batch(stmts); } catch (e) { return json(request, { error: "Hold failed: " + String(e?.message || e) }, 500); }
+  await auditLog(db, auth, "tx.hold", tx.public_id + " · " + tx.title + " · " + amt + " " + tx.currency + (pair ? " · funds held at recipient · pair " + pair.public_id : ""));
+  await notifyServer(db, target.user_id, "tx", "\u{1F512} Transaction held", "Your transaction \"" + target.title + "\" (" + target.public_id + ") has been placed on hold. The amount is locked and cannot be spent until it is released.", "/transactions?tx=" + target.public_id);
+  if (pair && tx.user_id !== target.user_id) await notifyServer(db, tx.user_id, "tx", "\u{1F512} Transfer held", "The transfer \"" + tx.title + "\" (" + tx.public_id + ") has been placed on hold — the amount is locked in the recipient's account until it is released.", "/transactions?tx=" + tx.public_id);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
@@ -1441,19 +1458,25 @@ async function handleAdminTxUnhold(request, env, auth, body) {
   const tx = await loadTxByPublic(db, body.txId);
   if (!tx) return json(request, { error: "Transaction not found." }, 404);
   if (tx.status !== "held") return json(request, { error: "This transaction is not on hold." }, 400);
-  const wallet = await getWallet(db, tx.user_id);
-  if (!wallet) return json(request, { error: "Wallet not found." }, 404);
+  const pair = await findPairTx(db, tx);
   const amt = Math.abs(Number(tx.amount));
+  // Where do the held funds actually sit? New-model pair hold: the
+  // RECEIVE side is 'held' too and the money is locked at the recipient.
+  // Legacy pair hold (placed before this fix): only the send side is
+  // 'held' and the money sits in the SENDER's locked balance.
+  const receiveSide = tx.category === "receive" ? tx : (pair && pair.category === "receive" ? pair : null);
+  const fundsTx = receiveSide && receiveSide.status === "held" ? receiveSide : tx;
+  const wallet = await getWallet(db, fundsTx.user_id);
+  if (!wallet) return json(request, { error: "Wallet not found." }, 404);
   const bals = await getBalances(db, wallet.id);
   if (lockedOf(bals, tx.currency) < amt) return json(request, { error: "This hold was already released (for example via Clear all locked)." }, 400);
-  try {
-    await db.batch([
-      adjStmt(db, wallet.id, tx.currency, amt, -amt),
-      db.prepare("UPDATE transactions SET status = 'completed' WHERE id = ?").bind(tx.id),
-    ]);
-  } catch (e) { return json(request, { error: "Unhold failed: " + String(e?.message || e) }, 500); }
-  await auditLog(db, auth, "tx.unhold", tx.public_id + " · " + tx.title + " · " + amt + " " + tx.currency);
-  await notifyServer(db, tx.user_id, "tx", "\u{1F513} Hold released", "The hold on your transaction \"" + tx.title + "\" (" + tx.public_id + ") has been released. The amount is available again.", "/transactions?tx=" + tx.public_id);
+  const stmts = [adjStmt(db, wallet.id, tx.currency, amt, -amt)];
+  const ids = new Set([tx.id]); if (pair) ids.add(pair.id);
+  for (const id of ids) stmts.push(db.prepare("UPDATE transactions SET status = 'completed' WHERE id = ? AND status = 'held'").bind(id));
+  try { await db.batch(stmts); } catch (e) { return json(request, { error: "Unhold failed: " + String(e?.message || e) }, 500); }
+  await auditLog(db, auth, "tx.unhold", tx.public_id + " · " + tx.title + " · " + amt + " " + tx.currency + (pair ? " · pair " + pair.public_id : ""));
+  await notifyServer(db, fundsTx.user_id, "tx", "\u{1F513} Hold released", "The hold on your transaction \"" + fundsTx.title + "\" (" + fundsTx.public_id + ") has been released. The amount is available again.", "/transactions?tx=" + fundsTx.public_id);
+  if (pair && tx.user_id !== fundsTx.user_id) await notifyServer(db, tx.user_id, "tx", "\u{1F513} Hold released", "The hold on the transfer \"" + tx.title + "\" (" + tx.public_id + ") has been released.", "/transactions?tx=" + tx.public_id);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
@@ -1471,10 +1494,15 @@ async function handleAdminTxCancel(request, env, auth, body) {
   if (dir === "neutral") return json(request, { error: "This transaction has no reversible balance effect." }, 400);
   const wallet = await getWallet(db, tx.user_id);
   if (!wallet) return json(request, { error: "Wallet not found." }, 404);
+  const pair = await findPairTx(db, tx);
+  // For a pair, the hold funds sit on the RECEIVE side (new model) — or on
+  // the sender for a legacy hold where the receive side was never marked.
+  const receiveSide = tx.category === "receive" ? tx : (pair && pair.category === "receive" ? pair : null);
+  const fundsAt = receiveSide && receiveSide.status === "held" ? receiveSide : tx;
   const bals = await getBalances(db, wallet.id);
   let avail = balOf(bals, tx.currency);
   const stmts = [];
-  if (tx.status === "held") { stmts.push(adjStmt(db, wallet.id, tx.currency, amt, -amt)); avail += amt; }
+  if (tx.status === "held" && fundsAt.id === tx.id) { stmts.push(adjStmt(db, wallet.id, tx.currency, amt, -amt)); avail += amt; }
   if (dir === "in") {
     if (avail < amt) return json(request, { error: "Cannot cancel: the money from this transaction has already been spent." }, 400);
     stmts.push(adjStmt(db, wallet.id, tx.currency, -amt));
@@ -1482,19 +1510,12 @@ async function handleAdminTxCancel(request, env, auth, body) {
     stmts.push(adjStmt(db, wallet.id, tx.currency, amt + fee));
   }
   // A send / receive pair reverses together.
-  let pair = null;
-  if (tx.category === "send") {
-    const tr = await db.prepare("SELECT * FROM transfers WHERE transaction_id = ?").bind(tx.id).first();
-    if (tr) pair = await db.prepare("SELECT * FROM transactions WHERE user_id = ? AND counterparty = ? AND category = 'receive' AND amount = ? AND status IN ('completed','held') ORDER BY created_at ASC LIMIT 1").bind(tr.to_user, tr.from_user, Number(tx.amount)).first();
-  } else if (tx.category === "receive" && tx.counterparty) {
-    pair = await db.prepare("SELECT * FROM transactions WHERE user_id = ? AND counterparty = ? AND category = 'send' AND amount = ? AND status IN ('completed','held') ORDER BY created_at ASC LIMIT 1").bind(tx.counterparty, tx.user_id, Number(tx.amount)).first();
-  }
   if (pair) {
     const pWallet = await getWallet(db, pair.user_id);
     if (!pWallet) return json(request, { error: "Counterparty wallet not found." }, 404);
     const pBals = await getBalances(db, pWallet.id);
     let pAvail = balOf(pBals, pair.currency);
-    if (pair.status === "held") { stmts.push(adjStmt(db, pWallet.id, pair.currency, amt, -amt)); pAvail += amt; }
+    if (pair.status === "held" && fundsAt.id === pair.id) { stmts.push(adjStmt(db, pWallet.id, pair.currency, amt, -amt)); pAvail += amt; }
     const pDir = txDirOf(pair);
     if (pDir === "in") {
       if (pAvail < amt) return json(request, { error: "Cannot cancel: the recipient has already spent this money." }, 400);
@@ -1550,7 +1571,16 @@ async function handleAdminClearLocked(request, env, auth, body) {
     stmts.push(db.prepare("UPDATE transactions SET status = 'rejected' WHERE user_id = ? AND category = 'cash_out' AND status = 'pending' AND amount = ?").bind(uid, w.amount));
   }
   // Held transactions in BDT release with the rest of the locked balance.
-  stmts.push(db.prepare("UPDATE transactions SET status = 'completed' WHERE user_id = ? AND status = 'held' AND currency = 'BDT'").bind(uid));
+  // A held SEND whose receive side is also held keeps its funds in the
+  // RECIPIENT's locked balance — clearing THIS user's locked must not
+  // release it; a held RECEIVE flips its paired send along with it.
+  const heldRows = await db.prepare("SELECT * FROM transactions WHERE user_id = ? AND status = 'held' AND currency = 'BDT'").bind(uid).all();
+  for (const h of heldRows.results) {
+    const hPair = await findPairTx(db, h);
+    if (h.category === "send" && hPair && hPair.status === "held") continue;
+    stmts.push(db.prepare("UPDATE transactions SET status = 'completed' WHERE id = ?").bind(h.id));
+    if (hPair && hPair.status === "held") stmts.push(db.prepare("UPDATE transactions SET status = 'completed' WHERE id = ?").bind(hPair.id));
+  }
   if (locked > 0 || interestTotal > 0) {
     stmts.push(adjStmt(db, wallet.id, "BDT", locked + interestTotal, -locked));
   }
