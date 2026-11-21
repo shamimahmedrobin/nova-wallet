@@ -2,6 +2,20 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+
+// A lazy chunk that fails to load (new deploy, flaky connection) reloads
+// the page once — guarded so it can never loop — instead of leaving a
+// permanent white screen.
+window.addEventListener('vite:preloadError', () => {
+  try {
+    const last = Number(sessionStorage.getItem('nw.chunkReloadAt') ?? 0)
+    if (Date.now() - last > 30000) {
+      sessionStorage.setItem('nw.chunkReloadAt', String(Date.now()))
+      window.location.reload()
+    }
+  } catch { /* ignore */ }
+})
 
 // ---- PWA: manifest + icons (base-aware so dev and GitHub Pages both work) ----
 const base = import.meta.env.BASE_URL
@@ -42,6 +56,8 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 )

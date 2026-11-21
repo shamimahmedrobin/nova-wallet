@@ -12,7 +12,13 @@ import LockScreen from './pages/LockScreen'
 // first paint only carries the landing/auth shell (Admin and Market were
 // already split). Named exports are adapted to lazy() default components.
 const lazyNamed = <T extends Record<string, any>>(load: () => Promise<T>, name: keyof T): LazyExoticComponent<ComponentType<any>> =>
-  lazy(() => load().then(m => ({ default: m[name] as ComponentType<any> })))
+  // Retry a failed chunk load once after a short pause — on a slow/flaky
+  // connection a single dropped request must not white-screen the app.
+  lazy(() => load()
+    .then(m => ({ default: m[name] as ComponentType<any> }))
+    .catch(() => new Promise<{ default: ComponentType<any> }>((resolve, reject) => {
+      setTimeout(() => load().then(m => resolve({ default: m[name] as ComponentType<any> })).catch(reject), 1200)
+    })))
 const Home = lazyNamed(() => import('./pages/Home'), 'default')
 const AddMoney = lazyNamed(() => import('./pages/Services'), 'AddMoney')
 const CashOut = lazyNamed(() => import('./pages/Services'), 'CashOut')

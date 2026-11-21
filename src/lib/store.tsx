@@ -380,10 +380,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (user) mutate(d => notify(d, user.id, title, body, kind, link))
   }
   // ---- Server freshness: pull the server state when the app boots with a
-  // saved session, whenever it returns to the foreground, and every 30s
-  // while open — so money other people send appears on its own, without
-  // logging out and back in. Firebase restores its own session
-  // asynchronously after a cold start, so also pull when it reports one.
+  // saved session, whenever it returns to the foreground, and every 10s
+  // while open — so money other people send appears within seconds, on its
+  // own, without logging out and back in. Firebase restores its own
+  // session asynchronously after a cold start, so also pull when it
+  // reports one.
   const hydrateRef = useRef(hydrateServer); hydrateRef.current = hydrateServer
   const userIdRef = useRef(userId); userIdRef.current = userId
   useEffect(() => {
@@ -394,7 +395,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (u && !u.stub) void hydrateRef.current(u)
     }
     pull()
-    const iv = setInterval(pull, 30000)
+    const iv = setInterval(pull, 10000)
     const onVis = () => { if (document.visibilityState === 'visible') pull() }
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('focus', pull)
