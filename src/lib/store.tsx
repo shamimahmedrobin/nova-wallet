@@ -338,6 +338,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     d.users.filter(u => !u.stub).forEach(u => { m.set(u.id, u.id); if (u.fbUid) m.set(u.fbUid, u.id) })
     return (s: string) => m.get(s) ?? s
   }
+  // The signed-in user can end up with duplicate local records (a real
+  // record plus a directory stub of themselves, or two real records from
+  // re-logging in after clearing site data). Server rows must ALWAYS be
+  // filed under the session record's id — filed under any duplicate's
+  // id, the user's own wallet and transactions vanish from their pages
+  // (balance flips to 0, history shows empty). Absorb every duplicate
+  // of the session user and re-key its rows to the session id.
+  const canonicalizeSelf = (d: DB, sessionId: string | null) => {
+    if (!sessionId) return
+    const me = d.users.find(u => u.id === sessionId)
+    if (!me) return
+    const mine = new Set<string>([sessionId])
+    if (me.fbUid) mine.add(me.fbUid)
+    d.users = d.users.filter(u => {
+      if (u.id === sessionId) return true
+      const samePerson = (u.fbUid && me.fbUid && u.fbUid === me.fbUid) || (u.email && me.email && u.email.toLowerCase() === me.email.toLowerCase())
+      if (samePerson) { mine.add(u.id); if (u.fbUid) mine.add(u.fbUid); return false }
+      return true
+    })
+    const rekey = (rows: any[]) => rows.forEach(r => { if (r && mine.has(r.userId)) r.userId = sessionId })
+    rekey(d.wallets); rekey(d.txs); rekey(d.deposits); rekey(d.withdrawals); rekey(d.loans)
+    rekey(d.stakes); rekey(d.notifications); rekey(d.earnStates); rekey(d.levelRequests); rekey(d.tickets)
+    for (const k of Object.keys(d.watchlist ?? {})) {
+      if (k !== sessionId && mine.has(k)) {
+        d.watchlist[sessionId] = [...new Set([...(d.watchlist[sessionId] ?? []), ...d.watchlist[k]])]
+        delete d.watchlist[k]
+      }
+    }
+  }
   const applyStateInto = (d: DB, localId: string, state: any) => {
     const resolve = uidResolver(d)
     const sw = { userId: localId, available: state.wallet.available, locked: state.wallet.locked, holdings: state.wallet.holdings || {} }
@@ -354,6 +383,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       lu.role = state.profile.role; lu.level = state.profile.level; lu.status = state.profile.status
       if (!lu.fbUid) lu.fbUid = state.profile.id
     }
+    canonicalizeSelf(d, localId)
   }
   const applyOverviewInto = (d: DB, ov: any) => {
     mergeDirectoryInto(d, ov.users)
@@ -375,6 +405,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
     d.wallets = fix(d.wallets); d.txs = fix(d.txs); d.deposits = fix(d.deposits)
     d.withdrawals = fix(d.withdrawals); d.loans = fix(d.loans); d.stakes = fix(d.stakes)
+    canonicalizeSelf(d, userIdRef.current)
   }
   const applyMoneyResult = (r: any) => {
     if (!user) return
