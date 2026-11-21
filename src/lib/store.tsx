@@ -327,11 +327,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   })
   const mergeDirectoryInto = (d: DB, users: any[]) => {
     for (const su of users) {
-      // Match an existing record by server id, Firebase uid or email —
-      // in that order. (The old email-first match short-circuited here
-      // and the stub refresh below never ran, so role/level/KYC changes
-      // made on the server never reached an already-loaded admin panel.)
-      const existing = d.users.find(x => x.id === su.id) ?? d.users.find(x => x.fbUid && x.fbUid === su.id) ?? d.users.find(x => x.email === su.email)
+      // Match REAL local records first (by Firebase uid, then email),
+      // stubs last (by server id). Matching a stub first was a trap:
+      // the refresh landed on the stub, the drop-loop below then deleted
+      // that stub for duplicating the real record, and the real record —
+      // the one the UI binds to — kept its stale values forever.
+      const existing = d.users.find(x => !x.stub && x.fbUid && x.fbUid === su.id)
+        ?? d.users.find(x => !x.stub && x.email === su.email)
+        ?? d.users.find(x => x.id === su.id)
+        ?? d.users.find(x => x.email === su.email)
       if (existing) {
         if (!existing.fbUid) existing.fbUid = su.id
         // Refresh the server-owned fields on ANY matched record, stub or
