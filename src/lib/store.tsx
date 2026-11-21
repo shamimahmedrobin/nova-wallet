@@ -281,7 +281,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLangPref(code); try { localStorage.setItem('nova.lang', code) } catch { /* ignore */ }
     setDb(d => userId ? { ...d, users: d.users.map(u => u.id === userId ? { ...u, language: code } : u) } : d)
   }, [userId])
-  const walletOf = useCallback((id: string) => dbRef.current.wallets.find(w => w.userId === id)!, [])
+  const walletOf = useCallback((id: string) => dbRef.current.wallets.find(w => w.userId === id) ?? { userId: id, available: 0, locked: 0, holdings: {} }, [])
 
   const notify = (draft: DB, userId2: string, title: string, body: string, kind: string, link?: string) => {
     draft.notifications.unshift({ id: rid(), userId: userId2, title, body, kind, read: false, createdAt: nowISO(), link })
@@ -319,12 +319,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     for (const su of users) {
       const byEmail = d.users.find(x => x.email === su.email)
       if (byEmail) { if (!byEmail.fbUid) byEmail.fbUid = su.id; continue }
+      if (d.users.some(x => x.fbUid && x.fbUid === su.id)) continue
       if (!d.users.some(x => x.id === su.id)) d.users.push(stubFrom(su))
+    }
+    // Drop any stub that duplicates a real local account (same server
+    // uid): a self-stub poisons the uid map below, which once made the
+    // signed-in user's own wallet/transactions vanish from their app.
+    for (let i = d.users.length - 1; i >= 0; i--) {
+      const u = d.users[i]
+      if (u.stub && d.users.some(x => !x.stub && x.fbUid === u.id)) d.users.splice(i, 1)
     }
   }
   const uidResolver = (d: DB) => {
     const m = new Map<string, string>()
-    d.users.forEach(u => { m.set(u.id, u.id); if (u.fbUid) m.set(u.fbUid, u.id) })
+    // Stubs first, real records last — a real account's id mapping always
+    // wins over a directory stub of the same person.
+    d.users.filter(u => u.stub).forEach(u => { m.set(u.id, u.id); if (u.fbUid) m.set(u.fbUid, u.id) })
+    d.users.filter(u => !u.stub).forEach(u => { m.set(u.id, u.id); if (u.fbUid) m.set(u.fbUid, u.id) })
     return (s: string) => m.get(s) ?? s
   }
   const applyStateInto = (d: DB, localId: string, state: any) => {
@@ -354,6 +365,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const mapRows = (rows: any[]) => rows.map((r: any) => ({ ...r, userId: resolve(r.userId) }))
     d.txs = mapRows(ov.transactions); d.deposits = mapRows(ov.deposits); d.withdrawals = mapRows(ov.withdrawals)
     d.loans = mapRows(ov.loans); d.stakes = mapRows(ov.stakes)
+    // Final normalization: any row still keyed by a real user's server
+    // uid is re-keyed to that user's local id, whatever the map said —
+    // the signed-in user's own wallet and transactions must never end up
+    // filed under an id their pages don't look up.
+    const fix = (rows: any[]) => rows.map(r => {
+      const real = d.users.find(x => !x.stub && x.fbUid && x.fbUid === r.userId)
+      return real ? { ...r, userId: real.id } : r
+    })
+    d.wallets = fix(d.wallets); d.txs = fix(d.txs); d.deposits = fix(d.deposits)
+    d.withdrawals = fix(d.withdrawals); d.loans = fix(d.loans); d.stakes = fix(d.stakes)
   }
   const applyMoneyResult = (r: any) => {
     if (!user) return
