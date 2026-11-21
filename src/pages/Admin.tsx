@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowLeftRight, Bell, Check, CheckCheck, Copy, CreditCard, LayoutDashboard, Megaphone, Menu, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, ArrowLeftRight, Bell, Check, CheckCheck, Copy, CreditCard, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
@@ -26,12 +26,11 @@ const TABS = [
 ] as const
 
 export default function Admin() {
-  const { user, db, theme, toggleTheme, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead } = useApp()
+  const { user, db, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead } = useApp()
   const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const byDateDesc = <T extends { createdAt: string }>(arr: T[]): T[] => [...arr].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   const { coins } = useMarket(30_000)
   const priceOfA = (sym: string) => sym === 'USDT' ? 1 : coins.find(c => c.symbol === sym)?.priceUsd ?? 0
-  const navigate = useNavigate()
   const [tab, setTab] = useState<string>('overview')
   const [menuOpen, setMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -123,17 +122,12 @@ export default function Admin() {
       <header className="sticky top-0 z-30 bg-white/85 dark:bg-slate-950/85 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center gap-3">
           <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 lg:hidden"><Menu size={18} /></button>
-          <button onClick={() => navigate('/')} className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><ArrowLeft size={18} /></button>
           <h1 className="font-extrabold text-lg flex items-center gap-2"><ShieldCheck className="text-amber-500" /> Admin Panel</h1>
           <Badge tone="amber">Secure · RBAC</Badge>
           <div className="ml-auto flex gap-2">
             <button onClick={() => setNotifOpen(true)} aria-label="Notifications" className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><Bell size={18} />{myUnread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{myUnread}</span>}</button>
-            <button onClick={toggleTheme} className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             <Link to="/" className="hidden sm:inline-flex lg:hidden items-center rounded-2xl px-4 py-2.5 text-sm font-semibold bg-violet-600 text-white">User app</Link>
           </div>
-        </div>
-        <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto no-scrollbar lg:hidden">
-          {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold ${tab === t.id ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}><t.icon size={14} /> {t.label}{(tabBadges[t.id] ?? 0) > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{tabBadges[t.id]}</span>}</button>)}
         </div>
       </header>
 
