@@ -6,7 +6,7 @@ import { useApp } from '../lib/store'
 import { withdrawMethods, CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
 import { ADS_PER_DAY, EARN_TASKS, SCRATCH_PER_DAY, SPINS_PER_DAY } from '../lib/earn'
 import { COIN_META, useMarket } from '../lib/market'
-import { Badge, Btn, Card, Empty, FeatureOff, Input, MaxBtn, Modal, Select, TxDirIcon , StepBar, WizardNav } from '../components/ui'
+import { Badge, Btn, Card, Empty, FeatureOff, Input, MaxBtn, Modal, Select, TxDirIcon , StepBar, StepUpField, WizardNav } from '../components/ui'
 import { fmtBDT, fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
 import { PageHead, ResultModal, SuccessModal } from './Services'
 
@@ -29,10 +29,11 @@ export function Level2GateModal({ open, onClose, feature }: { open: boolean; onC
 
 
 export function DirectWithdraw() {
-  const { directWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
+  const { directWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT, stepUp } = useApp()
   const outMethods = withdrawMethods(currency)
   const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(''); const [network, setNetwork] = useState('')
   const [gate, setGate] = useState(false)
+  const [stepPw, setStepPw] = useState('')
   const [dwStep, setDwStep] = useState(0)
   const [done, setDone] = useState(false)
   const [lastTx, setLastTx] = useState<{ amount: number; method: string } | null>(null); const [errMsg, setErrMsg] = useState('')
@@ -51,6 +52,11 @@ export function DirectWithdraw() {
     if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum direct withdraw is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
     if (user && user.level < 2) return setGate(true)
+    const suThD = db.settings.stepUpThresholdBdt ?? 0
+    if (suThD && amtBDT > suThD) {
+      if (!stepPw) return setErrMsg('This withdrawal is above ৳' + suThD.toLocaleString() + ' — enter your account password for the extra verification.')
+      const se = await stepUp(stepPw); if (se) return setErrMsg(se); setStepPw('')
+    }
     const err = await directWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim() })
     if (err) return setErrMsg(err)
     setLastTx({ amount: amtBDT, method: fullMethod }); setDone(true); setAmount(''); setDwStep(0)
@@ -102,6 +108,7 @@ export function DirectWithdraw() {
             <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2"><span className="text-slate-500">You will receive</span><span className="font-extrabold text-emerald-600">{fmtMoney(Math.max(amtBDT - fee, 0))}</span></div>
           </div>
           <div className="rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/70 dark:border-amber-500/25 p-4 text-sm"><b>⚡ Instant and final.</b> Direct withdrawals are sent immediately with no PIN and no review — double-check the destination before confirming.</div>
+          <StepUpField amountBdt={amtBDT} value={stepPw} onChange={setStepPw} />
           <WizardNav onBack={() => setDwStep(0)} nextLabel="Confirm — Withdraw now" onNext={submit} />
         </div>
         )}

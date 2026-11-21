@@ -51,6 +51,7 @@ function load(): DB {
         if ((tk.status as any) === 'closed') tk.status = 'resolved'
         if (!tk.updatedAt) tk.updatedAt = tk.createdAt
       })
+      if (!Array.isArray((db as any).sessions)) (db as any).sessions = []
       db.users.forEach(u => { if (!u.level) u.level = u.role === 'admin' ? 4 : u.kyc === 'verified' ? 2 : 1 })
       db.news.forEach(n => { if (!n.coin) n.coin = ({ Bitcoin: 'BTC', Ethereum: 'ETH' } as any)[n.category] ?? 'NOVA' })
       return db
@@ -58,6 +59,17 @@ function load(): DB {
   } catch { /* fresh seed */ }
   const db = seedDB(); localStorage.setItem(KEY, JSON.stringify(db)); return db
 }
+
+const deviceLabel = () => {
+  try {
+    const ua = navigator.userAgent
+    const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : 'Web'
+    const br = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser'
+    return br + ' on ' + os
+  } catch { return 'Web' }
+}
+const storedSessionId = () => { try { return localStorage.getItem('nova.sessionId') || undefined } catch { return undefined } }
+const saveSessionId = (r: any) => { try { if (r?.sessionId) localStorage.setItem('nova.sessionId', r.sessionId) } catch { /* ignore */ } }
 
 export interface Toast { id: string; title: string; body?: string; kind: 'success' | 'error' | 'info' }
 interface Ctx {
@@ -86,7 +98,7 @@ interface Ctx {
   requestPasswordOtp: (email: string) => { error: string | null; otp: string | null }
   verifyPasswordOtp: (email: string, otp: string) => string | null
   resetPasswordWithOtp: (email: string, otp: string, newPassword: string) => string | null
-  register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string }) => Promise<string | null>
+  register: (p: { name: string; username: string; email: string; phone: string; password: string; pin: string; referralCode?: string; turnstileToken?: string }) => Promise<string | null>
   walletOf: (userId: string) => DB['wallets'][number]
   addDeposit: (p: { method: string; amount: number; trxId: string; receipt?: string; methodId?: string; kind?: 'bank' | 'crypto'; verification?: 'manual' | 'auto' }) => Promise<string | null>
   decideDeposit: (id: string, ok: boolean) => Promise<void>
@@ -132,7 +144,10 @@ interface Ctx {
   adminClearLocked: (userId: string) => Promise<void>
   updateProfile: (p: Partial<User>) => void
   changePassword: (oldPw: string, newPw: string) => string | null
-  changePin: (oldPin: string, newPin: string) => string | null
+  changePin: (oldPin: string, newPin: string) => Promise<string | null>
+  stepUp: (password: string) => Promise<string | null>
+  revokeSession: (id: string) => Promise<string | null>
+  markTicketRead: (ticketId: string, asAdmin: boolean) => Promise<void>
   toggleWatch: (symbol: string) => void
   markAllRead: () => void; markRead: (id: string) => void
   publishNews: (n: Omit<NewsItem, 'id' | 'date'> & { id?: string }) => void
@@ -455,10 +470,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       d.levelRequests = [...mine(state.levelRequests), ...d.levelRequests.filter(r => r.userId === localId && !serverIds.has(r.id)), ...d.levelRequests.filter(r => r.userId !== localId)]
     }
     if (state.notifications) {
+      const serverById = new Map(state.notifications.map((n: any) => [n.id, n]))
+      for (const n of d.notifications) { const sn: any = serverById.get(n.id); if (sn && n.userId === localId) n.read = !!sn.read }
       const have = new Set(d.notifications.map(n => n.id))
       const fresh = state.notifications.filter((n: any) => !have.has(n.id)).map((n: any) => ({ ...n, userId: localId }))
       if (fresh.length) d.notifications = [...fresh, ...d.notifications]
     }
+    if (Array.isArray(state.sessions)) d.sessions = state.sessions
     canonicalizeSelf(d, localId)
   }
   const applyOverviewInto = (d: DB, ov: any) => {
@@ -489,6 +507,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       d.banners = ov.content.banners
       if (Array.isArray(ov.content.levels) && ov.content.levels.length) d.levels = ov.content.levels
     }
+    if (Array.isArray(ov.audit)) d.audit = ov.audit
     if (ov.tickets) {
       const serverIds = new Set(ov.tickets.map((t: any) => t.id))
       const ownLocal = d.tickets.filter(t => t.userId === userIdRef.current && !serverIds.has(t.id))
@@ -691,7 +710,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // hydrate balances/transactions from the server — D1 is the source of
   // truth, including the role (promoting a user in D1 takes effect here).
   const syncServerProfile = async (token: string, u: User) => {
-    await apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash, phone: u.phone })
+    const r = await apiBootstrap(token, { username: u.username, fullName: u.name, pinHash: u.pinHash, phone: u.phone, sessionId: storedSessionId(), deviceLabel: deviceLabel() })
+    saveSessionId(r)
     await hydrateServer(u)
   }
   // ---- Device quick login: PIN + fingerprint (WebAuthn), stored ONLY on this device ----
@@ -851,7 +871,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const cred = await createUserWithEmailAndPassword(firebaseAuth, p.email, p.password)
       newFbUid = cred.user.uid
       const token = await cred.user.getIdToken()
-      void apiBootstrap(token, { username: p.username, fullName: p.name, pinHash: hashSecret(p.pin), phone: p.phone, referralCode: p.referralCode })
+      void apiBootstrap(token, { username: p.username, fullName: p.name, pinHash: hashSecret(p.pin), phone: p.phone, referralCode: p.referralCode, deviceLabel: deviceLabel(), turnstileToken: p.turnstileToken }).then(saveSessionId)
     } catch (e: any) {
       const code = e?.code || ''
       if (code === 'auth/email-already-in-use') return 'An account with this email already exists.'
@@ -1291,13 +1311,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (firebaseAuth.currentUser) void fbUpdatePassword(firebaseAuth.currentUser, newPw).catch(() => {})
     return null
   }
-  const changePin: Ctx['changePin'] = (oldPin, newPin) => {
+  const changePin: Ctx['changePin'] = async (oldPin, newPin) => {
     if (!user) return 'Not signed in'
     const lk = lockError(user.id); if (lk) return lk
     if (user.pinHash !== hashSecret(oldPin)) return recordFail(user.id, 'Current PIN is incorrect.')
-    recordSuccess(user.id)
     if (!/^\d{4}$/.test(newPin)) return 'PIN must be exactly 4 digits.'
-    mutate(d => { d.users.find(u => u.id === user.id)!.pinHash = hashSecret(newPin) }); return null
+    try {
+      const r = await apiPost('/v1/profile/pin', { oldPin, newPin })
+      recordSuccess(user.id)
+      mutate(d => { const du = d.users.find(u => u.id === user.id); if (du) du.pinHash = hashSecret(newPin) })
+      if (r.state) mutate(d => applyStateInto(d, user.id, r.state))
+      return null
+    } catch (e: any) { return e?.message || 'Could not change the PIN.' }
+  }
+  const stepUp: Ctx['stepUp'] = async (password) => {
+    try { await apiPost('/v1/stepup', { password }); return null } catch (e: any) { return e?.message || 'Verification failed.' }
+  }
+  const revokeSession: Ctx['revokeSession'] = async (id) => {
+    if (!user) return 'Not signed in'
+    try {
+      const r = await apiPost('/v1/sessions/revoke', { id })
+      if (r.state) mutate(d => applyStateInto(d, user.id, r.state))
+      return null
+    } catch (e: any) { return e?.message || 'Could not sign out that device.' }
+  }
+  const markTicketRead: Ctx['markTicketRead'] = async (ticketId, asAdmin) => {
+    try {
+      const r = await apiPost('/v1/tickets/read', { ticketId, asAdmin })
+      if (r.overview) mutate(d => applyOverviewInto(d, r.overview))
+      else if (r.state && user) mutate(d => applyStateInto(d, user.id, r.state))
+    } catch { /* read dots are cosmetic — never block the chat */ }
   }
   const toggleWatch: Ctx['toggleWatch'] = (symbol) => {
     if (!user) return
@@ -1306,8 +1349,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       d.watchlist[user.id] = list.includes(symbol) ? list.filter(s => s !== symbol) : [...list, symbol]
     })
   }
-  const markAllRead = () => { if (user) mutate(d => d.notifications.forEach(n => { if (n.userId === user.id) n.read = true })) }
-  const markRead = (id: string) => mutate(d => { const n = d.notifications.find(x => x.id === id); if (n) n.read = true })
+  const markAllRead = () => { if (!user) return; mutate(d => d.notifications.forEach(n => { if (n.userId === user.id) n.read = true })); void apiPost('/v1/notifications/read', {}).catch(() => {}) }
+  const markRead = (id: string) => { mutate(d => { const n = d.notifications.find(x => x.id === id); if (n) n.read = true }); void apiPost('/v1/notifications/read', { id }).catch(() => {}) }
   // Phase 3: news, banners and settings are server-authoritative — the
   // admin's edits go to the Worker and come back inside the overview, so
   // every device and every user sees the same content within seconds.
@@ -1450,7 +1493,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     db, user, theme, toggleTheme, toasts, toast, dismissToast, login, register, walletOf,
     addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, verifyTxPin, buyCrypto, sellCrypto,
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
-    updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
+    updateProfile, changePassword, changePin, stepUp, revokeSession, markTicketRead, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
     locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,

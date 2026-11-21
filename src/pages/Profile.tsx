@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound } from 'lucide-react'
 import { useApp } from '../lib/store'
+import { apiPost } from '../lib/api'
 import { useMarket } from '../lib/market'
 import { Avatar, Badge, Btn, Card, Input, Modal, ModalActions, ModalDesc, ModalRow, PinBoxes, Select, useConfirm } from '../components/ui'
 import { CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
@@ -17,7 +18,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, signOut, submitKyc, addTicket, replyTicket, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, signOut, submitKyc, addTicket, replyTicket, markTicketRead, revokeSession, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const wEarlyP = db.wallets.find(x => x.userId === user?.id)
   const { coins } = useMarket(wEarlyP && Object.entries(wEarlyP.holdings).some(([s, a]) => s !== 'USDT' && a > 0) ? 10_000 : 60_000)
   const navigate = useNavigate()
@@ -73,6 +74,29 @@ export default function Profile() {
   const [viewTicket, setViewTicket] = useState<string | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const [notifPrefs, setNotifPrefs] = useState({ tx: true, market: true, promo: false })
+  const [pushOn, setPushOn] = useState(false); const [pushBusy, setPushBusy] = useState(false)
+  useEffect(() => { try { navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription()).then(sub => setPushOn(!!sub)).catch(() => {}) } catch { /* push unsupported */ } }, [])
+  const togglePush = async (on: boolean) => {
+    setPushBusy(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      if (on) {
+        const key = db.settings.vapidPublic
+        if (!key) { toast({ kind: 'error', title: 'Push is not configured yet' }); return }
+        const perm = await Notification.requestPermission()
+        if (perm !== 'granted') { toast({ kind: 'error', title: 'Notification permission was not granted' }); return }
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)) as BufferSource })
+        const r = await apiPost('/v1/push/subscribe', sub.toJSON())
+        if (r?.ok === false) throw new Error('subscribe failed')
+        setPushOn(true); toast({ kind: 'success', title: 'Push notifications on', body: 'This device will now get alerts even when the app is closed.' })
+      } else {
+        const sub = await reg.pushManager.getSubscription()
+        if (sub) { await apiPost('/v1/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe() }
+        setPushOn(false); toast({ kind: 'success', title: 'Push notifications off' })
+      }
+    } catch { toast({ kind: 'error', title: 'Could not change push notifications on this device' }) }
+    finally { setPushBusy(false) }
+  }
   const [curQ, setCurQ] = useState('')
   const [kycStep, setKycStep] = useState(1)
   const [kycDocType, setKycDocType] = useState('nid')
@@ -102,6 +126,8 @@ export default function Profile() {
   useEffect(() => {
     if (modal === 'support' && chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
   })
+  const openTicketId = modal === 'support' && user ? (viewTicket ?? db.tickets.find(x => x.userId === user.id && x.status !== 'resolved')?.id ?? null) : null
+  useEffect(() => { if (openTicketId) void markTicketRead(openTicketId, false) }, [openTicketId])
   useEffect(() => {
     if (modal === 'kyc') { setKycStep(1); setKycDocType(user?.kycDocType ?? 'nid'); setKycDocNumber(user?.kycDocNumber ?? ''); setKycDocPhoto(user?.kycDocPhoto ?? ''); setKycFacePhoto(user?.kycFacePhoto ?? ''); setCamErr(false) }
     if (modal !== 'kyc') stopCam()
@@ -374,7 +400,7 @@ export default function Profile() {
             <ShieldCheck size={17} className="text-violet-600 shrink-0 mt-0.5" />
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><b>Keep it private.</b> Never share your PIN with anyone — NovaWallet staff will never ask for it. Avoid birth years and easy sequences like 1234. PINs are stored hashed, never in plain text.</p>
           </div>
-          <Btn className="w-full py-3.5" disabled={pin.old.length !== 4 || pin.next.length !== 4 || pin.confirm !== pin.next} onClick={() => { const e = changePin(pin.old, pin.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setPin({ old: '', next: '', confirm: '' }); toast({ kind: 'success', title: 'PIN changed', body: 'Use your new PIN for your next send or cash out.' }) } }}>{t('p_pin')}</Btn>
+          <Btn className="w-full py-3.5" disabled={pin.old.length !== 4 || pin.next.length !== 4 || pin.confirm !== pin.next} onClick={async () => { const e = await changePin(pin.old, pin.next); if (e) toast({ kind: 'error', title: e }); else { setModal(null); setPin({ old: '', next: '', confirm: '' }); toast({ kind: 'success', title: 'PIN changed', body: 'Use your new PIN for your next send or cash out.' }) } }}>{t('p_pin')}</Btn>
         </div>
       </Modal>
       <Modal open={modal === 'kyc'} onClose={() => setModal(null)} title={t('p_kyc')}>
@@ -507,6 +533,9 @@ export default function Profile() {
       <Modal open={modal === 'notif'} onClose={() => setModal(null)} title={t('p_notif')}>
         <ModalDesc>Choose which alerts you want to receive.</ModalDesc>
         <div className="space-y-2.5">
+          <ModalRow><label className="flex items-center justify-between font-semibold text-sm">Push notifications (this device)
+            <input type="checkbox" checked={pushOn} disabled={pushBusy} onChange={e => void togglePush(e.target.checked)} className="w-5 h-5 accent-violet-600" /></label>
+            <span className="block text-xs text-slate-400 mt-1">Get notified even when the app is closed — money received, approvals, support replies.</span></ModalRow>
           {([['tx', 'Transaction alerts'], ['market', 'Crypto market alerts'], ['promo', 'Promotions & offers']] as const).map(([k, l]) => (
             <ModalRow key={k}><label className="flex items-center justify-between font-semibold text-sm">{l}
               <input type="checkbox" checked={notifPrefs[k]} onChange={e => setNotifPrefs(p => ({ ...p, [k]: e.target.checked }))} className="w-5 h-5 accent-violet-600" /></label></ModalRow>
@@ -515,9 +544,12 @@ export default function Profile() {
         <ModalActions><Btn className="w-full py-3.5" onClick={() => { setModal(null); toast({ kind: 'success', title: 'Preferences saved' }) }}>{t('save')}</Btn></ModalActions>
       </Modal>
       <Modal open={modal === 'sessions'} onClose={() => setModal(null)} title={t('p_sessions')}>
-        <ModalDesc>Devices currently signed in to your account.</ModalDesc>
+        <ModalDesc>Devices currently signed in to your account. Signing a device out here ends its access right away — it will have to log in again.</ModalDesc>
         <div className="space-y-2.5">
-          {user.sessions.map(s => <ModalRow key={s.id}><span className="flex justify-between items-center gap-3"><span><span className="block font-bold text-sm">{s.device}</span><span className="text-xs text-slate-400">Last login {new Date(user.lastLogin).toLocaleString('en-GB')}</span></span>{s.current && <Badge tone="green">This device</Badge>}</span></ModalRow>)}
+          {(db.sessions ?? []).length === 0 ? user.sessions.map(s => <ModalRow key={s.id}><span className="flex justify-between items-center gap-3"><span><span className="block font-bold text-sm">{s.device}</span><span className="text-xs text-slate-400">Last login {new Date(user.lastLogin).toLocaleString('en-GB')}</span></span>{s.current && <Badge tone="green">This device</Badge>}</span></ModalRow>)
+          : (db.sessions ?? []).map(s => { const isCurrent = (() => { try { return localStorage.getItem('nova.sessionId') === s.id } catch { return false } })(); return (
+            <ModalRow key={s.id}><span className="flex justify-between items-center gap-3"><span className="min-w-0"><span className="block font-bold text-sm truncate">{s.device || 'Unknown device'}</span><span className="block text-xs text-slate-400">{s.ip ? s.ip + ' · ' : ''}Signed in {fmtDateTime(s.createdAt)}{s.lastSeenAt ? ' · Active ' + fmtDateTime(s.lastSeenAt) : ''}</span></span>{isCurrent ? <Badge tone="green">This device</Badge> : <Btn variant="outline" className="!py-1.5 !px-3 !text-xs shrink-0" onClick={async () => { const e = await revokeSession(s.id); if (e) toast({ kind: 'error', title: e }); else toast({ kind: 'success', title: 'Device signed out', body: s.device || '' }) }}>Sign out</Btn>}</span></ModalRow>
+          ) })}
         </div>
         <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
       </Modal>
@@ -570,7 +602,7 @@ export default function Profile() {
                 <div className="space-y-2">
                   {mine.map(x => (
                     <button key={x.id} onClick={() => setViewTicket(x.id)} className="w-full text-left">
-                      <ModalRow><span className="flex items-center gap-2"><span className="flex-1 min-w-0"><span className="block font-bold text-sm truncate">{x.subject}</span><span className="text-xs text-slate-400">{fmtDateTime(x.updatedAt)}</span></span>{statusBadge(x.status)}</span></ModalRow>
+                      <ModalRow><span className="flex items-center gap-2"><span className="flex-1 min-w-0"><span className="block font-bold text-sm truncate">{x.subject}</span><span className="text-xs text-slate-400">{fmtDateTime(x.updatedAt)}</span></span>{x.messages[x.messages.length - 1]?.from === 'admin' && (x.userReadAt ?? '') < x.updatedAt && <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />}{statusBadge(x.status)}</span></ModalRow>
                     </button>
                   ))}
                 </div>

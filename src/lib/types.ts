@@ -99,10 +99,16 @@ export interface Settings {
   /** Per-feature switches the owner can flip from Admin → Settings.
    * The Worker enforces them server-side; the app only mirrors them. */
   features?: { deposits: boolean; withdrawals: boolean; trading: boolean; loans: boolean; registration: boolean }
+  /** Large transfers above this BDT amount need a password re-entry (step-up). */
+  stepUpThresholdBdt?: number
+  /** Web Push application key (public) + Turnstile site key, served by the Worker. */
+  vapidPublic?: string
+  turnstileSiteKey?: string
 }
 export interface Audit { id: string; actor: string; action: string; detail: string; createdAt: string }
+export interface SessionInfo { id: string; device: string; ip: string; createdAt: string; lastSeenAt: string | null }
 export interface ChatMsg { id: string; from: 'user' | 'admin'; text: string; at: string }
-export interface SupportTicket { id: string; userId: string; subject: string; message?: string; status: 'pending' | 'processing' | 'resolved'; createdAt: string; updatedAt: string; messages: ChatMsg[] }
+export interface SupportTicket { id: string; userId: string; subject: string; message?: string; status: 'pending' | 'processing' | 'resolved'; createdAt: string; updatedAt: string; messages: ChatMsg[]; userReadAt?: string | null; adminReadAt?: string | null }
 
 export interface Stake { id: string; userId: string; amount: number; apy: number; termDays: number; startAt: string; status: 'active' | 'closed'; /** Set once the 'stake matured' notification has been sent. */ maturedNotified?: boolean }
 export interface DB {
@@ -110,6 +116,7 @@ export interface DB {
   deposits: DepositReq[]; withdrawals: WithdrawReq[]; loans: Loan[]
   news: NewsItem[]; banners: Banner[]; notifications: Notif[]
   settings: Settings; audit: Audit[]; tickets: SupportTicket[]
+  sessions: SessionInfo[]
   levels: LevelDef[]; levelRequests: LevelRequest[]; stakes: Stake[]; earnStates: EarnState[]; sec: Record<string, { fails: number; lockedUntil: number }>
   watchlist: Record<string, string[]>; referralEarnings: { id: string; userId: string; fromUser: string; amount: number; createdAt: string }[]
 }

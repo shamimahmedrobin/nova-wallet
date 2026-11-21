@@ -19,12 +19,22 @@ export async function authToken(): Promise<string | null> {
 async function call(path: string, init: RequestInit): Promise<any> {
   const token = await authToken()
   if (!token) throw new Error('Not signed in to the server. Please log in again.')
+  let sid: string | null = null
+  try { sid = localStorage.getItem('nova.sessionId') } catch { /* storage unavailable */ }
   const res = await fetch(API_BASE + path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...(init.headers || {}) },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...(sid ? { 'X-Session-Id': sid } : {}), ...(init.headers || {}) },
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || ('Server error (' + res.status + ')'))
+  if (!res.ok) {
+    // This device's session was revoked from another device — drop the
+    // local sign-in and start over from the login screen.
+    if (data.error === 'session_revoked') {
+      try { localStorage.removeItem('novawallet.session'); localStorage.removeItem('nova.sessionId') } catch { /* ignore */ }
+      location.reload()
+    }
+    throw new Error(data.error || ('Server error (' + res.status + ')'))
+  }
   return data
 }
 
@@ -33,17 +43,18 @@ export const apiPost = (path: string, body: unknown) => call(path, { method: 'PO
 
 export async function apiBootstrap(
   token: string,
-  profile: { username: string; fullName: string; pinHash: string; phone?: string; referralCode?: string },
-): Promise<boolean> {
+  profile: { username: string; fullName: string; pinHash: string; phone?: string; referralCode?: string; sessionId?: string; deviceLabel?: string; turnstileToken?: string },
+): Promise<any> {
   try {
     const res = await fetch(API_BASE + '/v1/bootstrap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify(profile),
     })
-    return res.ok
+    if (!res.ok) return null
+    return await res.json().catch(() => null)
   } catch {
-    return false
+    return null
   }
 }
 

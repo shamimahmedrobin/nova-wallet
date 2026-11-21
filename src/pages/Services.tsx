@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Copy, Download, Share2, Upload, XCircle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../lib/store'
-import { Avatar, Badge, Btn, Card, CheckLine, CopyBtn, Empty, FeatureOff, Input, Modal, PinField, Select, StepBar, WizardNav, statusTone , MaxBtn } from '../components/ui'
+import { Avatar, Badge, Btn, Card, CheckLine, CopyBtn, Empty, FeatureOff, Input, Modal, PinField, Select, StepBar, StepUpField, WizardNav, statusTone , MaxBtn } from '../components/ui'
 import { fmtDateTime, fmtUSDT } from '../lib/utils'
 import type { User } from '../lib/types'
 
@@ -180,9 +180,10 @@ export function AddMoney() {
 }
 
 export function CashOut() {
-  const { requestWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT } = useApp()
+  const { requestWithdraw, db, user, walletOf, toast, t, currency, fmtMoney, toBDT, fromBDT, stepUp } = useApp()
   const [method, setMethod] = useState(''); const [amount, setAmount] = useState(''); const [dest, setDest] = useState(''); const [pin, setPin] = useState(''); const [network, setNetwork] = useState('')
   const [done, setDone] = useState(false); const [cstep, setCstep] = useState(0); const [errMsg, setErrMsg] = useState('')
+  const [stepPw, setStepPw] = useState('')
   const outMethods = withdrawMethods(currency)
   const activeOut = outMethods.includes(method) ? method : outMethods[0]
   const isCrypto = activeOut === 'Crypto Wallet'
@@ -199,6 +200,11 @@ export function CashOut() {
   const submit = async () => {
     if (!amtBDT || amtBDT < 50) return toast({ kind: 'error', title: 'Minimum cash out is ' + fmtMoney(50) })
     if (!dest.trim()) return toast({ kind: 'error', title: 'Enter the destination account' })
+    const suThC = db.settings.stepUpThresholdBdt ?? 0
+    if (suThC && amtBDT > suThC) {
+      if (!stepPw) return setErrMsg('This cash out is above ৳' + suThC.toLocaleString() + ' — enter your account password for the extra verification.')
+      const se = await stepUp(stepPw); if (se) return setErrMsg(se); setStepPw('')
+    }
     const err = await requestWithdraw({ method: fullMethod, amount: amtBDT, destination: dest.trim(), pin })
     if (err) return setErrMsg(err)
     setDone(true); setAmount(''); setPin(''); setCstep(0)
@@ -256,6 +262,7 @@ export function CashOut() {
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">Cash outs are reviewed before payout. Submitting locks <b>{fmtMoney(amtBDT)}</b> until an admin completes or rejects the request — you will be notified either way.</p>
             </div>
             <PinField pin={pin} setPin={setPin} />
+            <StepUpField amountBdt={amtBDT} value={stepPw} onChange={setStepPw} />
             <Btn className="w-full py-3.5" onClick={submit}>Submit for Approval</Btn>
             <button onClick={() => setCstep(1)} className="w-full text-center text-sm font-bold text-slate-500">Back to review</button>
             <p className="text-center text-xs text-slate-500">{t('pin_forgot_prefix')} <Link to="/withdraw" className="font-bold text-violet-600 underline underline-offset-2">{t('act_withdraw')}</Link></p>
@@ -279,11 +286,12 @@ export function CashOut() {
 }
 
 export function SendMoney() {
-  const { db, user, sendMoney, walletOf, toast, t, currency, fmtMoney, toBDT } = useApp()
+  const { db, user, sendMoney, walletOf, toast, t, currency, fmtMoney, toBDT, stepUp } = useApp()
   const navigate = useNavigate()
   const [q, setQ] = useState(''); const [to, setTo] = useState<User | null>(null)
   const [sstep, setSstep] = useState(0)
   const [amount, setAmount] = useState(''); const [note, setNote] = useState(''); const [pin, setPin] = useState(''); const [receipt, setReceipt] = useState<any>(null); const [errMsg, setErrMsg] = useState('')
+  const [stepPw, setStepPw] = useState('')
   const results = useMemo(() => {
     if (!q.trim()) return []
     const s = q.trim().toLowerCase()
@@ -298,6 +306,11 @@ export function SendMoney() {
   const submit = async () => {
     if (!to) return toast({ kind: 'error', title: 'Select a recipient first' })
     if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Minimum send amount is ' + fmtMoney(10) })
+    const suTh = db.settings.stepUpThresholdBdt ?? 0
+    if (suTh && amtBDT > suTh) {
+      if (!stepPw) return setErrMsg('This transfer is above ৳' + suTh.toLocaleString() + ' — enter your account password for the extra verification.')
+      const se = await stepUp(stepPw); if (se) return setErrMsg(se); setStepPw('')
+    }
     const r = await sendMoney({ toUserId: to.id, amount: amtBDT, note: note || undefined, pin })
     if (typeof r === 'string') return setErrMsg(r)
     setReceipt(r); setPin('')
@@ -371,6 +384,7 @@ export function SendMoney() {
               <div className="flex justify-between"><span className="text-slate-500">Total debit</span><span className="font-extrabold">{fmtMoney(amtBDT + fee)}</span></div>
             </div>
             <PinField pin={pin} setPin={setPin} />
+            <StepUpField amountBdt={amtBDT} value={stepPw} onChange={setStepPw} />
             <Btn className="w-full py-3.5" onClick={submit}>Confirm &amp; Send {fmtMoney(amtBDT)}</Btn>
             <button onClick={() => setSstep(1)} className="w-full text-center text-sm font-bold text-slate-500">Back to review</button>
             <p className="text-center text-xs text-slate-500">{t('pin_forgot_prefix')} <Link to="/withdraw" className="font-bold text-violet-600 underline underline-offset-2">{t('act_withdraw')}</Link></p>

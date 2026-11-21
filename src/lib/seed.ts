@@ -27,7 +27,7 @@ export function seedDB(): DB {
     ],
     notifications: [],
     settings: { sendFeePct: 0.5, cashoutFeePct: 1.5, referralPct: 5, loanRatePct: 12, minLoan: 1000, maxLoan: 100000, loanLimit: 100000, bdtPerUsd: 121, maintenance: false, platformName: 'NovaWallet', payMethods: DEFAULT_PAY_METHODS },
-    audit: [], tickets: [],
+    audit: [], tickets: [], sessions: [],
     levels: DEFAULT_LEVELS,
     levelRequests: [], stakes: [], earnStates: [],
     watchlist: {},

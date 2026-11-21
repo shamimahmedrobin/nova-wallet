@@ -120,6 +120,117 @@ function hashSecret(s) {
   return "h$" + (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
 }
 
+const NW_FIREBASE_API_KEY = "AIzaSyCURYE7tb3y917eZm2kTlY2IflgpM7zECY";
+
+function b64uEnc(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64uDec(str) {
+  const s = atob(String(str).replace(/-/g, "+").replace(/_/g, "/"));
+  const u = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  return u;
+}
+function concatBytes(parts) {
+  let n = 0; for (const p of parts) n += p.length;
+  const out = new Uint8Array(n); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+async function hmacSha256(key, data) {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", k, data));
+}
+
+// ---- Strong PIN verifier (PBKDF2 over the legacy FNV hash) -----------------
+const PBK_ITER = 100000; // Workers WebCrypto caps PBKDF2 at 100k iterations
+async function pbkdf2Hash(fnv) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(fnv), "PBKDF2", false, ["deriveBits"]);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: PBK_ITER, hash: "SHA-256" }, key, 256));
+  return "pbk$" + PBK_ITER + "$" + b64uEnc(salt) + "$" + b64uEnc(bits);
+}
+async function pbkdf2Verify(fnv, stored) {
+  try {
+    const parts = String(stored).split("$");
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(fnv), "PBKDF2", false, ["deriveBits"]);
+    const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: b64uDec(parts[2]), iterations: Number(parts[1]) || PBK_ITER, hash: "SHA-256" }, key, 256));
+    const want = b64uDec(parts[3]);
+    if (bits.length !== want.length) return false;
+    let diff = 0; for (let i = 0; i < bits.length; i++) diff |= bits[i] ^ want[i];
+    return diff === 0;
+  } catch { return false; }
+}
+
+// ---- Step-up verification (password re-entry for large transfers) ----------
+async function getSecurity(db) {
+  return await getSettingKey(db, "security", { stepUpThresholdBdt: 25000 });
+}
+async function stepUpGate(db, uid, amount) {
+  const sec = await getSecurity(db);
+  const th = Number(sec.stepUpThresholdBdt) || 0;
+  if (!th || Number(amount) <= th) return null;
+  const g = await db.prepare("SELECT * FROM step_up_grants WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC LIMIT 1").bind(uid, new Date().toISOString()).first();
+  if (!g) return { error: "step_up_required", stepUpRequired: true, threshold: th };
+  await db.prepare("DELETE FROM step_up_grants WHERE id = ?").bind(g.id).run();
+  return null;
+}
+
+// ---- Web Push (RFC 8291 aes128gcm + VAPID) ---------------------------------
+async function deliverPush(jwk, vapidPublic, sub, payload) {
+  const endpoint = sub.endpoint;
+  const aud = new URL(endpoint).origin;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("jwk", { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y, d: jwk.d, alg: "ES256", ext: true }, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const header = b64uEnc(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const claims = b64uEnc(enc.encode(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 43200, sub: "mailto:support@novawallet.app" })));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(header + "." + claims)));
+  const jwt = header + "." + claims + "." + b64uEnc(sig);
+  const receiverPub = b64uDec(sub.p256dh);
+  const authSecret = b64uDec(sub.auth);
+  const eph = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const ephPub = new Uint8Array(await crypto.subtle.exportKey("raw", eph.publicKey));
+  const receiverKey = await crypto.subtle.importKey("raw", receiverPub, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: receiverKey }, eph.privateKey, 256));
+  const prk = await hmacSha256(authSecret, shared);
+  const len16 = (n) => new Uint8Array([(n >> 8) & 255, n & 255]);
+  const keyInfo = concatBytes([enc.encode("Content-Encoding: auth"), new Uint8Array([0]), enc.encode("P-256"), new Uint8Array([0]), len16(receiverPub.length), receiverPub, len16(ephPub.length), ephPub]);
+  const ikm = await hmacSha256(prk, concatBytes([keyInfo, new Uint8Array([1])]));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const prk2 = await hmacSha256(salt, ikm);
+  const cek = (await hmacSha256(prk2, concatBytes([enc.encode("Content-Encoding: aes128gcm"), new Uint8Array([0]), new Uint8Array([1])]))).slice(0, 16);
+  const nonce = (await hmacSha256(prk2, concatBytes([enc.encode("Content-Encoding: nonce"), new Uint8Array([0]), new Uint8Array([1])]))).slice(0, 12);
+  const plain = concatBytes([enc.encode(JSON.stringify(payload)), new Uint8Array([2])]);
+  const aesKey = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, ["encrypt"]);
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aesKey, plain));
+  const rs = new Uint8Array(4); new DataView(rs.buffer).setUint32(0, 4096);
+  const bodyBytes = concatBytes([salt, rs, new Uint8Array([ephPub.length]), ephPub, cipher]);
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 4000);
+  try {
+    const res = await fetch(endpoint, { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/octet-stream", "Content-Encoding": "aes128gcm", TTL: "86400", Authorization: "vapid t=" + jwt + ", k=" + vapidPublic }, body: bodyBytes });
+    return res.status;
+  } finally { clearTimeout(to); }
+}
+async function sendPushToUser(db, userId, title, body, link) {
+  try {
+    const privRow = await db.prepare("SELECT value FROM platform_settings WHERE key = 'push_private'").first();
+    const pubRow = await db.prepare("SELECT value FROM platform_settings WHERE key = 'push'").first();
+    if (!privRow || !pubRow) return;
+    const jwk = JSON.parse(privRow.value);
+    const vapidPublic = JSON.parse(pubRow.value).vapidPublic;
+    if (!vapidPublic) return;
+    const subs = await db.prepare("SELECT * FROM push_subscriptions WHERE user_id = ?").bind(userId).all();
+    for (const sub of subs.results) {
+      try {
+        const status = await deliverPush(jwk, vapidPublic, sub, { title, body, link: link || "/" });
+        if (status === 404 || status === 410) await db.prepare("DELETE FROM push_subscriptions WHERE id = ?").bind(sub.id).run();
+      } catch { /* one bad subscription must not affect the others */ }
+    }
+  } catch { /* push never blocks the money path */ }
+}
+
 const nowISO = () => new Date().toISOString();
 const rand = (n) => {
   const c = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -297,6 +408,8 @@ async function loadState(db, uid, lite = false) {
     // decision notices) — merged by the client store on every pull.
     state.content = await loadContent(db);
     state.tickets = await loadTickets(db, uid);
+    const sesRows = await db.prepare("SELECT * FROM user_sessions WHERE user_id = ? AND revoked = 0 ORDER BY created_at DESC LIMIT 10").bind(uid).all();
+    state.sessions = sesRows.results.map((x) => ({ id: x.id, device: x.device || "", ip: x.ip || "", createdAt: isoOf(x.created_at), lastSeenAt: x.last_seen_at ? isoOf(x.last_seen_at) : null }));
     state.levelRequests = await loadLevelRequests(db, uid);
     state.notifications = await loadServerNotifications(db, uid);
   }
@@ -339,16 +452,34 @@ async function loadOverview(db) {
   const byDate = (a, b) => (a.createdAt < b.createdAt ? 1 : -1);
   transactions.sort(byDate); deposits.sort(byDate); withdrawals.sort(byDate); loans.sort(byDate); stakes.sort(byDate);
   const errRows = await db.prepare("SELECT * FROM client_errors ORDER BY created_at DESC LIMIT 50").all();
+  const auditRows = await db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100").all();
   return {
     users, wallets, transactions, deposits, withdrawals, loans, stakes,
     tickets: await loadTickets(db, null),
     levelRequests: await loadLevelRequests(db, null),
     content: await loadContent(db),
     errors: errRows.results.map((e) => ({ id: e.id, userId: e.user_id, message: e.message, url: e.url, createdAt: isoOf(e.created_at) })),
+    audit: auditRows.results.map((a) => ({ id: String(a.id), actor: a.actor, action: a.action, detail: a.detail, createdAt: isoOf(a.created_at) })),
   };
 }
 
 // ---- Identity endpoints -----------------------------------------------------
+
+async function ensureSession(db, request, auth, body) {
+  const sid = body.sessionId ? String(body.sessionId) : "";
+  if (sid) {
+    const row = await db.prepare("SELECT * FROM user_sessions WHERE id = ? AND user_id = ?").bind(sid, auth.uid).first();
+    if (row && !row.revoked) {
+      try { await db.prepare("UPDATE user_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?").bind(sid).run(); } catch { /* ignore */ }
+      return sid;
+    }
+  }
+  const id = pubId("SES");
+  const device = String(body.deviceLabel || request.headers.get("User-Agent") || "").slice(0, 120);
+  const ip = request.headers.get("CF-Connecting-IP") || "";
+  try { await db.prepare("INSERT INTO user_sessions (id, user_id, device, ip, last_seen_at, expires_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)").bind(id, auth.uid, device, ip, new Date(Date.now() + 30 * 86400000).toISOString()).run(); } catch { /* ignore */ }
+  return id;
+}
 
 async function handleBootstrap(request, env, auth) {
   const db = env.DB;
@@ -363,14 +494,32 @@ async function handleBootstrap(request, env, auth) {
     if (ph && ph !== (existing.phone || "")) {
       try { await db.prepare("UPDATE users SET phone = ? WHERE id = ?").bind(ph, auth.uid).run(); } catch { /* best effort */ }
     }
+    if (!existing.pin_hash_v2 && body.pinHash) {
+      try { await db.prepare("UPDATE users SET pin_hash_v2 = ? WHERE id = ?").bind(await pbkdf2Hash(String(body.pinHash)), auth.uid).run(); } catch { /* best effort */ }
+    }
+    const sessionId = await ensureSession(db, request, auth, body);
     return json(request, {
       ok: true,
       created: false,
+      sessionId,
       user: { id: existing.id, email: existing.email, username: existing.username, role: existing.role },
     });
   }
   if (await featureOff(db, "registration")) {
     return json(request, { error: "New registrations are temporarily closed. Please try again later." }, 403);
+  }
+  // Bot check — active only once a Turnstile secret is configured.
+  if (env.TURNSTILE_SECRET) {
+    const tok = String(body.turnstileToken || "");
+    let passed = false;
+    if (tok) {
+      try {
+        const vr = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: env.TURNSTILE_SECRET, response: tok }) });
+        const vj = await vr.json();
+        passed = !!vj.success;
+      } catch { passed = false; }
+    }
+    if (!passed) return json(request, { error: "Bot check failed. Please retry." }, 403);
   }
   const username = String(body.username || "").trim().toLowerCase();
   const fullName = String(body.fullName || "").trim();
@@ -389,8 +538,8 @@ async function handleBootstrap(request, env, auth) {
   const walletId = crypto.randomUUID();
   const stmts = [
     db.prepare(
-      "INSERT INTO users (id, email, phone, username, pin_hash, referral_code, referred_by) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(auth.uid, email, phone, username, pinHash, referralCode, referrerId),
+      "INSERT INTO users (id, email, phone, username, pin_hash, pin_hash_v2, referral_code, referred_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(auth.uid, email, phone, username, pinHash, await pbkdf2Hash(pinHash), referralCode, referrerId),
     db.prepare("INSERT INTO user_profiles (user_id, full_name) VALUES (?, ?)").bind(auth.uid, fullName),
     db.prepare("INSERT INTO wallets (id, user_id) VALUES (?, ?)").bind(walletId, auth.uid),
     db.prepare("INSERT INTO wallet_balances (wallet_id, currency, available, locked) VALUES (?, 'BDT', 0, 0)").bind(walletId),
@@ -403,7 +552,8 @@ async function handleBootstrap(request, env, auth) {
   } catch (e) {
     return json(request, { error: "bootstrap_failed", detail: String(e?.message || e) }, 500);
   }
-  return json(request, { ok: true, created: true, user: { id: auth.uid, email, username, role: "user" } });
+  const sessionId = await ensureSession(db, request, auth, body);
+  return json(request, { ok: true, created: true, sessionId, user: { id: auth.uid, email, username, role: "user" } });
 }
 
 async function handleMe(request, env, auth) {
@@ -424,10 +574,30 @@ async function handleMe(request, env, auth) {
 // ---- Shared money logic (returns { error } or { stmts, ... }) ---------------
 
 async function checkPin(db, uid, pin) {
-  const row = await db.prepare("SELECT pin_hash FROM users WHERE id = ?").bind(uid).first();
+  const row = await db.prepare("SELECT pin_hash, pin_hash_v2, pin_fail_count, pin_locked_until FROM users WHERE id = ?").bind(uid).first();
   if (!row) return "Account not found.";
-  if (row.pin_hash !== hashSecret(String(pin || ""))) return "Incorrect transaction PIN.";
-  return null;
+  if (row.pin_locked_until && new Date(row.pin_locked_until).getTime() > Date.now()) {
+    const mins = Math.max(1, Math.ceil((new Date(row.pin_locked_until).getTime() - Date.now()) / 60000));
+    return "Too many wrong PIN attempts. PIN entry is locked for " + mins + " more minute" + (mins === 1 ? "" : "s") + ".";
+  }
+  const fnv = hashSecret(String(pin || ""));
+  let ok;
+  if (row.pin_hash_v2) ok = await pbkdf2Verify(fnv, row.pin_hash_v2);
+  else ok = row.pin_hash === fnv;
+  if (ok) {
+    const fix = [];
+    if (Number(row.pin_fail_count) > 0 || row.pin_locked_until) fix.push(db.prepare("UPDATE users SET pin_fail_count = 0, pin_locked_until = NULL WHERE id = ?").bind(uid));
+    if (!row.pin_hash_v2) { try { fix.push(db.prepare("UPDATE users SET pin_hash_v2 = ? WHERE id = ?").bind(await pbkdf2Hash(fnv), uid)); } catch { /* ignore */ } }
+    if (fix.length) { try { await db.batch(fix); } catch { /* best effort */ } }
+    return null;
+  }
+  const fails = Number(row.pin_fail_count || 0) + 1;
+  if (fails >= 5) {
+    try { await db.prepare("UPDATE users SET pin_fail_count = 0, pin_locked_until = ? WHERE id = ?").bind(new Date(Date.now() + 5 * 60000).toISOString(), uid).run(); } catch { /* ignore */ }
+    return "Too many wrong PIN attempts. PIN entry is locked for 5 minutes.";
+  }
+  try { await db.prepare("UPDATE users SET pin_fail_count = ? WHERE id = ?").bind(fails, uid).run(); } catch { /* ignore */ }
+  return "Incorrect transaction PIN.";
 }
 
 async function buyLogic(db, uid, symbol, amount, priceUsd) {
@@ -502,6 +672,8 @@ async function handleSend(request, env, auth, body) {
   if (!toUserId || toUserId === auth.uid) return json(request, { error: "You cannot send money to yourself." }, 400);
   const pinErr = await checkPin(db, auth.uid, pin);
   if (pinErr) return json(request, { error: pinErr }, 400);
+  const suErr = await stepUpGate(db, auth.uid, amount);
+  if (suErr) return json(request, suErr, 403);
   const sender = await getUserRow(db, auth.uid);
   if (!sender) return json(request, { error: "Account not found." }, 404);
   if (sender.status === "frozen") return json(request, { error: "Your wallet is frozen." }, 400);
@@ -529,6 +701,7 @@ async function handleSend(request, env, auth, body) {
     return json(request, { error: "Send failed: " + String(e?.message || e) }, 500);
   }
   const state = await loadState(db, auth.uid);
+  await notifyServer(db, toUserId, "tx", "💰 Money received", (sender.full_name || sender.username) + " sent you ৳" + Number(amount).toLocaleString("en-US") + (note ? " — " + note : ""), "/transactions?tx=" + recvTx.pub);
   return json(request, {
     ok: true, state,
     tx: { id: sendTx.pub, userId: auth.uid, category: "send", title: "Sent to " + (recipient.full_name || recipient.username), amount, fee, currency: "BDT", status: "completed", note: note || undefined, counterparty: recipient.full_name || recipient.username, createdAt: nowISO() },
@@ -566,6 +739,8 @@ async function handleWithdraw(request, env, auth, body) {
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   const pinErr = await checkPin(db, auth.uid, pin);
   if (pinErr) return json(request, { error: pinErr }, 400);
+  const suErr = await stepUpGate(db, auth.uid, amount);
+  if (suErr) return json(request, suErr, 403);
   const me = await getUserRow(db, auth.uid);
   if (!me) return json(request, { error: "Account not found." }, 404);
   if (me.status === "frozen") return json(request, { error: "Your wallet is frozen. Contact support." }, 400);
@@ -601,6 +776,8 @@ async function handleDirectWithdraw(request, env, auth, body) {
   if (Number(me.level) < 2) return json(request, { error: "Direct Withdraw needs a Level 2 account. Please upgrade first." }, 400);
   if (me.status === "frozen") return json(request, { error: "Your wallet is frozen. Contact support." }, 400);
   if (me.status === "suspended") return json(request, { error: "Your account is suspended. Contact support." }, 400);
+  const suErr = await stepUpGate(db, auth.uid, amount);
+  if (suErr) return json(request, suErr, 403);
   const settings = await getSettings(db);
   const disc = await feeDiscount(db, Number(me.level));
   const fee = Math.round(amount * (settings.cashoutPct * (1 - disc / 100)) / 100);
@@ -874,6 +1051,9 @@ async function loadContent(db) {
       loanRatePct: s.loanRatePct, minLoan: s.minLoan, maxLoan: s.maxLoan, loanLimit: s.loanLimit,
       bdtPerUsd: s.bdtPerUsd, maintenance: !!maint.enabled, platformName: plat.name || "NovaWallet",
       features: await getFeatures(db), payMethods,
+      stepUpThresholdBdt: Number((await getSecurity(db)).stepUpThresholdBdt) || 0,
+      vapidPublic: (await getSettingKey(db, "push", {})).vapidPublic || "",
+      turnstileSiteKey: (await getSettingKey(db, "turnstile", {})).sitekey || "",
     },
     news: newsRows.results.map((n) => ({
       id: n.id, title: n.title, category: n.category, excerpt: n.excerpt, body: n.body,
@@ -898,6 +1078,7 @@ async function loadTickets(db, uid) {
     out.push({
       id: t.id, userId: t.user_id, subject: t.subject, status: t.status,
       createdAt: isoOf(t.created_at), updatedAt: isoOf(t.updated_at || t.created_at),
+      userReadAt: t.user_read_at ? isoOf(t.user_read_at) : null, adminReadAt: t.admin_read_at ? isoOf(t.admin_read_at) : null,
       messages: msgs.results.map((m) => ({ id: m.id, from: m.sender, text: m.text, at: isoOf(m.created_at) })),
     });
   }
@@ -927,6 +1108,7 @@ async function notifyServer(db, userId, kind, title, body, link) {
     await db.prepare("INSERT INTO notifications (id, user_id, kind, title, body, link) VALUES (?, ?, ?, ?, ?, ?)")
       .bind(pubId("NTF"), userId, kind, title, body, link || null).run();
   } catch { /* notifications never block the money path */ }
+  await sendPushToUser(db, userId, title, body, link || "/");
 }
 async function notifyAdminsServer(db, kind, title, body, link) {
   const rows = await db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
@@ -971,6 +1153,83 @@ async function handlePayMethodDelete(request, env, auth, body) {
 // Profile edits (name / phone / photo) persist server-side — they used to
 // be local-only, so a refresh or another device silently lost them and the
 // admin never saw the phone number.
+async function handleProfilePin(request, env, auth, body) {
+  const db = env.DB;
+  const err = await checkPin(db, auth.uid, body.oldPin);
+  if (err) return json(request, { error: err }, 400);
+  const newPin = String(body.newPin || "");
+  if (!/^\d{4,6}$/.test(newPin)) return json(request, { error: "New PIN must be 4-6 digits." }, 400);
+  const fnv = hashSecret(newPin);
+  await db.prepare("UPDATE users SET pin_hash = ?, pin_hash_v2 = ?, pin_fail_count = 0, pin_locked_until = NULL WHERE id = ?")
+    .bind(fnv, await pbkdf2Hash(fnv), auth.uid).run();
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handleNotificationsRead(request, env, auth, body) {
+  const db = env.DB;
+  if (body.id) await db.prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?").bind(String(body.id), auth.uid).run();
+  else await db.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?").bind(auth.uid).run();
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handleTicketRead(request, env, auth, body) {
+  const db = env.DB;
+  const tk = await db.prepare("SELECT * FROM support_tickets WHERE id = ?").bind(String(body.ticketId || "")).first();
+  if (!tk) return json(request, { error: "Ticket not found." }, 404);
+  const asAdmin = auth.role === "admin" && body.asAdmin === true;
+  if (asAdmin) {
+    if (!scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
+    await db.prepare("UPDATE support_tickets SET admin_read_at = CURRENT_TIMESTAMP WHERE id = ?").bind(tk.id).run();
+    return json(request, { ok: true, overview: await loadOverview(db) });
+  }
+  if (tk.user_id !== auth.uid) return json(request, { error: "Not your ticket." }, 403);
+  await db.prepare("UPDATE support_tickets SET user_read_at = CURRENT_TIMESTAMP WHERE id = ?").bind(tk.id).run();
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handleStepUp(request, env, auth, body) {
+  const db = env.DB;
+  const password = String(body.password || "");
+  if (!password) return json(request, { error: "Enter your account password." }, 400);
+  let localId = null;
+  try {
+    const res = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + NW_FIREBASE_API_KEY, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: auth.email, password, returnSecureToken: true }),
+    });
+    const data = await res.json();
+    if (res.ok) localId = data.localId;
+  } catch { /* network error treated as failure */ }
+  if (localId !== auth.uid) return json(request, { error: "Incorrect password." }, 400);
+  const id = pubId("STP");
+  const expiresAt = new Date(Date.now() + 5 * 60000).toISOString();
+  await db.prepare("INSERT INTO step_up_grants (id, user_id, expires_at) VALUES (?, ?, ?)").bind(id, auth.uid, expiresAt).run();
+  return json(request, { ok: true, expiresAt });
+}
+
+async function handlePushSubscribe(request, env, auth, body) {
+  const db = env.DB;
+  const endpoint = String(body.endpoint || "");
+  const p256dh = String(body.keys?.p256dh || "");
+  const authKey = String(body.keys?.auth || "");
+  if (!endpoint.startsWith("https://") || !p256dh || !authKey) return json(request, { error: "Invalid subscription." }, 400);
+  await db.prepare("INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth")
+    .bind(pubId("PSB"), auth.uid, endpoint.slice(0, 500), p256dh, authKey).run();
+  return json(request, { ok: true });
+}
+
+async function handlePushUnsubscribe(request, env, auth, body) {
+  const db = env.DB;
+  await db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?").bind(String(body.endpoint || ""), auth.uid).run();
+  return json(request, { ok: true });
+}
+
+async function handleSessionRevoke(request, env, auth, body) {
+  const db = env.DB;
+  await db.prepare("UPDATE user_sessions SET revoked = 1 WHERE id = ? AND user_id = ?").bind(String(body.id || ""), auth.uid).run();
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
 async function handleProfileUpdate(request, env, auth, body) {
   const db = env.DB;
   const me = await getUserRow(db, auth.uid);
@@ -998,7 +1257,7 @@ async function handleTicketCreate(request, env, auth, body) {
   const message = String(body.message || "").trim().slice(0, 2000);
   if (!subject || !message) return json(request, { error: "Subject and message are required." }, 400);
   const id = pubId("TKT");
-  await db.prepare("INSERT INTO support_tickets (id, user_id, subject, message, status, updated_at) VALUES (?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)")
+  await db.prepare("INSERT INTO support_tickets (id, user_id, subject, message, status, updated_at, user_read_at) VALUES (?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
     .bind(id, auth.uid, subject, message).run();
   await db.prepare("INSERT INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, 'user', ?)")
     .bind(pubId("MSG"), id, message).run();
@@ -1023,7 +1282,7 @@ async function handleTicketReply(request, env, auth, body) {
   if (tk.status === "resolved") return json(request, { error: "This chat is resolved and closed." }, 400);
   await db.prepare("INSERT INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, ?, ?)")
     .bind(pubId("MSG"), ticketId, asAdmin ? "admin" : "user", text).run();
-  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ? WHERE id = ?")
+  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ?, " + (asAdmin ? "admin_read_at" : "user_read_at") + " = CURRENT_TIMESTAMP WHERE id = ?")
     .bind(asAdmin && tk.status === "pending" ? "processing" : tk.status, ticketId).run();
   if (asAdmin) {
     if (tk.user_id !== auth.uid) await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);
@@ -1191,6 +1450,7 @@ async function handleAdminSettings(request, env, auth, body) {
   if (s.maintenance != null) await setSettingKey(db, "maintenance", { enabled: !!s.maintenance });
   if (s.platformName != null) await setSettingKey(db, "platform", { name: String(s.platformName).slice(0, 40) });
   if (s.features != null) await setSettingKey(db, "features", { ...FEATURE_DEFAULTS, ...s.features });
+  if (s.stepUpThresholdBdt != null) await setSettingKey(db, "security", { stepUpThresholdBdt: Math.max(0, Number(s.stepUpThresholdBdt) || 0) });
   if (Array.isArray(s.payMethods)) await setSettingKey(db, "paymethods", s.payMethods);
   await auditLog(db, auth, "settings.update", Object.keys(s).join(","));
   return json(request, { ok: true, overview: await loadOverview(db), state: await loadState(db, auth.uid) });
@@ -1635,6 +1895,11 @@ export default {
 
     try {
       if (path === "/v1/bootstrap" && request.method === "POST") return await handleBootstrap(request, env, auth);
+      const sidHdr = request.headers.get("X-Session-Id");
+      if (sidHdr) {
+        const srow = await env.DB.prepare("SELECT revoked FROM user_sessions WHERE id = ? AND user_id = ?").bind(sidHdr, auth.uid).first();
+        if (srow && srow.revoked) return json(request, { error: "session_revoked" }, 401);
+      }
       if (path === "/v1/me" && request.method === "GET") return await handleMe(request, env, auth);
       if (path === "/v1/state" && request.method === "GET") {
         const state = await loadState(env.DB, auth.uid);
@@ -1676,6 +1941,13 @@ export default {
           case "/v1/paymethods/save": return await handlePayMethodSave(request, env, auth, body);
           case "/v1/paymethods/delete": return await handlePayMethodDelete(request, env, auth, body);
           case "/v1/profile/update": return await handleProfileUpdate(request, env, auth, body);
+          case "/v1/profile/pin": return await handleProfilePin(request, env, auth, body);
+          case "/v1/notifications/read": return await handleNotificationsRead(request, env, auth, body);
+          case "/v1/tickets/read": return await handleTicketRead(request, env, auth, body);
+          case "/v1/stepup": return await handleStepUp(request, env, auth, body);
+          case "/v1/push/subscribe": return await handlePushSubscribe(request, env, auth, body);
+          case "/v1/push/unsubscribe": return await handlePushUnsubscribe(request, env, auth, body);
+          case "/v1/sessions/revoke": return await handleSessionRevoke(request, env, auth, body);
           case "/v1/tickets": return await handleTicketCreate(request, env, auth, body);
           case "/v1/tickets/reply": return await handleTicketReply(request, env, auth, body);
           case "/v1/tickets/resolve": return await handleTicketResolve(request, env, auth, body);

@@ -754,6 +754,7 @@ export default function Admin() {
                 <Input label="BDT per USDT" type="number" value={setForm.bdtPerUsd} onChange={e => setSetForm(s => ({ ...s, bdtPerUsd: Number(e.target.value) }))} />
                 <Input label="Send fee %" type="number" step="0.1" value={setForm.sendFeePct} onChange={e => setSetForm(s => ({ ...s, sendFeePct: Number(e.target.value) }))} />
                 <Input label="Cash out fee %" type="number" step="0.1" value={setForm.cashoutFeePct} onChange={e => setSetForm(s => ({ ...s, cashoutFeePct: Number(e.target.value) }))} />
+                <Input label="Step-up verification above (BDT)" type="number" step="1000" value={setForm.stepUpThresholdBdt ?? 25000} onChange={e => setSetForm(s => ({ ...s, stepUpThresholdBdt: Number(e.target.value) }))} />
                 <Input label="Referral commission %" type="number" value={setForm.referralPct} onChange={e => setSetForm(s => ({ ...s, referralPct: Number(e.target.value) }))} />
                 <Input label="Loan interest % / year" type="number" value={setForm.loanRatePct} onChange={e => setSetForm(s => ({ ...s, loanRatePct: Number(e.target.value) }))} />
                 <Input label="Min loan (USDT)" type="number" value={Math.round(setForm.minLoan / setForm.bdtPerUsd * 100) / 100} onChange={e => setSetForm(s => ({ ...s, minLoan: Math.round(Number(e.target.value) * s.bdtPerUsd) }))} />
@@ -1084,7 +1085,7 @@ export default function Admin() {
 const SUP_TONE = (st: string) => st === 'pending' ? 'amber' : st === 'processing' ? 'violet' : 'green'
 
 function SupportChat() {
-  const { db, replyTicket, resolveTicket, toast } = useApp()
+  const { db, replyTicket, resolveTicket, markTicketRead, toast } = useApp()
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')
   const [sel, setSel] = useState<string | null>(null)
@@ -1101,6 +1102,7 @@ function SupportChat() {
     return (filter === 'all' || tk.status === filter) && hay.includes(q.trim().toLowerCase())
   }).slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   const tk = sel ? db.tickets.find(x => x.id === sel) : undefined
+  useEffect(() => { if (sel) void markTicketRead(sel, true) }, [sel])
   useEffect(() => { for (const r of [scrollRef, scrollRefDesk]) if (r.current) r.current.scrollTop = r.current.scrollHeight })
   const send = () => { if (tk && text.trim()) { replyTicket(tk.id, text, 'admin'); setText('') } }
   const tku = tk ? userOf(tk.userId) : undefined
@@ -1159,6 +1161,7 @@ function SupportChat() {
                     <p className="font-bold truncate">{x.subject}</p>
                     <p className="text-xs text-slate-400 truncate">{u?.name} · @{u?.username} · {u?.email}</p>
                     {last && <p className="text-xs text-slate-500 truncate mt-0.5">{last.from === 'admin' ? 'Support: ' : ''}{last.text}</p>}
+                    {last?.from === 'user' && (x.adminReadAt ?? '') < x.updatedAt && <span className="inline-block w-2 h-2 rounded-full bg-rose-500 ml-1.5 align-middle" />}
                   </div>
                   <div className="text-right shrink-0"><Badge tone={SUP_TONE(x.status)}>{x.status}</Badge><p className="text-[10px] text-slate-400 mt-1">{fmtDateTime(x.updatedAt)}</p></div>
                 </div>

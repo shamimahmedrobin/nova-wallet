@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDownToLine, ArrowUpFromLine, Bitcoin, CheckCircle2, Gift, Globe, HandCoins, Landmark, Repeat, Send, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { Btn, Input, PinBoxes } from '../components/ui'
 import { Logo } from '../components/Layout'
+
+// Cloudflare Turnstile (bot check on registration). Activation: create a
+// Turnstile site for novawallet.pp.ua, put its site key here and the secret
+// in the Worker (TURNSTILE_SECRET) — the widget and the server check both
+// switch on automatically; while empty, registration is unchanged.
+const TURNSTILE_SITE_KEY = ''
 
 export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landing' | 'login' | 'register' }) {
   const { login, register, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, toast, t } = useApp()
@@ -19,6 +25,17 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
   const [fpOtpDemo, setFpOtpDemo] = useState<string | null>(null)
   const [fpOtpVerified, setFpOtpVerified] = useState(false)
   const [err, setErr] = useState('')
+  const [tsToken, setTsToken] = useState('')
+  const tsRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || mode !== 'register' || !tsRef.current) return
+    const w = window as any
+    const render = () => { try { w.turnstile?.render(tsRef.current, { sitekey: TURNSTILE_SITE_KEY, callback: (tok: string) => setTsToken(tok) }) } catch { /* widget optional */ } }
+    if (w.turnstile) render()
+    else {
+      const sc = document.createElement('script'); sc.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'; sc.async = true; sc.onload = render; document.head.appendChild(sc)
+    }
+  }, [mode])
   const set = (k: string) => (e: any) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   const afterLogin = (id: string) => {
@@ -47,7 +64,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
   const doRegister = async () => {
     if (form.password.length < 6) return setErr('Password must be at least 6 characters.')
     if (!/^\d{4}$/.test(form.pin)) return setErr('Transaction PIN must be exactly 4 digits.')
-    const e = await register({ ...form, email: form.email.trim().toLowerCase(), username: form.username.trim().toLowerCase(), referralCode: form.referralCode.trim() || undefined })
+    const e = await register({ ...form, email: form.email.trim().toLowerCase(), username: form.username.trim().toLowerCase(), referralCode: form.referralCode.trim() || undefined, turnstileToken: tsToken || undefined })
     if (e) return setErr(e)
     toast({ kind: 'success', title: 'Account created', body: 'Welcome to NovaWallet.' })
     navigate('/')
@@ -245,6 +262,7 @@ export default function Auth({ initialMode = 'landing' }: { initialMode?: 'landi
               <Input label={t('password_min')} type="password" placeholder="••••••••" value={form.password} onChange={set('password')} />
               <Input label={t('pin_4digit')} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={form.pin} onChange={set('pin')} />
               <Input label={t('referral_code_opt')} placeholder="NOVA-XXXXX" value={form.referralCode} onChange={set('referralCode')} />
+              {TURNSTILE_SITE_KEY && <div ref={tsRef} className="flex justify-center" />}
               <Btn className="w-full py-3.5" onClick={doRegister}>{t('create_account')}</Btn>
               <p className="text-[11px] text-center text-slate-400 leading-relaxed">{t('join_pre')} <Link to="/terms" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_terms_word')}</Link> {t('join_and')} <Link to="/privacy" className="font-bold text-violet-600 dark:text-violet-400 underline underline-offset-2">{t('join_privacy_word')}</Link>{t('join_post')}</p>
             </div>

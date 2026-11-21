@@ -6,6 +6,22 @@ import { gradientFor, initials } from '../lib/utils'
 
 /** Shown instead of a money form when the owner has switched that
     feature off in Admin → Settings (the Worker enforces it too). */
+// Step-up verification field: shown on large transfers (above the
+// platform threshold) — the customer re-enters their account password
+// once, and the store's stepUp() trades it for a single-use server grant.
+export function StepUpField({ amountBdt, value, onChange }: { amountBdt: number; value: string; onChange: (v: string) => void }) {
+  const { db } = useApp()
+  const th = db.settings.stepUpThresholdBdt ?? 0
+  if (!th || amountBdt <= th) return null
+  return (
+    <div className="rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/70 dark:border-amber-500/25 p-4 space-y-2.5">
+      <p className="font-extrabold text-sm">🔐 Extra verification</p>
+      <p className="text-xs text-slate-500 leading-relaxed">Transfers above ৳{th.toLocaleString()} need your account password once, on top of the PIN — it protects large amounts if your phone is ever misused.</p>
+      <Input type="password" placeholder="Account password" value={value} onChange={e => onChange(e.target.value)} />
+    </div>
+  )
+}
+
 export const FeatureOff = ({ label }: { label: string }) => (
   <div className="rounded-3xl border border-amber-200/70 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 p-6 text-center">
     <div className="text-3xl mb-2">🛠️</div>
