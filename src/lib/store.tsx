@@ -647,7 +647,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
         mutate(d => { d.users.push(nu); d.wallets.push({ userId: nu.id, available: 0, locked: 0, holdings: {} }) })
         localStorage.setItem(SESSION, nu.id); setUserId(nu.id); setLocked(false)
-        void hydrateServer(nu)
+        // Bootstrap too (not just hydrate): this is what registers the
+        // device session server-side and fills the PBKDF2 PIN verifier.
+        void syncServerProfile(token, nu)
         return null
       } catch (e: any) {
         const code = e?.code || ''
