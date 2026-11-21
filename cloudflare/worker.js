@@ -1786,13 +1786,22 @@ async function handleAdminTxCancel(request, env, auth, body) {
   const receiveSide = tx.category === "receive" ? tx : (pair && pair.category === "receive" ? pair : null);
   const fundsAt = receiveSide && receiveSide.status === "held" ? receiveSide : tx;
   const bals = await getBalances(db, wallet.id);
-  let avail = balOf(bals, tx.currency);
   const stmts = [];
-  if (tx.status === "held" && fundsAt.id === tx.id) { stmts.push(adjStmt(db, wallet.id, tx.currency, amt, -amt)); avail += amt; }
+  // The held portion of this side's amount sits in its Locked balance and
+  // reverses straight out of Locked. Only the un-held remainder goes
+  // through the available-balance ("already spent") check — a recipient
+  // who spent OTHER money and sits at a negative available balance must
+  // not block reversing money that is provably still locked.
+  const heldHere = tx.status === "held" && fundsAt.id === tx.id ? Math.min(amt, lockedOf(bals, tx.currency)) : 0;
   if (dir === "in") {
-    if (avail < amt) return json(request, { error: "Cannot cancel: the money from this transaction has already been spent." }, 400);
-    stmts.push(adjStmt(db, wallet.id, tx.currency, -amt));
+    if (heldHere > 0) stmts.push(adjStmt(db, wallet.id, tx.currency, 0, -heldHere));
+    const rest = amt - heldHere;
+    if (rest > 0) {
+      if (balOf(bals, tx.currency) < rest) return json(request, { error: "Cannot cancel: the money from this transaction has already been spent." }, 400);
+      stmts.push(adjStmt(db, wallet.id, tx.currency, -rest));
+    }
   } else {
+    if (heldHere > 0) stmts.push(adjStmt(db, wallet.id, tx.currency, heldHere, -heldHere));
     stmts.push(adjStmt(db, wallet.id, tx.currency, amt + fee));
   }
   // A send / receive pair reverses together.
@@ -1800,13 +1809,19 @@ async function handleAdminTxCancel(request, env, auth, body) {
     const pWallet = await getWallet(db, pair.user_id);
     if (!pWallet) return json(request, { error: "Counterparty wallet not found." }, 404);
     const pBals = await getBalances(db, pWallet.id);
-    let pAvail = balOf(pBals, pair.currency);
-    if (pair.status === "held" && fundsAt.id === pair.id) { stmts.push(adjStmt(db, pWallet.id, pair.currency, amt, -amt)); pAvail += amt; }
     const pDir = txDirOf(pair);
+    // Same rule as the tx side: the held portion reverses out of Locked
+    // directly, never blocked by a negative available balance.
+    const pHeldHere = pair.status === "held" && fundsAt.id === pair.id ? Math.min(amt, lockedOf(pBals, pair.currency)) : 0;
     if (pDir === "in") {
-      if (pAvail < amt) return json(request, { error: "Cannot cancel: the recipient has already spent this money." }, 400);
-      stmts.push(adjStmt(db, pWallet.id, pair.currency, -amt));
+      if (pHeldHere > 0) stmts.push(adjStmt(db, pWallet.id, pair.currency, 0, -pHeldHere));
+      const pRest = amt - pHeldHere;
+      if (pRest > 0) {
+        if (balOf(pBals, pair.currency) < pRest) return json(request, { error: "Cannot cancel: the recipient has already spent this money." }, 400);
+        stmts.push(adjStmt(db, pWallet.id, pair.currency, -pRest));
+      }
     } else if (pDir === "out") {
+      if (pHeldHere > 0) stmts.push(adjStmt(db, pWallet.id, pair.currency, pHeldHere, -pHeldHere));
       stmts.push(adjStmt(db, pWallet.id, pair.currency, amt + (Number(pair.fee) || 0)));
     }
     stmts.push(db.prepare("UPDATE transactions SET status = 'cancelled', note = ? WHERE id = ?").bind(((pair.note ? pair.note + " · " : "") + "Cancelled by admin — reversed").slice(0, 300), pair.id));

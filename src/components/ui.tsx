@@ -13,10 +13,12 @@ import { gradientFor, initials } from '../lib/utils'
 // per-side timestamps: one tick = sent to the server, two grey ticks =
 // delivered to the other side's app (fetched), two blue ticks = seen
 // (the other side opened the thread). Rendered inside own-side bubbles.
-export function MsgTicks({ at, readAt, fetchedAt }: { at: string; readAt?: string | null; fetchedAt?: string | null }) {
-  if (readAt && readAt >= at) return <span title="Seen" className="inline-flex align-[-2px] ml-1.5 text-sky-300"><CheckCheck size={14} strokeWidth={2.5} /></span>
-  if (fetchedAt && fetchedAt >= at) return <span title="Delivered" className="inline-flex align-[-2px] ml-1.5 text-white/75"><CheckCheck size={14} strokeWidth={2.5} /></span>
-  return <span title="Sent" className="inline-flex align-[-2px] ml-1.5 text-white/50"><Check size={14} strokeWidth={2.5} /></span>
+export function MsgTicks({ at, readAt, fetchedAt, tone = 'light', label = false }: { at: string; readAt?: string | null; fetchedAt?: string | null; tone?: 'light' | 'dark'; label?: boolean }) {
+  const seen = !!(readAt && readAt >= at)
+  const delivered = !seen && !!(fetchedAt && fetchedAt >= at)
+  const word = seen ? 'Seen' : delivered ? 'Delivered' : 'Sent'
+  const cls = seen ? (tone === 'light' ? 'text-sky-300' : 'text-sky-500') : delivered ? (tone === 'light' ? 'text-white/85' : 'text-slate-400') : (tone === 'light' ? 'text-white/65' : 'text-slate-300')
+  return <span title={word} className={`inline-flex items-center align-[-2px] ml-1.5 ${cls}`}>{seen || delivered ? <CheckCheck size={15} strokeWidth={2.5} /> : <Check size={15} strokeWidth={2.5} />}{label && <span className="text-[9px] font-bold ml-0.5">{word}</span>}</span>
 }
 
 export function StepUpField({ amountBdt, value, onChange }: { amountBdt: number; value: string; onChange: (v: string) => void }) {
