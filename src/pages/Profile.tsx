@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound, Trash2, Loader2 } from 'lucide-react'
+import { Bell, Camera, Car, ChevronRight, Coins, CreditCard, Download, FileText, Fingerprint, Globe, Hash, HelpCircle, KeyRound, Lock, LogOut, Mail, MessageCircle, ScanFace, Send, ShieldCheck, Smartphone, Upload, UserRound, Loader2 } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { apiPost } from '../lib/api'
 import { useMarket } from '../lib/market'
@@ -18,7 +18,7 @@ const SUPPORT_CHANNELS = [
   { label: 'Email', href: 'mailto:support@novawallet.app', icon: Mail, cls: 'bg-violet-600' },
 ]
 export default function Profile() {
-  const { user, db, walletOf, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, signOut, submitKyc, addTicket, replyTicket, deleteMessage, markTicketRead, revokeSession, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
+  const { user, db, walletOf, updateProfile, changePassword, changePin, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, signOut, submitKyc, addTicket, replyTicket, markTicketRead, revokeSession, toast, requestUpgrade, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, t, lang, setLanguage, currency, currencyIsAuto, detectedCurrency, setCurrency, fmtMoney } = useApp()
   const wEarlyP = db.wallets.find(x => x.userId === user?.id)
   const { coins } = useMarket(wEarlyP && Object.entries(wEarlyP.holdings).some(([s, a]) => s !== 'USDT' && a > 0) ? 10_000 : 60_000)
   const navigate = useNavigate()
@@ -70,8 +70,8 @@ export default function Profile() {
   const [pin, setPin] = useState({ old: '', next: '', confirm: '' })
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
-  const [delId, setDelId] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [starting, setStarting] = useState(false)
   const [pinEdit, setPinEdit] = useState(false); const [pinVal, setPinVal] = useState(''); const [pinValConfirm, setPinValConfirm] = useState('')
   const [viewTicket, setViewTicket] = useState<string | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
@@ -576,7 +576,7 @@ export default function Profile() {
                     <div className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'user' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
                       {m.from === 'admin' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{t('chat_team')}</p>}
                       <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                      <p className={`text-[10px] mt-1 ${m.from === 'user' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}{m.from === 'user' && (m.pending ? <span className="ml-1.5 font-bold">Sending…</span> : <MsgTicks at={m.at} readAt={tk.adminReadAt} fetchedAt={tk.adminFetchedAt} label />)}{m.from === 'user' && !m.pending && (delId === m.id ? <button onClick={() => { deleteMessage(tk.id, m.id, false); setDelId(null) }} className="ml-1.5 font-extrabold text-rose-300">Delete?</button> : <button onClick={() => setDelId(m.id)} aria-label="Delete message" className="ml-1 text-violet-200/60 hover:text-rose-300"><Trash2 size={12} /></button>)}</p>
+                      <p className={`text-[10px] mt-1 ${m.from === 'user' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}{m.from === 'user' && (m.pending ? <span className="ml-1.5 font-bold">Sending…</span> : <MsgTicks at={m.at} readAt={tk.adminReadAt} fetchedAt={tk.adminFetchedAt} label />)}</p>
                     </div>
                   </div>
                 ))}
@@ -585,8 +585,8 @@ export default function Profile() {
                 <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3">{t('chat_closed_note')}</p>
               ) : (
                 <div className="flex gap-2">
-                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim() && !sending) { setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => setSending(false)); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
-                  <Btn className="!px-4 shrink-0" disabled={sending} onClick={() => { if (chatText.trim() && !sending) { setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => setSending(false)); setChatText('') } }}>{sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}</Btn>
+                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim() && !sending) { const t0 = Date.now(); setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
+                  <Btn className="!px-4 shrink-0" disabled={sending} onClick={() => { if (chatText.trim() && !sending) { const t0 = Date.now(); setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setChatText('') } }}>{sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}</Btn>
                 </div>
               )}
             </div>
@@ -597,7 +597,7 @@ export default function Profile() {
               <div className="space-y-4">
                 <Input label="Subject" value={ticket.subject} onChange={e => setTicket(x => ({ ...x, subject: e.target.value }))} />
                 <Input label="Message" value={ticket.message} onChange={e => setTicket(x => ({ ...x, message: e.target.value }))} />
-                <Btn className="w-full py-3.5" onClick={async () => { if (!ticket.subject.trim() || !ticket.message.trim()) return toast({ kind: 'error', title: 'Write a subject and your message' }); const err = await addTicket(ticket.subject.trim(), ticket.message.trim()); if (err) return toast({ kind: 'error', title: err }); setTicket({ subject: '', message: '' }); toast({ kind: 'success', title: 'Support chat started', body: 'Status: Pending — we usually reply within 24 hours.' }) }}>{t('chat_start')}</Btn>
+                <Btn className="w-full py-3.5" disabled={starting} onClick={async () => { if (starting) return; if (!ticket.subject.trim() || !ticket.message.trim()) return toast({ kind: 'error', title: 'Write a subject and your message' }); setStarting(true); const t0 = Date.now(); const err = await addTicket(ticket.subject.trim(), ticket.message.trim()); window.setTimeout(() => setStarting(false), Math.max(0, 800 - (Date.now() - t0))); if (err) return toast({ kind: 'error', title: err }); setTicket({ subject: '', message: '' }); toast({ kind: 'success', title: 'Support chat started', body: 'Status: Pending — we usually reply within 24 hours.' }) }}>{starting ? <Loader2 size={16} className="animate-spin" /> : t('chat_start')}</Btn>
               </div>
               {mine.length > 0 && <>
                 <p className="font-extrabold text-sm mt-6 mb-2.5">{t('chat_history')}</p>

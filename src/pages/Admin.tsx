@@ -1111,12 +1111,12 @@ export default function Admin() {
 const SUP_TONE = (st: string) => st === 'pending' ? 'amber' : st === 'processing' ? 'violet' : 'green'
 
 function SupportChat() {
-  const { db, replyTicket, deleteMessage, resolveTicket, markTicketRead, toast } = useApp()
+  const { db, replyTicket, deleteTicket, resolveTicket, markTicketRead, toast } = useApp()
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')
   const [sel, setSel] = useState<string | null>(null)
   const [text, setText] = useState('')
-  const [delId, setDelId] = useState<string | null>(null)
+  const [delChatArm, setDelChatArm] = useState(false)
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const scrollRefDesk = useRef<HTMLDivElement | null>(null)
@@ -1130,9 +1130,9 @@ function SupportChat() {
     return (filter === 'all' || tk.status === filter) && hay.includes(q.trim().toLowerCase())
   }).slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   const tk = sel ? db.tickets.find(x => x.id === sel) : undefined
-  useEffect(() => { if (sel) void markTicketRead(sel, true) }, [sel])
+  useEffect(() => { if (sel) void markTicketRead(sel, true); setDelChatArm(false) }, [sel])
   useEffect(() => { for (const r of [scrollRef, scrollRefDesk]) if (r.current) r.current.scrollTop = r.current.scrollHeight })
-  const send = () => { if (tk && text.trim() && !sending) { setSending(true); void replyTicket(tk.id, text, 'admin').finally(() => setSending(false)); setText('') } }
+  const send = () => { if (tk && text.trim() && !sending) { const t0 = Date.now(); setSending(true); void replyTicket(tk.id, text, 'admin').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setText('') } }
   const tku = tk ? userOf(tk.userId) : undefined
   // One thread renderer, two homes: a tall side pane on desktop, the
   // modal on phones. It reads the ticket live from the store, so new
@@ -1144,6 +1144,14 @@ function SupportChat() {
         <div className="flex-1 min-w-0"><p className="font-extrabold truncate">{tku?.name}</p><p className="text-xs text-slate-400 truncate">@{tku?.username} · {tku?.email}</p></div>
         <Badge tone={SUP_TONE(tk.status)}>{tk.status}</Badge>
         {tk.status !== 'resolved' && <Btn className="!py-2 !text-xs !bg-emerald-500" onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }}>✓ Mark Resolved</Btn>}
+        {delChatArm ? (
+          <span className="flex items-center gap-1.5">
+            <Btn className="!py-2 !text-xs !bg-rose-600" onClick={() => { deleteTicket(tk.id); setSel(null); setDelChatArm(false); toast({ kind: 'success', title: 'Chat deleted', body: 'The whole conversation was removed.' }) }}>Delete this whole chat?</Btn>
+            <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => setDelChatArm(false)}>Cancel</Btn>
+          </span>
+        ) : (
+          <button onClick={() => setDelChatArm(true)} className="inline-flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-1.5 py-2"><Trash2 size={13} /> Delete chat</button>
+        )}
       </div>
       <div ref={ref} className={`${fill ? 'flex-1 min-h-0' : 'h-[46vh]'} overflow-y-auto rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 space-y-2.5 mb-3`}>
         {tk.messages.map(m => (
@@ -1151,7 +1159,7 @@ function SupportChat() {
             <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'admin' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
               {m.from === 'user' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{tku?.name}</p>}
               <p className="whitespace-pre-wrap break-words">{m.text}</p>
-              <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}{m.from === 'admin' && m.pending ? <span className="ml-1.5 font-bold">Sending…</span> : m.from === 'admin' ? <MsgTicks at={m.at} readAt={tk.userReadAt} fetchedAt={tk.userFetchedAt} label /> : <MsgTicks at={m.at} readAt={tk.adminReadAt} fetchedAt={tk.adminFetchedAt} tone="dark" label />}{!m.pending && (delId === m.id ? <button onClick={() => { deleteMessage(tk.id, m.id, true); setDelId(null) }} className={`ml-1.5 font-extrabold ${m.from === 'admin' ? 'text-rose-300' : 'text-rose-500'}`}>Delete?</button> : <button onClick={() => setDelId(m.id)} aria-label="Delete message" className={`ml-1 ${m.from === 'admin' ? 'text-violet-200/60 hover:text-rose-300' : 'text-slate-300 hover:text-rose-500'}`}><Trash2 size={12} /></button>)}</p>
+              <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}{m.from === 'admin' && m.pending ? <span className="ml-1.5 font-bold">Sending…</span> : m.from === 'admin' ? <MsgTicks at={m.at} readAt={tk.userReadAt} fetchedAt={tk.userFetchedAt} label /> : <MsgTicks at={m.at} readAt={tk.adminReadAt} fetchedAt={tk.adminFetchedAt} tone="dark" label />}</p>
             </div>
           </div>
         ))}

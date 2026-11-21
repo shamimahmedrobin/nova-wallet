@@ -1362,28 +1362,18 @@ async function handleTicketReply(request, env, auth, body) {
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
-async function handleTicketMessageDelete(request, env, auth, body) {
+async function handleTicketDelete(request, env, auth, body) {
   const db = env.DB;
+  if (!scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
   const ticketId = String(body.ticketId || "");
-  const messageId = String(body.messageId || "");
   const tk = await db.prepare("SELECT * FROM support_tickets WHERE id = ?").bind(ticketId).first();
   if (!tk) return json(request, { error: "Ticket not found." }, 404);
-  const msg = await db.prepare("SELECT * FROM ticket_messages WHERE id = ? AND ticket_id = ?").bind(messageId, ticketId).first();
-  if (!msg) return json(request, { error: "Message not found." }, 404);
-  const asAdmin = auth.role === "admin" && body.asAdmin === true;
-  if (asAdmin) {
-    if (!scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
-  } else {
-    if (tk.user_id !== auth.uid) return json(request, { error: "Not your ticket." }, 403);
-    if (msg.sender !== "user") return json(request, { error: "You can only delete your own messages." }, 403);
-  }
-  await db.prepare("DELETE FROM ticket_messages WHERE id = ?").bind(messageId).run();
-  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(ticketId).run();
-  if (asAdmin) {
-    await auditLog(db, auth, "ticket.message_delete", ticketId + " · " + messageId + " · " + String(msg.text || "").slice(0, 60));
-    return json(request, { ok: true, overview: await loadOverview(db) });
-  }
-  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+  await db.batch([
+    db.prepare("DELETE FROM ticket_messages WHERE ticket_id = ?").bind(ticketId),
+    db.prepare("DELETE FROM support_tickets WHERE id = ?").bind(ticketId),
+  ]);
+  await auditLog(db, auth, "ticket.delete", ticketId + " · " + tk.subject + " · user " + tk.user_id);
+  return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
 async function handleTicketResolve(request, env, auth, body) {
@@ -2107,7 +2097,7 @@ export default {
           case "/v1/sessions/revoke": return await handleSessionRevoke(request, env, auth, body);
           case "/v1/tickets": return await handleTicketCreate(request, env, auth, body);
           case "/v1/tickets/reply": return await handleTicketReply(request, env, auth, body);
-          case "/v1/tickets/message/delete": return await handleTicketMessageDelete(request, env, auth, body);
+          case "/v1/tickets/delete": return await handleTicketDelete(request, env, auth, body);
           case "/v1/tickets/resolve": return await handleTicketResolve(request, env, auth, body);
           case "/v1/levels/request": return await handleLevelRequest(request, env, auth, body);
         }
