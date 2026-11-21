@@ -127,10 +127,10 @@ export default function Admin() {
           <div className="ml-auto flex gap-2">
             <button onClick={() => setNotifOpen(true)} aria-label="Notifications" className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><Bell size={18} />{myUnread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{myUnread}</span>}</button>
             <button onClick={toggleTheme} className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800">{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
-            <Link to="/" className="hidden sm:inline-flex items-center rounded-2xl px-4 py-2.5 text-sm font-semibold bg-violet-600 text-white">User app</Link>
+            <Link to="/" className="hidden sm:inline-flex lg:hidden items-center rounded-2xl px-4 py-2.5 text-sm font-semibold bg-violet-600 text-white">User app</Link>
           </div>
         </div>
-        <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto no-scrollbar">
+        <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto no-scrollbar lg:hidden">
           {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold ${tab === t.id ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500'}`}><t.icon size={14} /> {t.label}{(tabBadges[t.id] ?? 0) > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{tabBadges[t.id]}</span>}</button>)}
         </div>
       </header>
@@ -149,7 +149,28 @@ export default function Admin() {
         </div>
       </Modal>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 pb-16">
+      <div className="lg:flex lg:items-start lg:max-w-[1440px] lg:mx-auto">
+        {/* Desktop sidebar menu — mobile/tablet keep the pill tabs in the header */}
+        <aside className="hidden lg:flex flex-col w-72 shrink-0 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto border-r border-slate-200/60 dark:border-slate-800 bg-white/70 dark:bg-slate-900/40 backdrop-blur-xl p-4">
+          <p className="px-3 pb-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-400">Menu</p>
+          <nav className="space-y-1">
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${tab === t.id ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
+                <t.icon size={18} /> {t.label}
+                {(tabBadges[t.id] ?? 0) > 0 && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{tabBadges[t.id]}</span>}
+              </button>
+            ))}
+          </nav>
+          <div className="mt-auto pt-4">
+            <div className="flex items-center gap-3 rounded-2xl bg-slate-100/80 dark:bg-slate-800/70 p-3">
+              <Avatar name={user.name} photo={user.photo} />
+              <div className="flex-1 min-w-0"><p className="font-extrabold text-sm truncate">{user.name}</p><p className="text-xs text-slate-400 truncate">{user.email}</p></div>
+              <Badge tone="amber">Admin</Badge>
+            </div>
+            <Link to="/" className="mt-2 flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold bg-slate-900 dark:bg-white text-white dark:text-slate-900"><ArrowLeft size={16} /> User app</Link>
+          </div>
+        </aside>
+        <main className="flex-1 min-w-0 w-full max-w-5xl mx-auto px-4 py-6 pb-16">
         {tab === 'overview' && (
           <div className="space-y-4 anim-fade-up">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -493,7 +514,8 @@ export default function Admin() {
             </Card>
           </div>
         )}
-      </main>
+        </main>
+      </div>
 
       <Modal open={!!selTx} onClose={() => setSelTx(null)} title="Transaction details">
         {selTx && (() => { const tu = db.users.find(u => u.id === selTx.userId); const dir = txDirection(selTx.category, selTx.amount); return (
