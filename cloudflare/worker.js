@@ -1135,7 +1135,16 @@ async function handleAdminKycDecide(request, env, auth, body) {
   if (!scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
   const target = String(body.userId || "");
   const row = await db.prepare("SELECT id FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(target).first();
-  if (!row) return json(request, { error: "No KYC submission found for this user." }, 404);
+  if (!row) {
+    // Manual verification: an admin may verify a user who never submitted
+    // documents. Recorded as a 'manual' submission so the profile can
+    // show "Verified by NovaWallet" instead of document details.
+    if (!body.ok) return json(request, { error: "No KYC submission found for this user." }, 404);
+    await db.prepare("INSERT INTO kyc_submissions (id, user_id, doc_type, doc_number, status, reviewed_by) VALUES (?, ?, 'manual', '', 'verified', ?)")
+      .bind(pubId("KYC"), target, auth.uid).run();
+    await notifyServer(db, target, "security", "✅ Verified by NovaWallet", "Your identity was verified by the NovaWallet team. All limits and features are unlocked.", null);
+    return json(request, { ok: true, overview: await loadOverview(db) });
+  }
   await db.prepare("UPDATE kyc_submissions SET status = ?, reviewed_by = ? WHERE id = ?")
     .bind(body.ok ? "verified" : "unverified", auth.uid, row.id).run();
   await notifyServer(db, target, "security", body.ok ? "✅ KYC verified" : "KYC not approved", body.ok ? "Your identity is verified. All limits and features are unlocked." : "Your KYC submission was not approved. Please check your documents and submit again.", null);

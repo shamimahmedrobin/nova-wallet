@@ -121,7 +121,7 @@ export default function Profile() {
         <p className="text-sm text-slate-500">@{user.username} · {user.email}</p>
         <p className="text-sm text-slate-500">{user.phone} · ID {user.id}</p>
         <div className="flex gap-2 justify-center mt-3">
-          <Badge tone={user.kyc === 'verified' ? 'green' : user.kyc === 'pending' ? 'amber' : 'slate'}>{user.kyc === 'verified' ? '✅ ' + t('verified') : user.kyc === 'pending' ? '⏳ Pending' : t('non_kyc')}</Badge>
+          <Badge tone={user.kyc === 'verified' ? 'green' : user.kyc === 'pending' ? 'amber' : 'slate'}>{user.kyc === 'verified' ? (user.kycDocType === 'manual' ? '✅ Verified by NovaWallet' : '✅ ' + t('verified')) : user.kyc === 'pending' ? '⏳ Pending' : t('non_kyc')}</Badge>
           <Badge tone={user.status === 'active' ? 'green' : 'red'}>{user.status}</Badge>
           <Badge tone="violet">{fmtMoney(totalBdtP)} {t('wallet')}</Badge>
         </div>
@@ -371,8 +371,8 @@ export default function Profile() {
       <Modal open={modal === 'kyc'} onClose={() => setModal(null)} title={t('p_kyc')}>
         {user.kyc === 'verified' ? (
           <>
-            <ModalDesc>{t('kyc_verified_note')}</ModalDesc>
-            <ModalRow><span className="text-sm font-semibold">{t('status')}</span><span className="float-right"><Badge tone="green">{t('verified')}</Badge></span>
+            <ModalDesc>{user.kycDocType === 'manual' ? 'Your identity was verified by the NovaWallet team — no documents were needed.' : t('kyc_verified_note')}</ModalDesc>
+            <ModalRow><span className="text-sm font-semibold">{t('status')}</span><span className="float-right"><Badge tone="green">{user.kycDocType === 'manual' ? 'Verified by NovaWallet' : t('verified')}</Badge></span>
               {user.kycDocNumber && <p className="text-xs text-slate-500 mt-1.5">{user.kycDocType === 'passport' ? t('kyc_passport') : user.kycDocType === 'driving' ? t('kyc_driving') : t('kyc_nid')} · {user.kycDocNumber}</p>}</ModalRow>
             <ModalActions><Btn variant="ghost" className="w-full py-3.5" onClick={() => setModal(null)}>{t('done')}</Btn></ModalActions>
           </>

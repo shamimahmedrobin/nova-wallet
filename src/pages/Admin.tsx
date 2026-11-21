@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
@@ -44,6 +44,15 @@ export default function Admin() {
   const priceOfA = (sym: string) => sym === 'USDT' ? 1 : coins.find(c => c.symbol === sym)?.priceUsd ?? 0
   const [tab, setTab] = useState<string>('overview')
   const [menuOpen, setMenuOpen] = useState(false)
+  // Users ▸ KYC Verification submenu (sidebar/drawer) + the user a KYC
+  // badge click wants highlighted once the KYC tab opens.
+  const [usersOpen, setUsersOpen] = useState(false)
+  const [kycFocus, setKycFocus] = useState<string | null>(null)
+  useEffect(() => {
+    if (tab !== 'kyc' || !kycFocus) return
+    const t = setTimeout(() => document.getElementById('kyc-card-' + kycFocus)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120)
+    return () => clearTimeout(t)
+  }, [tab, kycFocus])
   // RBAC: a scoped admin only sees their tabs (the server enforces too).
   const myScope = user?.adminScope ?? 'full'
   const visibleTabs = TABS.filter(t => myScope === 'full' || (SCOPE_TABS[myScope] ?? []).includes(t.id))
@@ -217,12 +226,31 @@ export default function Admin() {
             <button onClick={() => setMenuOpen(false)} aria-label="Close menu" className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 lg:hidden"><X size={15} /></button>
           </div>
           <nav className="space-y-1">
-            {visibleTabs.map(t => (
-              <button key={t.id} onClick={() => { setTab(t.id); setMenuOpen(false) }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${tab === t.id ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
-                <t.icon size={18} className="shrink-0" /> <span className="flex-1 text-left">{t.label}</span>
-                {(tabBadges[t.id] ?? 0) > 0 && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{tabBadges[t.id]}</span>}
-              </button>
-            ))}
+            {visibleTabs.filter(t => t.id !== 'kyc').map(t => {
+              const kycVisible = t.id === 'users' && visibleTabs.some(x => x.id === 'kyc')
+              const kycOpen = usersOpen || tab === 'kyc'
+              const badgeCls = "min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center"
+              return (
+                <div key={t.id}>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => { setTab(t.id); setMenuOpen(false) }} className={`flex-1 flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${tab === t.id ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
+                      <t.icon size={18} className="shrink-0" /> <span className="flex-1 text-left">{t.label}</span>
+                      {(tabBadges[t.id] ?? 0) > 0 && <span className={badgeCls}>{tabBadges[t.id]}</span>}
+                      {kycVisible && !kycOpen && (tabBadges.kyc ?? 0) > 0 && <span className={badgeCls}>{tabBadges.kyc}</span>}
+                    </button>
+                    {kycVisible && (
+                      <button aria-label="Toggle KYC Verification submenu" onClick={() => setUsersOpen(o => !o)} className={`p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-transform ${kycOpen ? 'rotate-180' : ''}`}><ChevronDown size={16} /></button>
+                    )}
+                  </div>
+                  {kycVisible && kycOpen && (
+                    <button onClick={() => { setTab('kyc'); setMenuOpen(false) }} className={`w-full flex items-center gap-3 pl-11 pr-3.5 py-2.5 mt-0.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${tab === 'kyc' ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
+                      <ShieldCheck size={17} className="shrink-0" /> <span className="flex-1 text-left">KYC Verification</span>
+                      {(tabBadges.kyc ?? 0) > 0 && <span className={badgeCls}>{tabBadges.kyc}</span>}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </nav>
           <div className="mt-auto pt-4">
             <div className="flex items-center gap-3 rounded-2xl bg-slate-100/80 dark:bg-slate-800/70 p-3">
@@ -301,7 +329,7 @@ export default function Admin() {
                     <div className="flex flex-wrap items-center gap-3 cursor-pointer" onClick={() => openUser(u)} title="Click to manage this account">
                       <Avatar name={u.name} photo={u.photo} />
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name} {u.role === 'admin' && <Badge tone="amber">admin</Badge>}</p><p className="text-xs text-slate-400">@{u.username} · {u.email} · {u.phone} · {u.id}</p><p className="text-xs text-slate-400">Balance {usdt((w?.available ?? 0) + (w?.locked ?? 0))} · Joined {fmtDateTime(u.createdAt)} · {db.txs.filter(t => t.userId === u.id).length} txns</p></div>
-                      <Badge tone={statusTone(u.kyc)}>{u.kyc === 'verified' ? '✅ Verified' : u.kyc === 'pending' ? '⏳ KYC pending' : 'KYC unverified'}</Badge><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
+                      <span onClick={e => { e.stopPropagation(); setKycFocus(u.id); setUsersOpen(true); setTab('kyc') }} className="cursor-pointer" title="Open in KYC Verification"><Badge tone={statusTone(u.kyc)}>{u.kyc === 'verified' ? '✅ Verified' : u.kyc === 'pending' ? '⏳ KYC pending' : 'KYC unverified'}</Badge></span><Badge tone="violet">Level {u.level}</Badge><Badge tone={u.status === 'active' ? 'green' : 'red'}>{u.status}</Badge>
                     </div>
                     {u.role === 'user' && (
                       <div className="flex flex-wrap gap-2 mt-3">
@@ -335,7 +363,8 @@ export default function Admin() {
                   <div className="space-y-2">{pending.map(u => {
                     const photos = kycPhotos[u.id]
                     return (
-                      <Card key={u.id} className="p-4">
+                      <div key={u.id} id={'kyc-card-' + u.id}>
+                      <Card className={`p-4 ${kycFocus === u.id ? 'ring-2 ring-violet-500' : ''}`}>
                         <div className="flex flex-wrap items-center gap-3">
                           <Avatar name={u.name} photo={u.photo} />
                           <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · {u.email}</p>
@@ -356,6 +385,7 @@ export default function Admin() {
                           <Btn variant="danger" className="!py-2 !text-xs" onClick={() => decideKyc(u.id, false)}>Reject</Btn>
                         </div>
                       </Card>
+                      </div>
                     )
                   })}</div>
                 )}
@@ -364,24 +394,30 @@ export default function Admin() {
                 <h3 className="font-extrabold mb-3">✅ Verified users</h3>
                 {verified.length === 0 ? <Empty title="No verified users yet" body="Users you verify will be listed here with their document details." /> : (
                   <div className="space-y-2">{verified.map(u => (
-                    <Card key={u.id} className="p-4"><div className="flex flex-wrap items-center gap-3">
+                    <div key={u.id} id={'kyc-card-' + u.id}>
+                    <Card className={`p-4 ${kycFocus === u.id ? 'ring-2 ring-violet-500' : ''}`}><div className="flex flex-wrap items-center gap-3">
                       <Avatar name={u.name} photo={u.photo} />
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · {u.email}</p>
-                        {u.kycDocType && <p className="text-xs text-slate-400 mt-0.5">📄 {docLabel(u.kycDocType)} · <span className="font-mono">{u.kycDocNumber}</span>{u.kycSubmittedAt ? ' · submitted ' + fmtDateTime(u.kycSubmittedAt) : ''}</p>}</div>
+                        {u.kycDocType === 'manual' ? <p className="text-xs text-slate-400 mt-0.5">🛡️ Verified by NovaWallet — manual verification, no documents submitted</p> : u.kycDocType && <p className="text-xs text-slate-400 mt-0.5">📄 {docLabel(u.kycDocType)} · <span className="font-mono">{u.kycDocNumber}</span>{u.kycSubmittedAt ? ' · submitted ' + fmtDateTime(u.kycSubmittedAt) : ''}</p>}</div>
                       <Badge tone="green">✅ Verified</Badge>
                     </div></Card>
+                    </div>
                   ))}</div>
                 )}
               </section>
               {none.length > 0 && (
                 <section>
-                  <h3 className="font-extrabold mb-3">Not submitted</h3>
+                  <h3 className="font-extrabold mb-1">Unverified — not submitted</h3>
+                  <p className="text-xs text-slate-400 mb-3">These users never submitted documents. If you know a customer personally, you can verify them manually — their profile will then show <b>“Verified by NovaWallet”</b>.</p>
                   <div className="space-y-2">{none.map(u => (
-                    <Card key={u.id} className="p-4"><div className="flex flex-wrap items-center gap-3">
+                    <div key={u.id} id={'kyc-card-' + u.id}>
+                    <Card className={`p-4 ${kycFocus === u.id ? 'ring-2 ring-violet-500' : ''}`}><div className="flex flex-wrap items-center gap-3">
                       <Avatar name={u.name} photo={u.photo} />
                       <div className="flex-1 min-w-[170px]"><p className="font-bold">{u.name}</p><p className="text-xs text-slate-400">@{u.username} · {u.email}</p></div>
+                      <Btn variant="success" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, true)}>✅ Verify manually</Btn>
                       <Badge tone="slate">Not submitted</Badge>
                     </div></Card>
+                    </div>
                   ))}</div>
                 </section>
               )}
@@ -783,7 +819,7 @@ export default function Admin() {
                 <span className="text-slate-500">KYC status</span>
                 <span className="flex items-center gap-2">
                   <span className="font-bold">{selUser.kyc === 'verified' ? '✅ Verified' : selUser.kyc === 'pending' ? '⏳ Pending review' : 'Not verified'}</span>
-                  {selUser.kyc === 'pending' && <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => { setSelUserId(null); setTab('kyc') }}>Review in KYC tab →</Btn>}
+                  {selUser.kyc === 'pending' && <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => { setKycFocus(selUser.id); setSelUserId(null); setUsersOpen(true); setTab('kyc') }}>Review in KYC tab →</Btn>}
                 </span>
               </div>
               {selUser.role === 'user' && (
