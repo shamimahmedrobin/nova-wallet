@@ -30,11 +30,17 @@ let jwksCache = { keys: null, fetchedAt: 0 };
 
 function corsHeaders(request) {
   const origin = request.headers.get("Origin") || "";
+  // Echo back whatever headers the browser asks to preflight (the client
+  // sends Authorization, Content-Type and X-Session-Id). A fixed list that
+  // misses one makes the browser cancel the real request as a network
+  // error ("Failed to fetch") — that broke every API call once a device
+  // session id was stored.
+  const requested = request.headers.get("Access-Control-Request-Headers");
   const headers = {
     "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": requested || "Authorization, Content-Type, X-Session-Id",
     "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
+    Vary: "Origin, Access-Control-Request-Headers",
   };
   if (ALLOWED_ORIGINS.has(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
