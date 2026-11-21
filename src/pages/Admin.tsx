@@ -4,7 +4,7 @@ import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
-import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, TxDirIcon, statusTone } from '../components/ui'
+import { Avatar, Badge, Btn, Card, Empty, Input, Modal, MsgTicks, Select, TxDirIcon, statusTone } from '../components/ui'
 import { fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
 import { COIN_META, useMarket } from '../lib/market'
 import { CRYPTO_NETWORK_LABELS } from '../lib/localPayments'
@@ -1123,7 +1123,7 @@ function SupportChat() {
             <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'admin' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
               {m.from === 'user' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{tku?.name}</p>}
               <p className="whitespace-pre-wrap break-words">{m.text}</p>
-              <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}</p>
+              <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}{m.from === 'admin' && <MsgTicks at={m.at} readAt={tk.userReadAt} fetchedAt={tk.userFetchedAt} />}</p>
             </div>
           </div>
         ))}

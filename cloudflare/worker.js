@@ -407,7 +407,7 @@ async function loadState(db, uid, lite = false) {
     // requests and server-side notifications (broadcasts, admin alerts,
     // decision notices) — merged by the client store on every pull.
     state.content = await loadContent(db);
-    state.tickets = await loadTickets(db, uid);
+    state.tickets = await loadTickets(db, uid, "user");
     const sesRows = await db.prepare("SELECT * FROM user_sessions WHERE user_id = ? AND revoked = 0 ORDER BY created_at DESC LIMIT 10").bind(uid).all();
     state.sessions = sesRows.results.map((x) => ({ id: x.id, device: x.device || "", ip: x.ip || "", createdAt: isoOf(x.created_at), lastSeenAt: x.last_seen_at ? isoOf(x.last_seen_at) : null }));
     state.levelRequests = await loadLevelRequests(db, uid);
@@ -455,7 +455,7 @@ async function loadOverview(db) {
   const auditRows = await db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100").all();
   return {
     users, wallets, transactions, deposits, withdrawals, loans, stakes,
-    tickets: await loadTickets(db, null),
+    tickets: await loadTickets(db, null, "admin"),
     levelRequests: await loadLevelRequests(db, null),
     content: await loadContent(db),
     errors: errRows.results.map((e) => ({ id: e.id, userId: e.user_id, message: e.message, url: e.url, createdAt: isoOf(e.created_at) })),
@@ -1068,7 +1068,18 @@ async function loadContent(db) {
   };
 }
 
-async function loadTickets(db, uid) {
+async function loadTickets(db, uid, stampSide) {
+  // WhatsApp-style delivery receipts: serving the thread list to one side
+  // stamps that side's fetched_at (only when a newer message exists, so
+  // the 10s hydration does not write every time). The other side then sees
+  // its messages as "delivered"; opening the thread sets read_at = "seen".
+  try {
+    if (stampSide === "user" && uid) {
+      await db.prepare("UPDATE support_tickets SET user_fetched_at = CURRENT_TIMESTAMP WHERE user_id = ? AND (user_fetched_at IS NULL OR user_fetched_at < COALESCE(updated_at, created_at))").bind(uid).run();
+    } else if (stampSide === "admin") {
+      await db.prepare("UPDATE support_tickets SET admin_fetched_at = CURRENT_TIMESTAMP WHERE admin_fetched_at IS NULL OR admin_fetched_at < COALESCE(updated_at, created_at)").run();
+    }
+  } catch { /* fetched columns are best-effort */ }
   const rows = uid
     ? await db.prepare("SELECT * FROM support_tickets WHERE user_id = ? ORDER BY COALESCE(updated_at, created_at) DESC").bind(uid).all()
     : await db.prepare("SELECT * FROM support_tickets ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 100").all();
@@ -1079,6 +1090,7 @@ async function loadTickets(db, uid) {
       id: t.id, userId: t.user_id, subject: t.subject, status: t.status,
       createdAt: isoOf(t.created_at), updatedAt: isoOf(t.updated_at || t.created_at),
       userReadAt: t.user_read_at ? isoOf(t.user_read_at) : null, adminReadAt: t.admin_read_at ? isoOf(t.admin_read_at) : null,
+      userFetchedAt: t.user_fetched_at ? isoOf(t.user_fetched_at) : null, adminFetchedAt: t.admin_fetched_at ? isoOf(t.admin_fetched_at) : null,
       messages: msgs.results.map((m) => ({ id: m.id, from: m.sender, text: m.text, at: isoOf(m.created_at) })),
     });
   }
@@ -1257,7 +1269,7 @@ async function handleTicketCreate(request, env, auth, body) {
   const message = String(body.message || "").trim().slice(0, 2000);
   if (!subject || !message) return json(request, { error: "Subject and message are required." }, 400);
   const id = pubId("TKT");
-  await db.prepare("INSERT INTO support_tickets (id, user_id, subject, message, status, updated_at, user_read_at) VALUES (?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+  await db.prepare("INSERT INTO support_tickets (id, user_id, subject, message, status, updated_at, user_read_at, user_fetched_at) VALUES (?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
     .bind(id, auth.uid, subject, message).run();
   await db.prepare("INSERT INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, 'user', ?)")
     .bind(pubId("MSG"), id, message).run();
@@ -1282,7 +1294,7 @@ async function handleTicketReply(request, env, auth, body) {
   if (tk.status === "resolved") return json(request, { error: "This chat is resolved and closed." }, 400);
   await db.prepare("INSERT INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, ?, ?)")
     .bind(pubId("MSG"), ticketId, asAdmin ? "admin" : "user", text).run();
-  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ?, " + (asAdmin ? "admin_read_at" : "user_read_at") + " = CURRENT_TIMESTAMP WHERE id = ?")
+  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ?, " + (asAdmin ? "admin_read_at" : "user_read_at") + " = CURRENT_TIMESTAMP, " + (asAdmin ? "admin_fetched_at" : "user_fetched_at") + " = CURRENT_TIMESTAMP WHERE id = ?")
     .bind(asAdmin && tk.status === "pending" ? "processing" : tk.status, ticketId).run();
   if (asAdmin) {
     if (tk.user_id !== auth.uid) await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);

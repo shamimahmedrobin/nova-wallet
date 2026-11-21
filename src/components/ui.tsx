@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Check, CheckCircle2, Copy, Info, X, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, Copy, Info, X, XCircle } from 'lucide-react'
 import { useApp } from '../lib/store'
 import { gradientFor, initials } from '../lib/utils'
 
@@ -9,6 +9,16 @@ import { gradientFor, initials } from '../lib/utils'
 // Step-up verification field: shown on large transfers (above the
 // platform threshold) — the customer re-enters their account password
 // once, and the store's stepUp() trades it for a single-use server grant.
+// WhatsApp-style receipt ticks for chat bubbles, driven by the ticket's
+// per-side timestamps: one tick = sent to the server, two grey ticks =
+// delivered to the other side's app (fetched), two blue ticks = seen
+// (the other side opened the thread). Rendered inside own-side bubbles.
+export function MsgTicks({ at, readAt, fetchedAt }: { at: string; readAt?: string | null; fetchedAt?: string | null }) {
+  if (readAt && readAt >= at) return <span title="Seen" className="inline-flex align-[-2px] ml-1.5 text-sky-300"><CheckCheck size={14} strokeWidth={2.5} /></span>
+  if (fetchedAt && fetchedAt >= at) return <span title="Delivered" className="inline-flex align-[-2px] ml-1.5 text-white/75"><CheckCheck size={14} strokeWidth={2.5} /></span>
+  return <span title="Sent" className="inline-flex align-[-2px] ml-1.5 text-white/50"><Check size={14} strokeWidth={2.5} /></span>
+}
+
 export function StepUpField({ amountBdt, value, onChange }: { amountBdt: number; value: string; onChange: (v: string) => void }) {
   const { db } = useApp()
   const th = db.settings.stepUpThresholdBdt ?? 0
