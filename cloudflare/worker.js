@@ -174,6 +174,12 @@ async function pbkdf2Verify(fnv, stored) {
 async function getSecurity(db) {
   return await getSettingKey(db, "security", { stepUpThresholdBdt: 25000 });
 }
+
+// ---- Promotions -------------------------------------------------------------
+async function getPromo(db) {
+  const p = await getSettingKey(db, "promo", {});
+  return { firstDepositBonusPct: p.firstDepositBonusPct == null ? 100 : Math.max(0, Number(p.firstDepositBonusPct) || 0) };
+}
 async function stepUpGate(db, uid, amount) {
   const sec = await getSecurity(db);
   const th = Number(sec.stepUpThresholdBdt) || 0;
@@ -1058,6 +1064,7 @@ async function loadContent(db) {
       bdtPerUsd: s.bdtPerUsd, maintenance: !!maint.enabled, platformName: plat.name || "NovaWallet",
       features: await getFeatures(db), payMethods,
       stepUpThresholdBdt: Number((await getSecurity(db)).stepUpThresholdBdt) || 0,
+      firstDepositBonusPct: (await getPromo(db)).firstDepositBonusPct,
       vapidPublic: (await getSettingKey(db, "push", {})).vapidPublic || "",
       turnstileSiteKey: (await getSettingKey(db, "turnstile", {})).sitekey || "",
     },
@@ -1451,6 +1458,34 @@ async function handleAdminBannerToggle(request, env, auth, body) {
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
+async function handleAdminBannerSave(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["content"])) return json(request, { error: "scope_denied" }, 403);
+  const title = String(body.title || "").trim().slice(0, 120);
+  if (!title) return json(request, { error: "A banner title is required." }, 400);
+  const subtitle = String(body.subtitle || "").trim().slice(0, 200);
+  const gradient = String(body.gradient || "from-violet-600 via-purple-600 to-indigo-600").slice(0, 80);
+  const active = body.active === false ? 0 : 1;
+  if (body.id) {
+    await db.prepare("UPDATE banners SET title = ?, subtitle = ?, gradient = ?, is_active = ? WHERE id = ?").bind(title, subtitle, gradient, active, String(body.id)).run();
+    await auditLog(db, auth, "banner.update", String(body.id) + " · " + title);
+  } else {
+    const mx = await db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM banners").first();
+    const id = pubId("BNR");
+    await db.prepare("INSERT INTO banners (id, title, subtitle, gradient, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?)").bind(id, title, subtitle, gradient, active, Number(mx?.m || 0) + 1).run();
+    await auditLog(db, auth, "banner.create", id + " · " + title);
+  }
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminBannerDelete(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["content"])) return json(request, { error: "scope_denied" }, 403);
+  await db.prepare("DELETE FROM banners WHERE id = ?").bind(String(body.id || "")).run();
+  await auditLog(db, auth, "banner.delete", String(body.id || ""));
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
 async function handleAdminSettings(request, env, auth, body) {
   const db = env.DB;
   if (auth.scope !== "full") return json(request, { error: "scope_denied" }, 403);
@@ -1469,6 +1504,7 @@ async function handleAdminSettings(request, env, auth, body) {
   if (s.platformName != null) await setSettingKey(db, "platform", { name: String(s.platformName).slice(0, 40) });
   if (s.features != null) await setSettingKey(db, "features", { ...FEATURE_DEFAULTS, ...s.features });
   if (s.stepUpThresholdBdt != null) await setSettingKey(db, "security", { stepUpThresholdBdt: Math.max(0, Number(s.stepUpThresholdBdt) || 0) });
+  if (s.firstDepositBonusPct != null) await setSettingKey(db, "promo", { firstDepositBonusPct: Math.max(0, Math.min(200, Number(s.firstDepositBonusPct) || 0)) });
   if (Array.isArray(s.payMethods)) await setSettingKey(db, "paymethods", s.payMethods);
   await auditLog(db, auth, "settings.update", Object.keys(s).join(","));
   return json(request, { ok: true, overview: await loadOverview(db), state: await loadState(db, auth.uid) });
@@ -1592,6 +1628,7 @@ async function handleDecideDeposit(request, env, auth, body) {
   const dep = await db.prepare("SELECT * FROM deposits WHERE id = ?").bind(body.id).first();
   if (!dep || dep.status !== "pending") return json(request, { error: "Deposit not pending." }, 400);
   const ok = !!body.ok;
+  let bonusGranted = 0;
   const wallet = await getWallet(db, dep.user_id);
   const stmts = [
     db.prepare("UPDATE deposits SET status = ?, reviewed_by = ? WHERE id = ?").bind(ok ? "approved" : "rejected", auth.uid, dep.id),
@@ -1600,6 +1637,23 @@ async function handleDecideDeposit(request, env, auth, body) {
   ];
   if (ok) {
     stmts.push(adjStmt(db, wallet.id, "BDT", Number(dep.amount)));
+    // First-deposit bonus: the user's first APPROVED deposit is matched by
+    // the promo percentage (default 100% — deposit 100, receive 200 total).
+    // Counted before this batch flips the status, so only the genuinely
+    // first approved deposit earns it.
+    const promo = await getPromo(db);
+    if (promo.firstDepositBonusPct > 0) {
+      const prior = await db.prepare("SELECT COUNT(*) AS c FROM deposits WHERE user_id = ? AND status = 'approved'").bind(dep.user_id).first();
+      if (!prior || Number(prior.c) === 0) {
+        const bonus = Math.round(Number(dep.amount) * promo.firstDepositBonusPct / 100);
+        if (bonus > 0) {
+          const bt = txStmt(db, { userId: dep.user_id, category: "earn", title: "First deposit bonus (" + promo.firstDepositBonusPct + "% match)", amount: bonus, note: "Bonus on your first approved deposit." });
+          stmts.push(adjStmt(db, wallet.id, "BDT", bonus));
+          stmts.push(bt.stmt);
+          bonusGranted = bonus;
+        }
+      }
+    }
     // Referral commission on approved deposits (mirrors the app: 10% of the
     // referral percentage of the deposit amount, rounded).
     const depUser = await getUserRow(db, dep.user_id);
@@ -1621,7 +1675,8 @@ async function handleDecideDeposit(request, env, auth, body) {
     }
   }
   try { await db.batch(stmts); } catch (e) { return json(request, { error: "Decision failed: " + String(e?.message || e) }, 500); }
-  await notifyServer(db, dep.user_id, "deposit", ok ? "Deposit approved" : "Deposit rejected", ok ? "Your deposit of " + dep.amount + " was approved and credited." : "Your deposit of " + dep.amount + " was rejected. Please check the details and try again.", null);
+  if (bonusGranted > 0) await auditLog(db, auth, "deposit.bonus", dep.id + " · first deposit · bonus +" + bonusGranted);
+  await notifyServer(db, dep.user_id, "deposit", ok ? "Deposit approved" : "Deposit rejected", ok ? "Your deposit of " + dep.amount + " was approved and credited." + (bonusGranted > 0 ? " 🎁 First-deposit bonus: +" + bonusGranted + " credited — you received double!" : "") : "Your deposit of " + dep.amount + " was rejected. Please check the details and try again.", null);
   return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
@@ -2007,6 +2062,8 @@ export default {
             case "/v1/admin/news": return await handleAdminNewsSave(request, env, auth, body);
             case "/v1/admin/news/delete": return await handleAdminNewsDelete(request, env, auth, body);
             case "/v1/admin/banners/toggle": return await handleAdminBannerToggle(request, env, auth, body);
+            case "/v1/admin/banners/save": return await handleAdminBannerSave(request, env, auth, body);
+            case "/v1/admin/banners/delete": return await handleAdminBannerDelete(request, env, auth, body);
             case "/v1/admin/settings": return await handleAdminSettings(request, env, auth, body);
             case "/v1/admin/broadcast": return await handleAdminBroadcast(request, env, auth, body);
             case "/v1/admin/set-scope": return await handleAdminSetScope(request, env, auth, body);

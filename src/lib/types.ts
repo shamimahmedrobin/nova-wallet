@@ -101,6 +101,7 @@ export interface Settings {
   features?: { deposits: boolean; withdrawals: boolean; trading: boolean; loans: boolean; registration: boolean }
   /** Large transfers above this BDT amount need a password re-entry (step-up). */
   stepUpThresholdBdt?: number
+  firstDepositBonusPct?: number
   /** Web Push application key (public) + Turnstile site key, served by the Worker. */
   vapidPublic?: string
   turnstileSiteKey?: string

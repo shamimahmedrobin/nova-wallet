@@ -37,7 +37,7 @@ const SCOPE_TABS: Record<string, string[]> = {
 }
 
 export default function Admin() {
-  const { user, db, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, publishNews, deleteNews, updateSettings, toggleBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead, broadcast, setAdminScope, setAdminRole, adminErrors } = useApp()
+  const { user, db, decideDeposit, decideWithdraw, decideLoan, setLoanFee, confirmLoanFee, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, publishNews, deleteNews, updateSettings, toggleBanner, saveBanner, deleteBanner, toast, resetDemo, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked , markRead, markAllRead, broadcast, setAdminScope, setAdminRole, adminErrors } = useApp()
   const usdt = (bdt: number) => fmtUSDT(bdt / db.settings.bdtPerUsd)
   const byDateDesc = <T extends { createdAt: string }>(arr: T[]): T[] => [...arr].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   const { coins } = useMarket(30_000)
@@ -113,6 +113,7 @@ export default function Admin() {
   }, [])
   const pendingLevels = db.levelRequests.filter(r => r.status === 'pending').length
   const [newsForm, setNewsForm] = useState<any>(null)
+  const [bannerForm, setBannerForm] = useState<any>(null)
   const [setForm, setSetForm] = useState({ ...db.settings })
   const [pmList, setPmList] = useState<PayMethod[] | null>(null)
   useEffect(() => { if (tab === 'payments' && pmList === null) setPmList(db.settings.payMethods.map(m => ({ ...m }))) }, [tab, pmList, db.settings.payMethods])
@@ -527,11 +528,18 @@ export default function Admin() {
               ))}
             </section>
             <section>
-              <h3 className="font-extrabold mb-3 flex items-center gap-2"><Megaphone size={17} /> Promotional banners</h3>
+              <div className="flex items-center justify-between mb-3"><h3 className="font-extrabold flex items-center gap-2"><Megaphone size={17} /> Promotional banners</h3><Btn onClick={() => setBannerForm({ title: '', subtitle: '', gradient: 'from-violet-600 via-purple-600 to-indigo-600', active: true })}>+ Add banner</Btn></div>
+              {db.banners.length === 0 && <Card><Empty title="No banners yet — add your first promotion" /></Card>}
               {db.banners.map(b => (
                 <div key={b.id} className={`rounded-3xl bg-gradient-to-br ${b.gradient} text-white p-4 mb-2 flex items-center gap-3`}>
-                  <div className="flex-1"><p className="font-extrabold">{b.title}</p><p className="text-white/80 text-sm">{b.subtitle}</p></div>
-                  <button onClick={() => toggleBanner(b.id)} className="rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold">{b.active ? 'Active — tap to hide' : 'Hidden — tap to show'}</button>
+                  <div className="flex-1 min-w-0"><p className="font-extrabold">{b.title}</p><p className="text-white/80 text-sm">{b.subtitle}</p></div>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    <button onClick={() => toggleBanner(b.id)} className="rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold">{b.active ? 'Active — tap to hide' : 'Hidden — tap to show'}</button>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => setBannerForm({ ...b })} className="flex-1 rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold">Edit</button>
+                      <button onClick={() => { deleteBanner(b.id); toast({ kind: 'info', title: 'Banner deleted' }) }} className="flex-1 rounded-full bg-rose-500/80 px-3 py-1.5 text-xs font-bold">Delete</button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </section>
@@ -755,6 +763,7 @@ export default function Admin() {
                 <Input label="Send fee %" type="number" step="0.1" value={setForm.sendFeePct} onChange={e => setSetForm(s => ({ ...s, sendFeePct: Number(e.target.value) }))} />
                 <Input label="Cash out fee %" type="number" step="0.1" value={setForm.cashoutFeePct} onChange={e => setSetForm(s => ({ ...s, cashoutFeePct: Number(e.target.value) }))} />
                 <Input label="Step-up verification above (BDT)" type="number" step="1000" value={setForm.stepUpThresholdBdt ?? 25000} onChange={e => setSetForm(s => ({ ...s, stepUpThresholdBdt: Number(e.target.value) }))} />
+                <Input label="First deposit bonus (%)" type="number" step="10" value={setForm.firstDepositBonusPct ?? 100} onChange={e => setSetForm(s => ({ ...s, firstDepositBonusPct: Number(e.target.value) }))} />
                 <Input label="Referral commission %" type="number" value={setForm.referralPct} onChange={e => setSetForm(s => ({ ...s, referralPct: Number(e.target.value) }))} />
                 <Input label="Loan interest % / year" type="number" value={setForm.loanRatePct} onChange={e => setSetForm(s => ({ ...s, loanRatePct: Number(e.target.value) }))} />
                 <Input label="Min loan (USDT)" type="number" value={Math.round(setForm.minLoan / setForm.bdtPerUsd * 100) / 100} onChange={e => setSetForm(s => ({ ...s, minLoan: Math.round(Number(e.target.value) * s.bdtPerUsd) }))} />
@@ -1058,6 +1067,23 @@ export default function Admin() {
             </div>
           )
         })()}
+      </Modal>
+      <Modal open={!!bannerForm} onClose={() => setBannerForm(null)} title={bannerForm?.id ? 'Edit banner' : 'Add banner'}>
+        {bannerForm && (
+          <div className="space-y-4">
+            <div className={`rounded-3xl bg-gradient-to-br ${bannerForm.gradient} text-white p-4`}>
+              <p className="font-extrabold">{bannerForm.title || 'Banner title'}</p>
+              <p className="text-white/80 text-sm">{bannerForm.subtitle || 'Banner subtitle'}</p>
+            </div>
+            <Input label="Title" value={bannerForm.title} onChange={e => setBannerForm((b: any) => ({ ...b, title: e.target.value }))} />
+            <Input label="Subtitle" value={bannerForm.subtitle} onChange={e => setBannerForm((b: any) => ({ ...b, subtitle: e.target.value }))} />
+            <Select label="Colour theme" value={bannerForm.gradient} onChange={(e: any) => setBannerForm((b: any) => ({ ...b, gradient: e.target.value }))}>
+              {[['from-violet-600 via-purple-600 to-indigo-600', 'Violet'], ['from-emerald-500 via-teal-500 to-cyan-600', 'Emerald'], ['from-amber-500 via-orange-500 to-rose-500', 'Sunset'], ['from-sky-500 via-blue-600 to-indigo-700', 'Ocean'], ['from-fuchsia-500 via-pink-500 to-rose-500', 'Pink'], ['from-rose-500 via-red-500 to-orange-500', 'Fire'], ['from-slate-700 via-slate-800 to-slate-900', 'Midnight']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </Select>
+            <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={!!bannerForm.active} onChange={e => setBannerForm((b: any) => ({ ...b, active: e.target.checked }))} className="w-4 h-4 accent-violet-600" /> Show on the Home screen</label>
+            <Btn className="w-full" onClick={() => { if (!bannerForm.title.trim()) return toast({ kind: 'error', title: 'Give the banner a title' }); saveBanner({ id: bannerForm.id, title: bannerForm.title.trim(), subtitle: bannerForm.subtitle.trim(), gradient: bannerForm.gradient, active: !!bannerForm.active }); setBannerForm(null); toast({ kind: 'success', title: 'Banner saved' }) }}>Save banner</Btn>
+          </div>
+        )}
       </Modal>
       <Modal open={!!newsForm} onClose={() => setNewsForm(null)} title={newsForm?.id ? 'Edit news' : 'Publish news'}>
         {newsForm && (

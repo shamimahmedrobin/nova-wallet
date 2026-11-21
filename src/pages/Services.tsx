@@ -50,10 +50,13 @@ export function AddMoney() {
   const [dstep, setDstep] = useState(0); const [dack, setDack] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const mine = db.deposits.filter(d => d.userId === user?.id)
+  const bonusPct = db.settings.firstDepositBonusPct ?? 100
+  const firstDep = bonusPct > 0 && !mine.some(d => d.status === 'approved')
   const activeMethod = depMethods.find(m => m.id === method) ?? depMethods[0]
   const isCrypto = activeMethod.kind === 'crypto'
   const methodLabel = payMethodTitle(activeMethod)
   const amtBDT = Math.round(toBDT(Number(amount) || 0))
+  const bonusAmt = Math.round(amtBDT * bonusPct / 100)
   const submit = async () => {
     if (!amtBDT || amtBDT < 10) return toast({ kind: 'error', title: 'Enter an amount of at least ' + fmtMoney(10) })
     if (!isCrypto && trx.trim().length < 6) return toast({ kind: 'error', title: 'Enter the payment Transaction ID' })
@@ -138,10 +141,18 @@ export function AddMoney() {
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 p-4 space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="text-slate-500">Method</span><span className="font-bold">{methodLabel}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">You pay to</span><span className="font-bold text-right break-all">{payMethodValue(activeMethod)}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Amount to be credited</span><span className="font-extrabold">{fmtMoney(amtBDT)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">{firstDep ? 'Deposit amount' : 'Amount to be credited'}</span><span className="font-extrabold">{fmtMoney(amtBDT)}</span></div>
+              {firstDep && amtBDT > 0 && <div className="flex justify-between"><span className="text-slate-500">First-deposit bonus ({bonusPct}%)</span><span className="font-extrabold text-emerald-500">+{fmtMoney(bonusAmt)}</span></div>}
+              {firstDep && amtBDT > 0 && <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1.5"><span className="text-slate-500">Total to be credited</span><span className="font-extrabold">{fmtMoney(amtBDT + bonusAmt)}</span></div>}
               <div className="flex justify-between"><span className="text-slate-500">{isCrypto ? 'Transaction hash' : 'Transaction ID'}</span><span className="font-bold font-mono text-right break-all">{trx.trim() || '—'}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Receipt</span><span className="font-bold">{receipt || 'Not attached'}</span></div>
             </div>
+            {firstDep && amtBDT > 0 && (
+              <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4">
+                <p className="font-extrabold">🎁 First deposit bonus — {bonusPct}% match</p>
+                <p className="text-sm text-white/85 mt-1 leading-relaxed">This is your first deposit, so you get <b>double</b>: deposit {fmtMoney(amtBDT)} + bonus {fmtMoney(bonusAmt)} = <b>{fmtMoney(amtBDT + bonusAmt)}</b> in your wallet when the deposit is approved.</p>
+              </div>
+            )}
             <div className="space-y-2.5">
               <CheckLine ok={amtBDT >= 10}>Amount is {fmtMoney(amtBDT)} — this is what lands in your wallet after approval</CheckLine>
               <CheckLine ok={isCrypto ? true : trx.trim().length >= 6}>{isCrypto ? 'Crypto deposits are matched by wallet address and amount' : 'Transaction ID format looks right (' + trx.trim().length + ' characters)'}</CheckLine>

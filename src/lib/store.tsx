@@ -154,6 +154,8 @@ interface Ctx {
   deleteNews: (id: string) => void
   updateSettings: (s: Partial<DB['settings']>) => void
   toggleBanner: (id: string) => void
+  saveBanner: (b: { id?: string; title: string; subtitle: string; gradient: string; active: boolean }) => void
+  deleteBanner: (id: string) => void
   requestUpgrade: (toLevel: number) => Promise<string | null>
   decideUpgrade: (id: string, ok: boolean) => void
   updateLevelDef: (level: number, patch: Partial<DB['levels'][number]>) => void
@@ -1382,6 +1384,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       catch (e: any) { toast({ kind: 'error', title: e.message }) }
     })()
   }
+  const saveBanner: Ctx['saveBanner'] = (b) => {
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/banners/save', b); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
+  const deleteBanner = (id: string) => {
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/banners/delete', { id }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: e.message }) }
+    })()
+  }
   const addTicket: Ctx['addTicket'] = async (subject, message) => {
     if (!user) return 'Not signed in'
     try { const r = await apiPost('/v1/tickets', { subject, message }); applyMoneyResult(r); return null }
@@ -1496,7 +1510,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, verifyTxPin, buyCrypto, sellCrypto,
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
     updateProfile, changePassword, changePin, stepUp, revokeSession, markTicketRead, toggleWatch, markAllRead, markRead,
-    publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
+    publishNews, deleteNews, updateSettings, toggleBanner, saveBanner, deleteBanner, addTicket, replyTicket, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
     locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
