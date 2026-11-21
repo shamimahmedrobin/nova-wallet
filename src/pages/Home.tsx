@@ -62,7 +62,7 @@ export default function Home() {
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '••••••' : fmtAmount(Math.round(w.available + usdtBdt))} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
           <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSDT((w.available + usdtBdt) / db.settings.bdtPerUsd)}</p>
           <div className="grid grid-cols-3 gap-3 mt-5">
-            {[{ k: 'total' as const, l: t('total_balance'), v: Math.round(total), lock: false }, { k: 'locked' as const, l: t('locked'), v: w.locked, lock: true }, { k: 'crypto' as const, l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
+            {[{ k: 'total' as const, l: t('total'), v: Math.round(total), lock: false }, { k: 'locked' as const, l: t('locked'), v: w.locked, lock: true }, { k: 'crypto' as const, l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
               <button key={x.l} onClick={() => setBd(x.k)} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5 min-w-0 text-left active:scale-[.97] transition hover:bg-white/20">
                 <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}<ChevronRight size={10} className="ml-auto opacity-70" /></p>
                 <p className="font-bold text-[15px] truncate">{hide ? '••••' : fmtUSDT(x.v / db.settings.bdtPerUsd)}</p>
