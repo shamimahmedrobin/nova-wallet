@@ -226,11 +226,11 @@ export default function Admin() {
                           {u.kycDocPhoto && <a href={u.kycDocPhoto} target="_blank" rel="noreferrer"><img src={u.kycDocPhoto} alt="KYC document" className="h-16 w-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
                           {u.kycFacePhoto && <a href={u.kycFacePhoto} target="_blank" rel="noreferrer"><img src={u.kycFacePhoto} alt="KYC face scan" className="h-16 w-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
                         </div>
+                        {u.kyc === 'pending' && <div className="flex gap-2 mt-2"><Btn variant="success" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, false)}>Reject KYC</Btn></div>}
                       </div>
                     )}
                     {u.role === 'user' && (
                       <div className="flex flex-wrap gap-2 mt-3">
-                        {u.kyc === 'pending' && <><Btn variant="success" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => decideKyc(u.id, false)}>Reject KYC</Btn></>}
                         {u.status !== 'frozen' ? <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'active')}>Unfreeze</Btn>}
                         {u.status !== 'suspended' ? <Btn variant="danger" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'suspended')}>Suspend</Btn> : <Btn variant="success" className="!py-1.5 !text-xs" onClick={() => setUserStatus(u.id, 'active')}>Activate</Btn>}
                         <Btn variant="ghost" className="!py-1.5 !text-xs" onClick={() => openUser(u)}>Manage account</Btn>
@@ -551,13 +551,13 @@ export default function Admin() {
                     {(selUser.kycFacePhoto || kycDocs?.facePhoto) && <a href={selUser.kycFacePhoto || kycDocs?.facePhoto} target="_blank" rel="noreferrer"><img src={selUser.kycFacePhoto || kycDocs?.facePhoto} alt="KYC face scan" className="h-24 w-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
                     {!selUser.kycDocPhoto && !kycDocs?.docPhoto && <p className="text-xs text-slate-400">Loading photos…</p>}
                   </div>
+                  {selUser.kyc === 'pending' && <div className="flex gap-2 mt-2"><Btn variant="success" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, false)}>Reject KYC</Btn></div>}
                 </div>
               )}
               {selUser.role === 'user' && (
                 <div className="flex flex-wrap gap-2">
                   {selUser.status !== 'frozen' ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Unfreeze</Btn>}
                   {selUser.status !== 'suspended' ? <Btn variant="danger" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'suspended')}>Suspend</Btn> : <Btn variant="success" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Activate</Btn>}
-                  {selUser.kyc === 'pending' && <><Btn variant="success" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, true)}>Verify KYC</Btn><Btn variant="danger" className="!py-2 !text-xs" onClick={() => decideKyc(selUser.id, false)}>Reject KYC</Btn></>}
                 </div>
               )}
               {/* Level */}
