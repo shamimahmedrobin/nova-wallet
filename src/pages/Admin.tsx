@@ -156,7 +156,7 @@ export default function Admin() {
           <nav className="space-y-1">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${tab === t.id ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
-                <t.icon size={18} /> {t.label}
+                <t.icon size={18} className="shrink-0" /> <span className="flex-1 text-left">{t.label}</span>
                 {(tabBadges[t.id] ?? 0) > 0 && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{tabBadges[t.id]}</span>}
               </button>
             ))}
