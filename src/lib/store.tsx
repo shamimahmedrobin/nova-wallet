@@ -327,22 +327,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   })
   const mergeDirectoryInto = (d: DB, users: any[]) => {
     for (const su of users) {
-      const byEmail = d.users.find(x => x.email === su.email)
-      if (byEmail) { if (!byEmail.fbUid) byEmail.fbUid = su.id; continue }
-      if (d.users.some(x => x.fbUid && x.fbUid === su.id)) continue
-      const existing = d.users.find(x => x.id === su.id)
-      if (existing?.stub) {
-        // Refresh the stub's server-synced fields — KYC status, level and
-        // account status all move on the server after first sight.
-        existing.kyc = su.kyc ?? existing.kyc
-        existing.level = su.level ?? existing.level
-        existing.status = su.status ?? existing.status
-        existing.role = su.role ?? existing.role
-        if (su.adminScope) existing.adminScope = su.adminScope; else if (existing.role !== 'admin') delete existing.adminScope
-        if (su.kycDocType) { existing.kycDocType = su.kycDocType; existing.kycDocNumber = su.kycDocNumber; existing.kycSubmittedAt = su.kycSubmittedAt }
+      // Match an existing record by server id, Firebase uid or email —
+      // in that order. (The old email-first match short-circuited here
+      // and the stub refresh below never ran, so role/level/KYC changes
+      // made on the server never reached an already-loaded admin panel.)
+      const existing = d.users.find(x => x.id === su.id) ?? d.users.find(x => x.fbUid && x.fbUid === su.id) ?? d.users.find(x => x.email === su.email)
+      if (existing) {
+        if (!existing.fbUid) existing.fbUid = su.id
+        if (existing.stub) {
+          // Refresh the stub's server-synced fields — KYC status, level,
+          // role/scope and account status all move on the server after
+          // first sight.
+          existing.kyc = su.kyc ?? existing.kyc
+          existing.level = su.level ?? existing.level
+          existing.status = su.status ?? existing.status
+          existing.role = su.role ?? existing.role
+          if (su.adminScope) existing.adminScope = su.adminScope; else if (existing.role !== 'admin') delete existing.adminScope
+          if (su.kycDocType) { existing.kycDocType = su.kycDocType; existing.kycDocNumber = su.kycDocNumber; existing.kycSubmittedAt = su.kycSubmittedAt }
+        }
         continue
       }
-      if (!existing) d.users.push(stubFrom(su))
+      d.users.push(stubFrom(su))
     }
     // Drop any stub that duplicates a real local account (same server
     // uid): a self-stub poisons the uid map below, which once made the

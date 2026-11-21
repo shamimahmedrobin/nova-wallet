@@ -997,7 +997,7 @@ async function handleAdminNewsSave(request, env, auth, body) {
     await db.prepare("UPDATE news SET title = ?, category = ?, excerpt = ?, body = ?, source = ?, featured = ?, coin = ?, gradient = ? WHERE id = ?")
       .bind(...fields, String(n.id)).run();
   } else {
-    await db.prepare("INSERT INTO news (id, title, category, excerpt, body, source, featured, coin, published_by, gradient) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    await db.prepare("INSERT INTO news (id, title, category, excerpt, body, source, featured, coin, published_by, gradient) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(pubId("NEWS"), ...fields.slice(0, 6), fields[6], auth.uid, fields[7]).run();
   }
   await auditLog(db, auth, "news.publish", title);
