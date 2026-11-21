@@ -71,6 +71,7 @@ export default function Profile() {
   const [ticket, setTicket] = useState({ subject: '', message: '' })
   const [chatText, setChatText] = useState('')
   const [sending, setSending] = useState(false)
+  const sendStartRef = useRef(0)
   const [starting, setStarting] = useState(false)
   const [pinEdit, setPinEdit] = useState(false); const [pinVal, setPinVal] = useState(''); const [pinValConfirm, setPinValConfirm] = useState('')
   const [viewTicket, setViewTicket] = useState<string | null>(null)
@@ -129,6 +130,17 @@ export default function Profile() {
     if (modal === 'support' && chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
   })
   const openTicketId = modal === 'support' && user ? (viewTicket ?? db.tickets.find(x => x.userId === user.id && x.status !== 'resolved')?.id ?? null) : null
+  // Stop the send spinner the moment the message is confirmed in the
+  // store (it used to spin until the heavy reply response landed, long
+  // after the bubble already showed as sent). The 800ms floor keeps the
+  // loading visible; the promise finally in the handlers is a backstop.
+  useEffect(() => {
+    if (!sending || !openTicketId) return
+    const tkNow = db.tickets.find(x => x.id === openTicketId)
+    if (!tkNow || tkNow.messages.some(m => m.from === 'user' && m.pending)) return
+    const id = window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - sendStartRef.current)))
+    return () => window.clearTimeout(id)
+  }, [sending, openTicketId, db.tickets])
   useEffect(() => { if (openTicketId) void markTicketRead(openTicketId, false) }, [openTicketId])
   useEffect(() => {
     if (modal === 'kyc') { setKycStep(1); setKycDocType(user?.kycDocType ?? 'nid'); setKycDocNumber(user?.kycDocNumber ?? ''); setKycDocPhoto(user?.kycDocPhoto ?? ''); setKycFacePhoto(user?.kycFacePhoto ?? ''); setCamErr(false) }
@@ -585,8 +597,8 @@ export default function Profile() {
                 <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3">{t('chat_closed_note')}</p>
               ) : (
                 <div className="flex gap-2">
-                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim() && !sending) { const t0 = Date.now(); setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
-                  <Btn className="!px-4 shrink-0" disabled={sending} onClick={() => { if (chatText.trim() && !sending) { const t0 = Date.now(); setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setChatText('') } }}>{sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}</Btn>
+                  <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && chatText.trim() && !sending) { const t0 = Date.now(); sendStartRef.current = t0; setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setChatText('') } }} placeholder={t('chat_placeholder')} className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
+                  <Btn className="!px-4 shrink-0" disabled={sending} onClick={() => { if (chatText.trim() && !sending) { const t0 = Date.now(); sendStartRef.current = t0; setSending(true); void replyTicket(tk.id, chatText, 'user').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setChatText('') } }}>{sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}</Btn>
                 </div>
               )}
             </div>

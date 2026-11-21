@@ -1358,8 +1358,11 @@ async function handleTicketReply(request, env, auth, body) {
     if (asAdmin && tk.user_id !== auth.uid) await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);
     if (!asAdmin) await notifyAdminsServer(db, "support", "Support chat reply", "New reply in: " + tk.subject, "/admin?tab=support");
   }
-  if (asAdmin) return json(request, { ok: true, overview: await loadOverview(db) });
-  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+  // Light payload: a chat reply returns just the ticket list, not the
+  // whole state/overview — the heavy response made the send button spin
+  // long after the message itself had already landed.
+  if (asAdmin) return json(request, { ok: true, tickets: await loadTickets(db, null) });
+  return json(request, { ok: true, tickets: await loadTickets(db, auth.uid) });
 }
 
 async function handleTicketDelete(request, env, auth, body) {

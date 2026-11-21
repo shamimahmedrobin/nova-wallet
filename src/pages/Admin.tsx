@@ -1132,7 +1132,22 @@ function SupportChat() {
   const tk = sel ? db.tickets.find(x => x.id === sel) : undefined
   useEffect(() => { if (sel) void markTicketRead(sel, true); setDelChatArm(false) }, [sel])
   useEffect(() => { for (const r of [scrollRef, scrollRefDesk]) if (r.current) r.current.scrollTop = r.current.scrollHeight })
-  const send = () => { if (tk && text.trim() && !sending) { const t0 = Date.now(); setSending(true); void replyTicket(tk.id, text, 'admin').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setText('') } }
+  const sendStartRef = useRef(0)
+  const send = () => { if (tk && text.trim() && !sending) { const t0 = Date.now(); sendStartRef.current = t0; setSending(true); void replyTicket(tk.id, text, 'admin').finally(() => window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - t0)))); setText('') } }
+  // Stop the spinner as soon as the message is confirmed in the store —
+  // the reply response can lag behind the bubble itself.
+  useEffect(() => {
+    if (!sending || !tk) return
+    if (tk.messages.some(m => m.from === 'admin' && m.pending)) return
+    const id = window.setTimeout(() => setSending(false), Math.max(0, 800 - (Date.now() - sendStartRef.current)))
+    return () => window.clearTimeout(id)
+  }, [sending, tk])
+  // The armed delete (✓) disarms itself after a few seconds.
+  useEffect(() => {
+    if (!delChatArm) return
+    const id = window.setTimeout(() => setDelChatArm(false), 4000)
+    return () => window.clearTimeout(id)
+  }, [delChatArm])
   const tku = tk ? userOf(tk.userId) : undefined
   // One thread renderer, two homes: a tall side pane on desktop, the
   // modal on phones. It reads the ticket live from the store, so new
@@ -1145,12 +1160,9 @@ function SupportChat() {
         <Badge tone={SUP_TONE(tk.status)}>{tk.status}</Badge>
         {tk.status !== 'resolved' && <Btn className="!py-2 !text-xs !bg-emerald-500" onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }}>✓ Mark Resolved</Btn>}
         {delChatArm ? (
-          <span className="flex items-center gap-1.5">
-            <button onClick={() => { deleteTicket(tk.id); setSel(null); setDelChatArm(false); toast({ kind: 'success', title: 'Chat deleted', body: 'The whole conversation was removed.' }) }} className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 active:scale-[.98] transition">Delete this whole chat?</button>
-            <Btn variant="ghost" className="!py-2 !text-xs" onClick={() => setDelChatArm(false)}>Cancel</Btn>
-          </span>
+          <button onClick={() => { deleteTicket(tk.id); setSel(null); setDelChatArm(false); toast({ kind: 'success', title: 'Chat deleted', body: 'The whole conversation was removed.' }) }} title="Tap again to delete this chat" className="inline-flex items-center justify-center rounded-2xl px-3.5 py-2 text-white bg-rose-600 hover:bg-rose-500 active:scale-[.98] transition"><Check size={15} strokeWidth={3} /></button>
         ) : (
-          <button onClick={() => setDelChatArm(true)} className="inline-flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-1.5 py-2"><Trash2 size={13} /> Delete chat</button>
+          <button onClick={() => setDelChatArm(true)} title="Delete this chat" className="inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold text-rose-600 border border-rose-200 dark:border-rose-500/40 hover:bg-rose-50 dark:hover:bg-rose-500/10 active:scale-[.98] transition"><Trash2 size={13} /> Delete</button>
         )}
       </div>
       <div ref={ref} className={`${fill ? 'flex-1 min-h-0' : 'h-[46vh]'} overflow-y-auto rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 space-y-2.5 mb-3`}>

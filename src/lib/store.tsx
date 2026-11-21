@@ -548,6 +548,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const applyMoneyResult = (r: any) => {
     if (!user) return
+    if (r?.tickets) mutate(d => {
+      const merged = mergeTicketMsgs(d.tickets, r.tickets)
+      const resolve = uidResolver(d)
+      const ids = new Set(merged.map((t: any) => t.id))
+      d.tickets = [...merged.map((t: any) => ({ ...t, userId: resolve(t.userId) })), ...d.tickets.filter(t => !ids.has(t.id))]
+    })
     if (r?.state) mutate(d => applyStateInto(d, user.id, r.state))
     if (r?.overview) mutate(d => applyOverviewInto(d, r.overview))
   }
