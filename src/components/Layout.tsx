@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Home, LogOut, Moon, Newspaper, ShieldCheck, Sun, User as UserIcon, Wallet, ArrowLeftRight } from 'lucide-react'
+import { Bell, Home, LogOut, Moon, Newspaper, ShieldCheck, Sun, User as UserIcon, ArrowLeftRight } from 'lucide-react'
+import LogoMark from './LogoMark'
 import { useApp } from '../lib/store'
 import { useConfirm } from './ui'
 
@@ -12,9 +13,7 @@ const NAV = [
 export function Logo({ size = 34 }: { size?: number }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="rounded-2xl bg-gradient-to-br from-violet-600 via-purple-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-violet-600/30" style={{ width: size, height: size }}>
-        <Wallet size={size * 0.55} />
-      </div>
+      <span className="rounded-2xl shadow-lg shadow-violet-600/30 shrink-0 inline-flex overflow-hidden"><LogoMark size={size} /></span>
       <span className="font-extrabold text-lg tracking-tight text-slate-900 dark:text-white">Nova<span className="text-violet-500">Wallet</span></span>
     </div>
   )
