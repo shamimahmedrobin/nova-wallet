@@ -1159,12 +1159,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (e: any) { return e.message }
   }
   const setUserStatus: Ctx['setUserStatus'] = (userId2, status) => {
-    // Optimistic local mirror, then persist on the server so the status
-    // survives refresh and is enforced by the API.
+    // Persist on the server so the status survives refresh and is
+    // enforced by the API; mirror locally once the server id is known.
+    // (A silent no-op here once made Freeze look applied, then revert.)
+    const suid = serverUidOf(userId2)
+    if (!suid) { toast({ kind: 'error', title: 'User not synced yet', body: 'This account has not synced with the server yet — wait a few seconds and try again.' }); return }
     mutate(d => {
       const u = d.users.find(x => x.id === userId2); if (u) { u.status = status; audit(d, 'admin', 'user.' + status, userId2) }
     })
-    const suid = serverUidOf(userId2); if (!suid) return
     void (async () => {
       try { const r = await apiPost('/v1/admin/set-status', { userId: suid, status }); applyMoneyResult(r) }
       catch (e: any) { toast({ kind: 'error', title: 'Status change failed', body: e.message }) }
@@ -1365,10 +1367,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })()
   }
   const setUserLevel: Ctx['setUserLevel'] = (userId2, level) => {
+    const suid = serverUidOf(userId2)
+    if (!suid) { toast({ kind: 'error', title: 'User not synced yet', body: 'This account has not synced with the server yet — wait a few seconds and try again.' }); return }
     mutate(d => {
       const u = d.users.find(x => x.id === userId2); if (u) { u.level = level; audit(d, 'admin', 'level.set', `${userId2} → Level ${level}`); notify(d, userId2, 'Account level changed', 'An admin set your account to Level ' + level + '.', 'security') }
     })
-    const suid = serverUidOf(userId2); if (!suid) return
     void (async () => {
       try { const r = await apiPost('/v1/admin/set-level', { userId: suid, level }); applyMoneyResult(r) }
       catch (e: any) { toast({ kind: 'error', title: 'Level change failed', body: e.message }) }
