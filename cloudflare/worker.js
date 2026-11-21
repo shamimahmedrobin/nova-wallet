@@ -242,6 +242,7 @@ async function loadState(db, uid, lite = false) {
   const loanRows = await db.prepare("SELECT * FROM loans WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all();
   const stkRows = await db.prepare("SELECT * FROM stakes WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all();
   const kycRow = await db.prepare("SELECT status, doc_type, doc_number, created_at FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(uid).first();
+  const pmRows = await db.prepare("SELECT * FROM user_payment_methods WHERE user_id = ? ORDER BY created_at").bind(uid).all();
   const state = {
     profile: {
       id: me.id, email: me.email, username: me.username, name: me.full_name || "",
@@ -250,6 +251,7 @@ async function loadState(db, uid, lite = false) {
       kyc: kycRow?.status ?? "unverified",
       ...(kycRow ? { kycDocType: kycRow.doc_type, kycDocNumber: kycRow.doc_number, kycSubmittedAt: isoOf(kycRow.created_at) } : {}),
     },
+    payMethods: pmRows.results.map((m) => ({ id: m.id, type: m.type, label: m.label, detail: m.detail })),
     wallet: {
       userId: uid,
       available: balOf(bals, "BDT"),
@@ -926,6 +928,30 @@ function scopeAllowed(auth, scopes) {
 
 // ---- Phase 3 handlers -----------------------------------------------------------
 
+// The customer's OWN linked payment methods (their bank account / crypto
+// wallet) — full CRUD, synced via loadState.
+async function handlePayMethodSave(request, env, auth, body) {
+  const db = env.DB;
+  const type = body.type === "crypto" ? "crypto" : body.type === "bank" ? "bank" : null;
+  const label = String(body.label || "").trim().slice(0, 80);
+  const detail = String(body.detail || "").trim().slice(0, 200);
+  if (!type || !label || !detail) return json(request, { error: "Name and account details are required." }, 400);
+  const id = String(body.id || "");
+  if (id) {
+    const r = await db.prepare("UPDATE user_payment_methods SET type = ?, label = ?, detail = ? WHERE id = ? AND user_id = ?").bind(type, label, detail, id, auth.uid).run();
+    if (!r.meta?.changes) return json(request, { error: "Payment method not found." }, 404);
+  } else {
+    await db.prepare("INSERT INTO user_payment_methods (id, user_id, type, label, detail) VALUES (?, ?, ?, ?, ?)").bind(pubId("PM"), auth.uid, type, label, detail).run();
+  }
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handlePayMethodDelete(request, env, auth, body) {
+  const db = env.DB;
+  await db.prepare("DELETE FROM user_payment_methods WHERE id = ? AND user_id = ?").bind(String(body.id || ""), auth.uid).run();
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
 async function handleTicketCreate(request, env, auth, body) {
   const db = env.DB;
   const subject = String(body.subject || "").trim().slice(0, 120);
@@ -1456,6 +1482,8 @@ export default {
           case "/v1/loan/fee": return await handleLoanFee(request, env, auth, body);
           case "/v1/earn/claim": return await handleEarnClaim(request, env, auth, body);
           case "/v1/kyc/submit": return await handleKycSubmit(request, env, auth, body);
+          case "/v1/paymethods/save": return await handlePayMethodSave(request, env, auth, body);
+          case "/v1/paymethods/delete": return await handlePayMethodDelete(request, env, auth, body);
           case "/v1/tickets": return await handleTicketCreate(request, env, auth, body);
           case "/v1/tickets/reply": return await handleTicketReply(request, env, auth, body);
           case "/v1/tickets/resolve": return await handleTicketResolve(request, env, auth, body);

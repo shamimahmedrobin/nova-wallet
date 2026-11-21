@@ -427,7 +427,7 @@ export default function Admin() {
               {none.length > 0 && (
                 <section>
                   <h3 className="font-extrabold mb-1">Unverified — not submitted</h3>
-                  <p className="text-xs text-slate-400 mb-3">These users never submitted documents. If you know a customer personally, you can verify them manually — their profile will then show <b>“Verified by NovaWallet”</b>.</p>
+                  <p className="text-xs text-slate-400 mb-3">These users never submitted documents. If you know a customer personally, you can verify them manually — their profile will then show a plain <b>“Verified”</b> badge.</p>
                   <div className="space-y-2">{none.map(u => (
                     <div key={u.id} id={'kyc-card-' + u.id}>
                     <Card className={`p-4 ${kycFocus === u.id ? 'ring-2 ring-violet-500' : ''}`}><div className="flex flex-wrap items-center gap-3">

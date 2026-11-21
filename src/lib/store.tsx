@@ -81,6 +81,7 @@ interface Ctx {
   signOut: () => void
   resetPassword: (email: string, pin: string, newPassword: string) => string | null
   addUserPayMethod: (type: 'bank' | 'crypto', label: string, detail: string) => void
+  updateUserPayMethod: (id: string, type: 'bank' | 'crypto', label: string, detail: string) => void
   removeUserPayMethod: (id: string) => void
   requestPasswordOtp: (email: string) => { error: string | null; otp: string | null }
   verifyPasswordOtp: (email: string, otp: string) => string | null
@@ -361,6 +362,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (u.stub && d.users.some(x => !x.stub && x.fbUid === u.id)) d.users.splice(i, 1)
     }
   }
+  const pmUploadTried = new Set<string>()
   const uidResolver = (d: DB) => {
     const m = new Map<string, string>()
     // Stubs first, real records last — a real account's id mapping always
@@ -416,6 +418,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (state.profile.kyc) lu.kyc = state.profile.kyc
       if (state.profile.kycDocType) { lu.kycDocType = state.profile.kycDocType; lu.kycDocNumber = state.profile.kycDocNumber; lu.kycSubmittedAt = state.profile.kycSubmittedAt }
       if (!lu.fbUid) lu.fbUid = state.profile.id
+    }
+    // Own linked payment methods are server-authoritative. One-time
+    // migration: methods saved locally before the server sync existed are
+    // uploaded once instead of being wiped by the empty server list.
+    if (lu && Array.isArray(state.payMethods)) {
+      if (state.payMethods.length || !(lu.payMethods?.length)) {
+        lu.payMethods = state.payMethods
+      } else if (!pmUploadTried.has(lu.id)) {
+        pmUploadTried.add(lu.id)
+        const mineLocal = [...(lu.payMethods ?? [])]
+        void (async () => { for (const m of mineLocal) { try { await apiPost('/v1/paymethods/save', { type: m.type, label: m.label, detail: m.detail }) } catch { /* stays local; retried next session */ } } })()
+      }
     }
     // Phase 3 slices: platform content is server-authoritative; own
     // tickets/level requests merge with any pre-migration local ones
@@ -786,14 +800,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return null
   }
   // The user's OWN linked payment methods (their bank account / crypto wallet),
-  // managed from Profile → Linked payment methods.
+  // managed from Profile → Payment methods. Server-backed: every change is
+  // saved to D1 via the API and comes back in /v1/state, so the list syncs
+  // across devices. The local mutate is only an optimistic mirror.
   const addUserPayMethod: Ctx['addUserPayMethod'] = (type, label, detail) => {
     if (!user) return
     mutate(d => { const du = d.users.find(x => x.id === user.id)!; du.payMethods = [...(du.payMethods ?? []), { id: uid('PM'), type, label: label.trim(), detail: detail.trim() }] })
+    void (async () => {
+      try { const r = await apiPost('/v1/paymethods/save', { type, label: label.trim(), detail: detail.trim() }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: 'Could not save the method', body: e.message }) }
+    })()
+  }
+  const updateUserPayMethod: Ctx['updateUserPayMethod'] = (id, type, label, detail) => {
+    if (!user) return
+    mutate(d => { const du = d.users.find(x => x.id === user.id)!; du.payMethods = (du.payMethods ?? []).map(m => m.id === id ? { ...m, type, label: label.trim(), detail: detail.trim() } : m) })
+    void (async () => {
+      try { const r = await apiPost('/v1/paymethods/save', { id, type, label: label.trim(), detail: detail.trim() }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: 'Could not save the method', body: e.message }) }
+    })()
   }
   const removeUserPayMethod: Ctx['removeUserPayMethod'] = (id) => {
     if (!user) return
     mutate(d => { const du = d.users.find(x => x.id === user.id)!; du.payMethods = (du.payMethods ?? []).filter(m => m.id !== id) })
+    void (async () => {
+      try { const r = await apiPost('/v1/paymethods/delete', { id }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: 'Could not remove the method', body: e.message }) }
+    })()
   }
   const register: Ctx['register'] = async (p) => {
     const cur = dbRef.current
@@ -1392,7 +1424,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateProfile, changePassword, changePin, toggleWatch, markAllRead, markRead,
     publishNews, deleteNews, updateSettings, toggleBanner, addTicket, replyTicket, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
-    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
+    locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }
