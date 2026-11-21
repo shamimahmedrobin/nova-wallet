@@ -108,7 +108,7 @@ export interface Settings {
 }
 export interface Audit { id: string; actor: string; action: string; detail: string; createdAt: string }
 export interface SessionInfo { id: string; device: string; ip: string; createdAt: string; lastSeenAt: string | null }
-export interface ChatMsg { id: string; from: 'user' | 'admin'; text: string; at: string }
+export interface ChatMsg { id: string; from: 'user' | 'admin'; text: string; at: string; pending?: boolean }
 export interface SupportTicket { id: string; userId: string; subject: string; message?: string; status: 'pending' | 'processing' | 'resolved'; createdAt: string; updatedAt: string; messages: ChatMsg[]; userReadAt?: string | null; adminReadAt?: string | null; userFetchedAt?: string | null; adminFetchedAt?: string | null }
 
 export interface Stake { id: string; userId: string; amount: number; apy: number; termDays: number; startAt: string; status: 'active' | 'closed'; /** Set once the 'stake matured' notification has been sent. */ maturedNotified?: boolean }

@@ -1305,15 +1305,44 @@ async function handleTicketReply(request, env, auth, body) {
   if (!asAdmin && tk.user_id !== auth.uid) return json(request, { error: "Not your ticket." }, 403);
   if (asAdmin && !scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
   if (tk.status === "resolved") return json(request, { error: "This chat is resolved and closed." }, 400);
-  await db.prepare("INSERT INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, ?, ?)")
-    .bind(pubId("MSG"), ticketId, asAdmin ? "admin" : "user", text).run();
-  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ?, " + (asAdmin ? "admin_read_at" : "user_read_at") + " = CURRENT_TIMESTAMP, " + (asAdmin ? "admin_fetched_at" : "user_fetched_at") + " = CURRENT_TIMESTAMP WHERE id = ?")
-    .bind(asAdmin && tk.status === "pending" ? "processing" : tk.status, ticketId).run();
+  // Idempotent send: the client generates the message id and reuses it on
+  // retries / double-fires, so the same message can never be stored twice.
+  const cid = String(body.clientId || "");
+  const msgId = /^MSG-[A-Za-z0-9-]{4,40}$/.test(cid) ? cid : pubId("MSG");
+  const ins = await db.prepare("INSERT OR IGNORE INTO ticket_messages (id, ticket_id, sender, text) VALUES (?, ?, ?, ?)")
+    .bind(msgId, ticketId, asAdmin ? "admin" : "user", text).run();
+  const isDup = !ins.meta || ins.meta.changes === 0;
+  if (!isDup) {
+    await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ?, " + (asAdmin ? "admin_read_at" : "user_read_at") + " = CURRENT_TIMESTAMP, " + (asAdmin ? "admin_fetched_at" : "user_fetched_at") + " = CURRENT_TIMESTAMP WHERE id = ?")
+      .bind(asAdmin && tk.status === "pending" ? "processing" : tk.status, ticketId).run();
+    if (asAdmin && tk.user_id !== auth.uid) await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);
+    if (!asAdmin) await notifyAdminsServer(db, "support", "Support chat reply", "New reply in: " + tk.subject, "/admin?tab=support");
+  }
+  if (asAdmin) return json(request, { ok: true, overview: await loadOverview(db) });
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handleTicketMessageDelete(request, env, auth, body) {
+  const db = env.DB;
+  const ticketId = String(body.ticketId || "");
+  const messageId = String(body.messageId || "");
+  const tk = await db.prepare("SELECT * FROM support_tickets WHERE id = ?").bind(ticketId).first();
+  if (!tk) return json(request, { error: "Ticket not found." }, 404);
+  const msg = await db.prepare("SELECT * FROM ticket_messages WHERE id = ? AND ticket_id = ?").bind(messageId, ticketId).first();
+  if (!msg) return json(request, { error: "Message not found." }, 404);
+  const asAdmin = auth.role === "admin" && body.asAdmin === true;
   if (asAdmin) {
-    if (tk.user_id !== auth.uid) await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);
+    if (!scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
+  } else {
+    if (tk.user_id !== auth.uid) return json(request, { error: "Not your ticket." }, 403);
+    if (msg.sender !== "user") return json(request, { error: "You can only delete your own messages." }, 403);
+  }
+  await db.prepare("DELETE FROM ticket_messages WHERE id = ?").bind(messageId).run();
+  await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(ticketId).run();
+  if (asAdmin) {
+    await auditLog(db, auth, "ticket.message_delete", ticketId + " · " + messageId + " · " + String(msg.text || "").slice(0, 60));
     return json(request, { ok: true, overview: await loadOverview(db) });
   }
-  await notifyAdminsServer(db, "support", "Support chat reply", "New reply in: " + tk.subject, "/admin?tab=support");
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
@@ -2038,6 +2067,7 @@ export default {
           case "/v1/sessions/revoke": return await handleSessionRevoke(request, env, auth, body);
           case "/v1/tickets": return await handleTicketCreate(request, env, auth, body);
           case "/v1/tickets/reply": return await handleTicketReply(request, env, auth, body);
+          case "/v1/tickets/message/delete": return await handleTicketMessageDelete(request, env, auth, body);
           case "/v1/tickets/resolve": return await handleTicketResolve(request, env, auth, body);
           case "/v1/levels/request": return await handleLevelRequest(request, env, auth, body);
         }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Server, Lock, Pause, Play, RotateCcw, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Server, Lock, Pause, Play, RotateCcw, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award, Trash2 } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
@@ -1111,11 +1111,12 @@ export default function Admin() {
 const SUP_TONE = (st: string) => st === 'pending' ? 'amber' : st === 'processing' ? 'violet' : 'green'
 
 function SupportChat() {
-  const { db, replyTicket, resolveTicket, markTicketRead, toast } = useApp()
+  const { db, replyTicket, deleteMessage, resolveTicket, markTicketRead, toast } = useApp()
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')
   const [sel, setSel] = useState<string | null>(null)
   const [text, setText] = useState('')
+  const [delId, setDelId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const scrollRefDesk = useRef<HTMLDivElement | null>(null)
   // Desktop shows the open chat beside the list; phones keep the modal.
@@ -1149,7 +1150,7 @@ function SupportChat() {
             <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'admin' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
               {m.from === 'user' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{tku?.name}</p>}
               <p className="whitespace-pre-wrap break-words">{m.text}</p>
-              <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}{m.from === 'admin' ? <MsgTicks at={m.at} readAt={tk.userReadAt} fetchedAt={tk.userFetchedAt} label /> : <MsgTicks at={m.at} readAt={tk.adminReadAt} fetchedAt={tk.adminFetchedAt} tone="dark" label />}</p>
+              <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}{m.from === 'admin' && m.pending ? <span className="ml-1.5 font-bold">Sending…</span> : m.from === 'admin' ? <MsgTicks at={m.at} readAt={tk.userReadAt} fetchedAt={tk.userFetchedAt} label /> : <MsgTicks at={m.at} readAt={tk.adminReadAt} fetchedAt={tk.adminFetchedAt} tone="dark" label />}{!m.pending && (delId === m.id ? <button onClick={() => { deleteMessage(tk.id, m.id, true); setDelId(null) }} className={`ml-1.5 font-extrabold ${m.from === 'admin' ? 'text-rose-300' : 'text-rose-500'}`}>Delete?</button> : <button onClick={() => setDelId(m.id)} aria-label="Delete message" className={`ml-1 ${m.from === 'admin' ? 'text-violet-200/60 hover:text-rose-300' : 'text-slate-300 hover:text-rose-500'}`}><Trash2 size={12} /></button>)}</p>
             </div>
           </div>
         ))}

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ADS_PER_DAY, CHECKIN_REWARDS, EARN_TASKS, QUIZ_PER_CORRECT, SCRATCH_PER_DAY, SCRATCH_PRIZES, SPINS_PER_DAY, WHEEL_PRIZES } from './earn'
-import type { DB, Loan, NewsItem, Tx, User , LoanInfo, EarnState } from './types'
+import type { DB, Loan, NewsItem, Tx, User , LoanInfo, EarnState, SupportTicket } from './types'
 import { DEFAULT_LEVELS, DEFAULT_PAY_METHODS, seedDB } from './seed'
 import { translate } from './i18n'
 import { detectCurrency, FALLBACK_RATES } from './currencies'
@@ -163,6 +163,7 @@ interface Ctx {
   setUserLoanLimit: (userId: string, bdt: number | null) => void
   addTicket: (subject: string, message: string) => Promise<string | null>
   replyTicket: (ticketId: string, text: string, as: 'user' | 'admin') => void
+  deleteMessage: (ticketId: string, messageId: string, asAdmin: boolean) => void
   resolveTicket: (ticketId: string) => void
   /** Send a notification to EVERY user (server broadcast). Returns an error string or null. */
   broadcast: (title: string, body: string) => Promise<string | null>
@@ -421,6 +422,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }
+  // When a server ticket list replaces the local one, keep any optimistic
+  // (pending) messages the server copy does not have yet — a state pull
+  // that was generated before a send landed must not make the bubble
+  // vanish. Confirmed messages share the client's id, so they dedupe.
+  const mergeTicketMsgs = (local: SupportTicket[], server: any[]): any[] => server.map(st => {
+    const lt = local.find(x => x.id === st.id)
+    if (!lt) return st
+    const ids = new Set((st.messages || []).map((m: any) => m.id))
+    const extra = lt.messages.filter((m) => m.pending && !ids.has(m.id))
+    return extra.length ? { ...st, messages: [...st.messages, ...extra].sort((a: any, b: any) => String(a.at).localeCompare(String(b.at))) } : st
+  })
   const applyStateInto = (d: DB, localId: string, state: any) => {
     const resolve = uidResolver(d)
     const sw = { userId: localId, available: state.wallet.available, locked: state.wallet.locked, holdings: state.wallet.holdings || {} }
@@ -464,8 +476,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (Array.isArray(state.content.levels) && state.content.levels.length) d.levels = state.content.levels
     }
     if (state.tickets) {
-      const serverIds = new Set(state.tickets.map((t: any) => t.id))
-      d.tickets = [...mine(state.tickets), ...d.tickets.filter(t => t.userId === localId && !serverIds.has(t.id)), ...d.tickets.filter(t => t.userId !== localId)]
+      const merged = mergeTicketMsgs(d.tickets, state.tickets)
+      const serverIds = new Set(merged.map((t: any) => t.id))
+      d.tickets = [...mine(merged), ...d.tickets.filter(t => t.userId === localId && !serverIds.has(t.id)), ...d.tickets.filter(t => t.userId !== localId)]
     }
     if (state.levelRequests) {
       const serverIds = new Set(state.levelRequests.map((r: any) => r.id))
@@ -511,9 +524,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     if (Array.isArray(ov.audit)) d.audit = ov.audit
     if (ov.tickets) {
-      const serverIds = new Set(ov.tickets.map((t: any) => t.id))
+      const merged = mergeTicketMsgs(d.tickets, ov.tickets)
+      const serverIds = new Set(merged.map((t: any) => t.id))
       const ownLocal = d.tickets.filter(t => t.userId === userIdRef.current && !serverIds.has(t.id))
-      d.tickets = [...fix(mapRows(ov.tickets)), ...ownLocal]
+      d.tickets = [...fix(mapRows(merged)), ...ownLocal]
     }
     if (ov.levelRequests) d.levelRequests = fix(mapRows(ov.levelRequests))
     if (ov.errors) setAdminErrors(ov.errors)
@@ -1401,26 +1415,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { const r = await apiPost('/v1/tickets', { subject, message }); applyMoneyResult(r); return null }
     catch (e: any) { return e.message }
   }
+  const inflightSendsRef = useRef(new Map<string, number>())
   const replyTicket: Ctx['replyTicket'] = (ticketId, text, as) => {
     if (!user || !text.trim()) return
+    const tkNow = dbRef.current.tickets.find(x => x.id === ticketId)
+    if (!tkNow || tkNow.status === 'resolved') return
+    // Double-fire guard: an identical send already in flight (rapid double
+    // tap, Enter + click) is dropped instead of posting a second copy.
+    const sendKey = ticketId + '|' + as + '|' + text.trim()
+    const startedAt = inflightSendsRef.current.get(sendKey)
+    if (startedAt && Date.now() - startedAt < 5000) return
+    inflightSendsRef.current.set(sendKey, Date.now())
     // Optimistic append: the bubble shows instantly in the open chat; the
-    // server response then replaces the thread wholesale with the real row.
+    // server stores it under this same id, so refreshes dedupe by id and
+    // the pending copy survives state pulls that raced ahead of the send.
     const tempId = uid('MSG')
     mutate(d => {
       const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
-      tk.messages.push({ id: tempId, from: as, text: text.trim(), at: nowISO() })
+      tk.messages.push({ id: tempId, from: as, text: text.trim(), at: nowISO(), pending: true })
       tk.updatedAt = nowISO()
       if (as === 'admin' && tk.status === 'pending') tk.status = 'processing'
     })
     void (async () => {
-      try { const r = await apiPost('/v1/tickets/reply', { ticketId, text: text.trim(), asAdmin: as === 'admin' }); applyMoneyResult(r) }
+      try { const r = await apiPost('/v1/tickets/reply', { ticketId, text: text.trim(), asAdmin: as === 'admin', clientId: tempId }); applyMoneyResult(r) }
       catch (e: any) {
         mutate(d => {
           const tk = d.tickets.find(x => x.id === ticketId); if (!tk) return
           tk.messages = tk.messages.filter(m => m.id !== tempId)
         })
         toast({ kind: 'error', title: 'Message not sent', body: e.message })
-      }
+      } finally { inflightSendsRef.current.delete(sendKey) }
+    })()
+  }
+  const deleteMessage: Ctx['deleteMessage'] = (ticketId, messageId, asAdmin) => {
+    mutate(d => {
+      const tk = d.tickets.find(x => x.id === ticketId); if (!tk) return
+      tk.messages = tk.messages.filter(m => m.id !== messageId)
+    })
+    void (async () => {
+      try { const r = await apiPost('/v1/tickets/message/delete', { ticketId, messageId, asAdmin }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: 'Could not delete the message', body: e.message }) }
     })()
   }
   const resolveTicket: Ctx['resolveTicket'] = (ticketId) => {
@@ -1510,7 +1544,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addDeposit, decideDeposit, settleDepositExternal, requestWithdraw, decideWithdraw, directWithdraw, stake, unstake, swap, sendMoney, verifyTxPin, buyCrypto, sellCrypto,
     applyLoan, earnInfo, claimCheckin, watchAdReward, spinReward, scratchDraw, completeEarnTask, submitQuiz, decideLoan, repayLoan, setLoanFee, submitLoanFee, confirmLoanFee, submitKyc, decideKyc, setUserStatus, adjustBalance, txHold, txUnhold, txCancel, adminBuyCrypto, adminSellCrypto, adminReleaseStake, adminClearLocked,
     updateProfile, changePassword, changePin, stepUp, revokeSession, markTicketRead, toggleWatch, markAllRead, markRead,
-    publishNews, deleteNews, updateSettings, toggleBanner, saveBanner, deleteBanner, addTicket, replyTicket, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
+    publishNews, deleteNews, updateSettings, toggleBanner, saveBanner, deleteBanner, addTicket, replyTicket, deleteMessage, resolveTicket, broadcast, setAdminScope, setAdminRole, adminErrors, resetDemo,
     requestUpgrade, decideUpgrade, updateLevelDef, setUserLevel, setUserLoanLimit,
     locked, appInstalled, devicePinSet, fingerprintSet, setDevicePin, clearDevicePin, setupFingerprint, clearFingerprint, unlockWithPin, unlockWithFingerprint, unlockWithPassword, lockNow, signOut, resetPassword, requestPasswordOtp, verifyPasswordOtp, resetPasswordWithOtp, addUserPayMethod, updateUserPayMethod, removeUserPayMethod, lang, setLanguage, t, currency, currencyIsAuto, detectedCurrency: detected.code, setCurrency, fmtMoney, fmtAmount, toBDT, fromBDT,
   }
