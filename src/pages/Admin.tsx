@@ -151,7 +151,6 @@ export default function Admin() {
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center gap-3">
           <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 lg:hidden"><Menu size={18} /></button>
           <h1 className="font-extrabold text-lg flex items-center gap-2"><ShieldCheck className="text-amber-500" /> Admin Panel</h1>
-          <Badge tone="amber">Secure · RBAC</Badge>
           <div className="ml-auto flex gap-2">
             <button onClick={() => setSearchOpen(true)} aria-label="Search" className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><Search size={18} /></button>
             <button onClick={() => setNotifOpen(true)} aria-label="Notifications" className="relative p-2.5 rounded-full bg-slate-100 dark:bg-slate-800"><Bell size={18} />{myUnread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">{myUnread}</span>}</button>
@@ -498,8 +497,14 @@ export default function Admin() {
         )}
         {tab === 'audit' && (
           <div className="anim-fade-up space-y-2">
-            {db.audit.map(a => (
-              <Card key={a.id} className="p-4 text-sm"><p className="font-bold">{a.action} <span className="text-slate-400 font-normal">by {a.actor}</span></p><p className="text-slate-500">{a.detail}</p><p className="text-[11px] text-slate-400">{fmtDateTime(a.createdAt)}</p></Card>
+            {db.audit.length === 0 ? <Empty title="No audit entries yet" body="Admin actions — approvals, settings changes, role updates — are recorded here automatically." /> : db.audit.map(a => (
+              <Card key={a.id} className="p-4 text-sm min-w-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <p className="font-bold break-words min-w-0">{a.action} <span className="text-slate-400 font-normal">by {nameOf(a.actor)}</span></p>
+                  <p className="text-[11px] text-slate-400 shrink-0">{fmtDateTime(a.createdAt)}</p>
+                </div>
+                {a.detail && <p className="text-slate-500 break-words mt-1">{a.detail}</p>}
+              </Card>
             ))}
           </div>
         )}
