@@ -467,6 +467,16 @@ async function sellLogic(db, uid, symbol, coinAmount, priceUsd) {
 
 // ---- Money endpoints ----------------------------------------------------------
 
+// Account-status gate: a frozen wallet cannot move or commit money; a
+// suspended account cannot transact at all (money-in included).
+async function statusGate(db, uid, opts = {}) {
+  const u = await getUserRow(db, uid);
+  if (!u) return "Account not found.";
+  if (u.status === "suspended") return "Your account is suspended. Contact support.";
+  if (u.status === "frozen" && !opts.moneyIn) return "Your wallet is frozen. Contact support.";
+  return null;
+}
+
 async function handleSend(request, env, auth, body) {
   const db = env.DB;
   const { toUserId, amount, note, pin } = body;
@@ -510,6 +520,8 @@ async function handleSend(request, env, auth, body) {
 async function handleDeposit(request, env, auth, body) {
   const db = env.DB;
   if (await featureOff(db, "deposits")) return json(request, { error: "Deposits are temporarily unavailable. Please try again later." }, 403);
+  const sgd = await statusGate(db, auth.uid, { moneyIn: true });
+  if (sgd) return json(request, { error: sgd }, 400);
   const { method, amount, trxId } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   if (!method || !trxId) return json(request, { error: "Method and transaction ID are required." }, 400);
@@ -539,6 +551,7 @@ async function handleWithdraw(request, env, auth, body) {
   const me = await getUserRow(db, auth.uid);
   if (!me) return json(request, { error: "Account not found." }, 404);
   if (me.status === "frozen") return json(request, { error: "Your wallet is frozen. Contact support." }, 400);
+  if (me.status === "suspended") return json(request, { error: "Your account is suspended. Contact support." }, 400);
   const settings = await getSettings(db);
   const disc = await feeDiscount(db, Number(me.level));
   const fee = Math.round(amount * (settings.cashoutPct * (1 - disc / 100)) / 100);
@@ -569,6 +582,7 @@ async function handleDirectWithdraw(request, env, auth, body) {
   if (!me) return json(request, { error: "Account not found." }, 404);
   if (Number(me.level) < 2) return json(request, { error: "Direct Withdraw needs a Level 2 account. Please upgrade first." }, 400);
   if (me.status === "frozen") return json(request, { error: "Your wallet is frozen. Contact support." }, 400);
+  if (me.status === "suspended") return json(request, { error: "Your account is suspended. Contact support." }, 400);
   const settings = await getSettings(db);
   const disc = await feeDiscount(db, Number(me.level));
   const fee = Math.round(amount * (settings.cashoutPct * (1 - disc / 100)) / 100);
@@ -595,6 +609,7 @@ async function handleTrade(request, env, auth, body, side) {
   const { symbol, priceUsd } = body;
   if (!symbol || !(priceUsd > 0)) return json(request, { error: "Enter a valid amount." }, 400);
   const target = body.forUserId && auth.role === "admin" ? body.forUserId : auth.uid;
+  if (target === auth.uid) { const sg = await statusGate(db, auth.uid); if (sg) return json(request, { error: sg }, 400); }
   let r;
   if (side === "buy") {
     if (badAmount(body.amount)) return json(request, { error: "Enter a valid amount." }, 400);
@@ -612,6 +627,8 @@ async function handleTrade(request, env, auth, body, side) {
 async function handleSwap(request, env, auth, body) {
   const db = env.DB;
   if (await featureOff(db, "trading")) return json(request, { error: "Trading is temporarily unavailable. Please try again later." }, 403);
+  const sgs = await statusGate(db, auth.uid);
+  if (sgs) return json(request, { error: sgs }, 400);
   const { fromSym, toSym, amountFrom, prices } = body;
   if (fromSym === toSym) return json(request, { error: "Choose two different assets." }, 400);
   if (badAmount(amountFrom)) return json(request, { error: "Enter a valid amount." }, 400);
@@ -647,6 +664,8 @@ async function handleSwap(request, env, auth, body) {
 
 async function handleStake(request, env, auth, body) {
   const db = env.DB;
+  const sgk = await statusGate(db, auth.uid);
+  if (sgk) return json(request, { error: sgk }, 400);
   const { amount, apy, termDays } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   const settings = await getSettings(db);
@@ -693,6 +712,8 @@ async function unstakeCore(db, uid, stakeId, ignoreTerm) {
 
 async function handleUnstake(request, env, auth, body) {
   const db = env.DB;
+  const sgu = await statusGate(db, auth.uid);
+  if (sgu) return json(request, { error: sgu }, 400);
   const r = await unstakeCore(db, auth.uid, body.stakeId, false);
   if (r.error) return json(request, { error: r.error }, 400);
   try { await db.batch(r.stmts); } catch (e) { return json(request, { error: "Unstake failed: " + String(e?.message || e) }, 500); }
@@ -702,6 +723,8 @@ async function handleUnstake(request, env, auth, body) {
 async function handleLoanApply(request, env, auth, body) {
   const db = env.DB;
   if (await featureOff(db, "loans")) return json(request, { error: "Loan applications are temporarily unavailable. Please try again later." }, 403);
+  const sgl = await statusGate(db, auth.uid);
+  if (sgl) return json(request, { error: sgl }, 400);
   const { amount, months, info } = body;
   if (badAmount(amount)) return json(request, { error: "Enter a valid amount." }, 400);
   const settings = await getSettings(db);
@@ -777,6 +800,8 @@ const EARN_CAPS = {
 
 async function handleEarnClaim(request, env, auth, body) {
   const db = env.DB;
+  const sge = await statusGate(db, auth.uid, { moneyIn: true });
+  if (sge) return json(request, { error: sge }, 400);
   const { kind, amount, title } = body;
   const cap = EARN_CAPS[kind];
   if (!cap) return json(request, { error: "Unknown reward kind." }, 400);
@@ -981,6 +1006,25 @@ const LEVEL_DEFAULTS = [
   { level: 3, name: 'Level 3', tagline: 'Higher limits, lower fees', dailyLimit: 100000, monthlyLimit: 1000000, loanLimit: 60000, depositRequired: 50000, feeDiscountPct: 10, requirement: 'KYC verified + 20 completed transactions', gradient: 'from-amber-500 to-yellow-600' },
   { level: 4, name: 'Level 4', tagline: 'Maximum limits, priority support', dailyLimit: 250000, monthlyLimit: 2500000, loanLimit: 100000, depositRequired: 200000, feeDiscountPct: 20, requirement: 'KYC verified + 50 transactions + admin review', gradient: 'from-violet-600 to-indigo-700' },
 ];
+
+async function handleAdminSetStatus(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
+  const target = String(body.userId || "");
+  const status = String(body.status || "");
+  if (!["active", "frozen", "suspended"].includes(status)) return json(request, { error: "Invalid status." }, 400);
+  const u = await getUserRow(db, target);
+  if (!u) return json(request, { error: "User not found." }, 404);
+  if (target === auth.uid && status !== "active") return json(request, { error: "You cannot freeze or suspend your own account." }, 400);
+  await db.prepare("UPDATE users SET status = ? WHERE id = ?").bind(status, target).run();
+  await auditLog(db, auth, "user." + status, target);
+  await notifyServer(db, target, "security",
+    status === "frozen" ? "❄️ Wallet frozen" : status === "suspended" ? "⛔ Account suspended" : "✅ Account reactivated",
+    status === "frozen" ? "Your wallet has been frozen by an admin. You cannot send, withdraw or trade until it is unfrozen. Contact support if this is unexpected."
+      : status === "suspended" ? "Your account has been suspended by an admin. All transactions are blocked. Contact support for help."
+      : "Your account is active again. All features are available.", null);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
 
 async function handleAdminSetLevel(request, env, auth, body) {
   const db = env.DB;
@@ -1430,6 +1474,7 @@ export default {
             case "/v1/admin/kyc/decide": return await handleAdminKycDecide(request, env, auth, body);
             case "/v1/admin/levels/decide": return await handleAdminLevelDecide(request, env, auth, body);
             case "/v1/admin/set-level": return await handleAdminSetLevel(request, env, auth, body);
+            case "/v1/admin/set-status": return await handleAdminSetStatus(request, env, auth, body);
             case "/v1/admin/levels/def": return await handleAdminLevelDef(request, env, auth, body);
             case "/v1/admin/news": return await handleAdminNewsSave(request, env, auth, body);
             case "/v1/admin/news/delete": return await handleAdminNewsDelete(request, env, auth, body);

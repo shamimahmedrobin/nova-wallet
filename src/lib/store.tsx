@@ -1158,9 +1158,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return null
     } catch (e: any) { return e.message }
   }
-  const setUserStatus: Ctx['setUserStatus'] = (userId2, status) => mutate(d => {
-    const u = d.users.find(x => x.id === userId2); if (u) { u.status = status; audit(d, 'admin', 'user.' + status, userId2) }
-  })
+  const setUserStatus: Ctx['setUserStatus'] = (userId2, status) => {
+    // Optimistic local mirror, then persist on the server so the status
+    // survives refresh and is enforced by the API.
+    mutate(d => {
+      const u = d.users.find(x => x.id === userId2); if (u) { u.status = status; audit(d, 'admin', 'user.' + status, userId2) }
+    })
+    const suid = serverUidOf(userId2); if (!suid) return
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/set-status', { userId: suid, status }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: 'Status change failed', body: e.message }) }
+    })()
+  }
   const adjustBalance: Ctx['adjustBalance'] = async (userId2, amount, title, note) => {
     const tUid = serverUidOf(userId2)
     if (!tUid) { toast({ kind: 'error', title: 'That user is not on the server yet.' }); return }
