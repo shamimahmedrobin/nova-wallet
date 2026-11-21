@@ -922,7 +922,10 @@ async function handleTicketReply(request, env, auth, body) {
   if (!text) return json(request, { error: "Message is empty." }, 400);
   const tk = await db.prepare("SELECT * FROM support_tickets WHERE id = ?").bind(ticketId).first();
   if (!tk) return json(request, { error: "Ticket not found." }, 404);
-  const asAdmin = auth.role === "admin" && tk.user_id !== auth.uid;
+  // A reply sent from the admin panel counts as a support reply even on
+  // the admin's OWN ticket (the client passes asAdmin); from the user app
+  // the same person replies as the customer.
+  const asAdmin = auth.role === "admin" && (tk.user_id !== auth.uid || body.asAdmin === true);
   if (!asAdmin && tk.user_id !== auth.uid) return json(request, { error: "Not your ticket." }, 403);
   if (asAdmin && !scopeAllowed(auth, ["support"])) return json(request, { error: "scope_denied" }, 403);
   if (tk.status === "resolved") return json(request, { error: "This chat is resolved and closed." }, 400);
@@ -931,7 +934,7 @@ async function handleTicketReply(request, env, auth, body) {
   await db.prepare("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP, status = ? WHERE id = ?")
     .bind(asAdmin && tk.status === "pending" ? "processing" : tk.status, ticketId).run();
   if (asAdmin) {
-    await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);
+    if (tk.user_id !== auth.uid) await notifyServer(db, tk.user_id, "support", "Support replied", "The support team replied to your chat: " + tk.subject, null);
     return json(request, { ok: true, overview: await loadOverview(db) });
   }
   await notifyAdminsServer(db, "support", "Support chat reply", "New reply in: " + tk.subject, "/admin?tab=support");

@@ -1271,7 +1271,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const replyTicket: Ctx['replyTicket'] = (ticketId, text, as) => {
     if (!user || !text.trim()) return
     void (async () => {
-      try { const r = await apiPost('/v1/tickets/reply', { ticketId, text: text.trim() }); applyMoneyResult(r) }
+      try { const r = await apiPost('/v1/tickets/reply', { ticketId, text: text.trim(), asAdmin: as === 'admin' }); applyMoneyResult(r) }
       catch {
         // Legacy local-only ticket (created before the server migration)
         // or a network failure: keep the conversation going locally.

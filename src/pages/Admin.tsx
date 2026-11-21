@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, BarChart3, Bell, Check, CheckCheck, ChevronDown, Copy, CreditCard, Download, LayoutDashboard, Megaphone, Menu, MessageCircle, Newspaper, Search, Send, Server, Settings as SettingsIcon, ShieldCheck, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
 import { apiGet } from '../lib/api'
@@ -47,6 +47,7 @@ export default function Admin() {
   // Users ▸ KYC Verification submenu (sidebar/drawer) + the user a KYC
   // badge click wants highlighted once the KYC tab opens.
   const [usersOpen, setUsersOpen] = useState(false)
+  const [systemOpen, setSystemOpen] = useState(false)
   const [kycFocus, setKycFocus] = useState<string | null>(null)
   useEffect(() => {
     if (tab !== 'kyc' || !kycFocus) return
@@ -56,6 +57,9 @@ export default function Admin() {
   // RBAC: a scoped admin only sees their tabs (the server enforces too).
   const myScope = user?.adminScope ?? 'full'
   const visibleTabs = TABS.filter(t => myScope === 'full' || (SCOPE_TABS[myScope] ?? []).includes(t.id))
+  // System submenu (sidebar/drawer): Audit Log, Reports & Export, System Health.
+  const systemTabs = visibleTabs.filter(t => ['audit', 'reports', 'health'].includes(t.id))
+  const systemOpenEff = systemOpen || systemTabs.some(t => t.id === tab)
   useEffect(() => { if (!visibleTabs.some(t => t.id === tab)) setTab('overview') }, [tab, myScope])
   // Phase 3 UI state: feature switches, broadcast composer, global
   // search and the System Health API probe.
@@ -226,7 +230,7 @@ export default function Admin() {
             <button onClick={() => setMenuOpen(false)} aria-label="Close menu" className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 lg:hidden"><X size={15} /></button>
           </div>
           <nav className="space-y-1">
-            {visibleTabs.filter(t => t.id !== 'kyc').map(t => {
+            {visibleTabs.filter(t => t.id !== 'kyc' && !['audit', 'reports', 'health'].includes(t.id)).map(t => {
               const kycVisible = t.id === 'users' && visibleTabs.some(x => x.id === 'kyc')
               const kycOpen = usersOpen || tab === 'kyc'
               const badgeCls = "min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center"
@@ -251,6 +255,21 @@ export default function Admin() {
                 </div>
               )
             })}
+            {systemTabs.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setSystemOpen(o => !o)} className={`flex-1 flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${systemTabs.some(t => t.id === tab) ? 'text-violet-600 dark:text-violet-300 bg-violet-50 dark:bg-violet-500/10' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
+                    <Server size={18} className="shrink-0" /> <span className="flex-1 text-left">System</span>
+                  </button>
+                  <button aria-label="Toggle System submenu" onClick={() => setSystemOpen(o => !o)} className={`p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-transform ${systemOpenEff ? 'rotate-180' : ''}`}><ChevronDown size={16} /></button>
+                </div>
+                {systemOpenEff && systemTabs.map(t => (
+                  <button key={t.id} onClick={() => { setTab(t.id); setMenuOpen(false) }} className={`w-full flex items-center gap-3 pl-11 pr-3.5 py-2.5 mt-0.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] ${tab === t.id ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}>
+                    <t.icon size={17} className="shrink-0" /> <span className="flex-1 text-left">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </nav>
           <div className="mt-auto pt-4">
             <div className="flex items-center gap-3 rounded-2xl bg-slate-100/80 dark:bg-slate-800/70 p-3">
