@@ -29,7 +29,7 @@ export default function Home() {
   const holdsCrypto = !!wEarly && Object.entries(wEarly.holdings).some(([s, a]) => s !== 'USDT' && a > 0)
   const { coins, loading, isLive } = useMarket(holdsCrypto ? 10_000 : 60_000)
   const [hide, setHide] = useState(false)
-  const [bd, setBd] = useState<null | 'available' | 'locked' | 'crypto'>(null)
+  const [bd, setBd] = useState<null | 'total' | 'available' | 'locked' | 'crypto'>(null)
   const [bannerIdx, setBannerIdx] = useState(0)
   const activeBanners = db.banners.filter(b => b.active)
   useEffect(() => {
@@ -56,13 +56,13 @@ export default function Home() {
         <div className="absolute -left-8 -bottom-14 w-44 h-44 rounded-full bg-fuchsia-500/20 blur-2xl" />
         <div className="relative">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/70 flex items-center gap-1.5"><Wallet size={13} /> {t('total_balance')}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/70 flex items-center gap-1.5"><Wallet size={13} /> {t('available')}</p>
             <button onClick={() => setHide(h => !h)} className="p-2 rounded-full bg-white/15">{hide ? <EyeOff size={16} /> : <Eye size={16} />}</button>
           </div>
-          <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '••••••' : fmtAmount(total)} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
-          <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSDT(total / db.settings.bdtPerUsd)}</p>
+          <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '••••••' : fmtAmount(Math.round(w.available + usdtBdt))} <span className="text-xl font-extrabold text-white/85 align-middle">{currency}</span></p>
+          <p className="text-white/70 text-sm">≈ {hide ? '••••' : fmtUSDT((w.available + usdtBdt) / db.settings.bdtPerUsd)}</p>
           <div className="grid grid-cols-3 gap-3 mt-5">
-            {[{ k: 'available' as const, l: t('available'), v: Math.round(w.available + usdtBdt), lock: false }, { k: 'locked' as const, l: t('locked'), v: w.locked, lock: true }, { k: 'crypto' as const, l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
+            {[{ k: 'total' as const, l: t('total_balance'), v: Math.round(total), lock: false }, { k: 'locked' as const, l: t('locked'), v: w.locked, lock: true }, { k: 'crypto' as const, l: t('in_crypto'), v: Math.round(cryptoBdt), lock: false }].map(x => (
               <button key={x.l} onClick={() => setBd(x.k)} className="rounded-2xl bg-white/12 backdrop-blur px-3 py-2.5 min-w-0 text-left active:scale-[.97] transition hover:bg-white/20">
                 <p className="text-[11px] text-white/70 flex items-center gap-1">{x.lock && <Lock size={10} />}{x.l}<ChevronRight size={10} className="ml-auto opacity-70" /></p>
                 <p className="font-bold text-[15px] truncate">{hide ? '••••' : fmtUSDT(x.v / db.settings.bdtPerUsd)}</p>
@@ -153,7 +153,16 @@ export default function Home() {
       </Card>
 
       {/* Balance breakdown — where each part of the balance actually sits */}
-      <Modal open={bd !== null} onClose={() => setBd(null)} title={bd === 'available' ? t('available') : bd === 'locked' ? t('locked') : t('in_crypto')}>
+      <Modal open={bd !== null} onClose={() => setBd(null)} title={bd === 'total' ? t('total_balance') : bd === 'available' ? t('available') : bd === 'locked' ? t('locked') : t('in_crypto')}>
+        {bd === 'total' && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">💵 Cash balance</span><span className="font-extrabold">{fmtMoney(w.available)}</span></div>
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">₮ USDT holding</span><span className="font-extrabold">{fmtMoney(Math.round(usdtBdt))}</span></div>
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">🔒 Locked</span><span className="font-extrabold">{fmtMoney(w.locked)}</span></div>
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">🪙 Crypto value</span><span className="font-extrabold">{fmtMoney(Math.round(cryptoBdt))}</span></div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1"><span className="font-extrabold text-sm">Total balance</span><span className="font-extrabold text-violet-600">{fmtMoney(Math.round(total))}</span></div>
+          </div>
+        )}
         {bd === 'available' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">💵 Cash balance</span><span className="font-extrabold">{fmtMoney(w.available)}</span></div>
@@ -165,7 +174,8 @@ export default function Home() {
         {bd === 'locked' && (() => {
           const stakes = db.stakes.filter(st => st.userId === user.id && st.status === 'active')
           const pendWd = db.withdrawals.filter(x => x.userId === user.id && x.status === 'pending')
-          const explained = stakes.reduce((a, st) => a + st.amount, 0) + pendWd.reduce((a, x) => a + x.amount, 0)
+          const heldTxs = db.txs.filter(t => t.userId === user.id && t.status === 'held')
+          const explained = stakes.reduce((a, st) => a + st.amount, 0) + pendWd.reduce((a, x) => a + x.amount, 0) + heldTxs.reduce((a, t) => a + Math.abs(t.amount), 0)
           const other = Math.round(w.locked - explained)
           return (
             <div className="space-y-2">
@@ -174,6 +184,9 @@ export default function Home() {
               ))}
               {pendWd.map(x => (
                 <div key={x.id} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><span className="font-semibold text-sm">⏳ Cash Out pending <span className="block text-xs font-semibold text-slate-400">{x.method} · waiting for admin approval</span></span><span className="font-extrabold">{fmtMoney(x.amount)}</span></div>
+              ))}
+              {heldTxs.map(t => (
+                <div key={t.id} className="flex items-center justify-between gap-3 rounded-2xl bg-violet-50 dark:bg-violet-500/10 px-4 py-3"><span className="font-semibold text-sm">⏸ {t.title} <span className="block text-xs font-semibold text-slate-400">{t.id} · on hold by the NovaWallet team</span></span><span className="font-extrabold">{fmtMoney(Math.abs(t.amount))}</span></div>
               ))}
               {other > 0 && <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 px-4 py-3"><div className="flex items-center justify-between gap-3"><span className="font-semibold text-sm">🔒 Other holds</span><span className="font-extrabold">{fmtMoney(other)}</span></div><p className="text-[11px] text-slate-400 mt-1">Locked funds not tied to a stake or a pending cash out — e.g. a platform or security hold. Message Support if you need this released.</p></div>}
               {w.locked === 0 && <p className="text-sm text-slate-500 text-center py-3">Nothing is locked right now. Money you stake or cash out is held here until it's released.</p>}

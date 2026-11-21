@@ -848,16 +848,16 @@ export default function Admin() {
                   </div>
                 </div>
                 <div className="mt-3.5 rounded-2xl bg-black/25 px-3.5 py-2.5 flex items-end justify-between gap-3">
-                  <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Available balance</p><p className="font-extrabold text-xl leading-tight truncate">{usdt(sw?.available ?? 0)}</p></div>
+                  <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Total balance · incl. locked + crypto</p><p className="font-extrabold text-xl leading-tight truncate">{usdt(totalWealth)}</p></div>
                   <p className="text-[11px] font-semibold text-white/60 text-right shrink-0">Joined<br /><span className="text-white/85">{fmtDateTime(selUser.createdAt)}</span></p>
                 </div>
               </div>
               {/* Balance cards */}
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5"><Wallet size={13} /> Total balance</p>
-                  <p className="font-extrabold text-lg mt-1">{usdt(totalWealth)}</p>
-                  <p className="text-[11px] text-slate-400 font-semibold">Incl. locked + crypto value</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5"><Wallet size={13} /> Available cash</p>
+                  <p className="font-extrabold text-lg mt-1">{usdt(sw?.available ?? 0)}</p>
+                  <p className="text-[11px] text-slate-400 font-semibold">Spendable right now</p>
                 </div>
                 <div className={`rounded-3xl border p-3.5 ${(sw?.locked ?? 0) > 0 ? 'border-violet-300/70 dark:border-violet-500/30 bg-violet-50/70 dark:bg-violet-500/5' : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900'}`}>
                   <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5"><Lock size={13} /> Locked</p>

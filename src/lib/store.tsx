@@ -323,7 +323,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // admins additionally replace every financial slice from the overview.
   const stubFrom = (su: any): User => ({
     id: su.id, fbUid: su.id, stub: true, name: su.name || su.username, username: su.username, email: su.email,
-    phone: '', passwordHash: '', pinHash: '', role: su.role, status: su.status, kyc: su.kyc ?? 'unverified',
+    phone: su.phone ?? '', passwordHash: '', pinHash: '', role: su.role, status: su.status, kyc: su.kyc ?? 'unverified',
     ...(su.kycDocType ? { kycDocType: su.kycDocType, kycDocNumber: su.kycDocNumber, kycSubmittedAt: su.kycSubmittedAt } : {}),
     ...(su.adminScope ? { adminScope: su.adminScope } : {}),
     referralCode: su.referralCode || '', referredBy: null, twoFA: false, level: su.level || 1, language: 'en',
@@ -347,6 +347,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // on the server after first sight. (Real records occur when the
         // account was created on this very device — gating the refresh
         // on stubs left those frozen at their registration-time values.)
+        if (su.phone !== undefined) existing.phone = su.phone
         existing.kyc = su.kyc ?? existing.kyc
         existing.level = su.level ?? existing.level
         existing.status = su.status ?? existing.status
@@ -420,6 +421,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (state.profile.adminScope) lu.adminScope = state.profile.adminScope
       if (state.profile.kyc) lu.kyc = state.profile.kyc
       if (state.profile.kycDocType) { lu.kycDocType = state.profile.kycDocType; lu.kycDocNumber = state.profile.kycDocNumber; lu.kycSubmittedAt = state.profile.kycSubmittedAt }
+      if (state.profile.phone !== undefined) lu.phone = state.profile.phone
+      if (state.profile.photo) lu.photo = state.profile.photo
       if (!lu.fbUid) lu.fbUid = state.profile.id
     }
     // Own linked payment methods are server-authoritative. One-time
@@ -1264,7 +1267,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { const r = await apiPost('/v1/admin/clear-locked', { userId: tUid }); applyMoneyResult(r) }
     catch (e: any) { toast({ kind: 'error', title: e.message }) }
   }
-  const updateProfile: Ctx['updateProfile'] = (p) => { if (user) mutate(d => { Object.assign(d.users.find(u => u.id === user.id)!, p) }) }
+  const updateProfile: Ctx['updateProfile'] = (p) => {
+    if (!user) return
+    mutate(d => { Object.assign(d.users.find(u => u.id === user.id)!, p) })
+    // Name / phone / photo persist to the server — a local-only edit was
+    // wiped by the next server pull and never reached the admin's view.
+    if (p.name !== undefined || p.phone !== undefined || p.photo !== undefined) {
+      void (async () => {
+        try { const r = await apiPost('/v1/profile/update', { fullName: p.name, phone: p.phone, photo: p.photo }); applyMoneyResult(r) }
+        catch (e: any) { toast({ kind: 'error', title: 'Profile save failed', body: e.message }) }
+      })()
+    }
+  }
   const changePassword: Ctx['changePassword'] = (oldPw, newPw) => {
     if (!user) return 'Not signed in'
     const lk = lockError(user.id); if (lk) return lk

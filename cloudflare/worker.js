@@ -163,7 +163,7 @@ async function feeDiscount(db, level) {
 
 async function getUserRow(db, uid) {
   return db.prepare(
-    `SELECT u.*, p.full_name FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id WHERE u.id = ?`
+    `SELECT u.*, p.full_name, p.avatar_url FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id WHERE u.id = ?`
   ).bind(uid).first();
 }
 
@@ -246,6 +246,7 @@ async function loadState(db, uid, lite = false) {
   const state = {
     profile: {
       id: me.id, email: me.email, username: me.username, name: me.full_name || "",
+      phone: me.phone || "", ...(me.avatar_url ? { photo: me.avatar_url } : {}),
       role: me.role, status: me.status, level: Number(me.level), referralCode: me.referral_code,
       ...(me.admin_scope ? { adminScope: me.admin_scope } : {}),
       kyc: kycRow?.status ?? "unverified",
@@ -295,9 +296,9 @@ async function loadState(db, uid, lite = false) {
   return state;
 }
 
-async function loadDirectory(db) {
+async function loadDirectory(db, includePhone = false) {
   const rows = await db.prepare(
-    `SELECT u.id, u.email, u.username, u.role, u.status, u.level, u.referral_code, u.admin_scope, u.created_at, p.full_name,
+    `SELECT u.id, u.email, u.username, u.phone, u.role, u.status, u.level, u.referral_code, u.admin_scope, u.created_at, p.full_name,
        (SELECT status FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_status,
        (SELECT doc_type FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_doc_type,
        (SELECT doc_number FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_doc_number,
@@ -306,6 +307,7 @@ async function loadDirectory(db) {
   ).all();
   return rows.results.map((u) => ({
     id: u.id, email: u.email, username: u.username, name: u.full_name || "",
+    ...(includePhone ? { phone: u.phone || "" } : {}),
     role: u.role, status: u.status, level: Number(u.level), referralCode: u.referral_code,
     ...(u.admin_scope ? { adminScope: u.admin_scope } : {}),
     createdAt: isoOf(u.created_at),
@@ -315,7 +317,7 @@ async function loadDirectory(db) {
 }
 
 async function loadOverview(db) {
-  const users = await loadDirectory(db);
+  const users = await loadDirectory(db, true);
   const wallets = {}, transactions = [], deposits = [], withdrawals = [], loans = [], stakes = [];
   for (const u of users) {
     const st = await loadState(db, u.id, true);
@@ -343,8 +345,17 @@ async function loadOverview(db) {
 
 async function handleBootstrap(request, env, auth) {
   const db = env.DB;
+  let body = {};
+  try { body = await request.json(); } catch { /* empty body */ }
   const existing = await getUserRow(db, auth.uid);
   if (existing) {
+    // Self-heal: a phone supplied at registration / sign-in that never
+    // landed in D1 (or changed on this device) is written through, so the
+    // profile and the admin's user list show the real number.
+    const ph = body.phone ? String(body.phone).trim() : "";
+    if (ph && ph !== (existing.phone || "")) {
+      try { await db.prepare("UPDATE users SET phone = ? WHERE id = ?").bind(ph, auth.uid).run(); } catch { /* best effort */ }
+    }
     return json(request, {
       ok: true,
       created: false,
@@ -354,8 +365,6 @@ async function handleBootstrap(request, env, auth) {
   if (await featureOff(db, "registration")) {
     return json(request, { error: "New registrations are temporarily closed. Please try again later." }, 403);
   }
-  let body = {};
-  try { body = await request.json(); } catch { /* empty body */ }
   const username = String(body.username || "").trim().toLowerCase();
   const fullName = String(body.fullName || "").trim();
   const pinHash = String(body.pinHash || "");
@@ -949,6 +958,30 @@ async function handlePayMethodSave(request, env, auth, body) {
 async function handlePayMethodDelete(request, env, auth, body) {
   const db = env.DB;
   await db.prepare("DELETE FROM user_payment_methods WHERE id = ? AND user_id = ?").bind(String(body.id || ""), auth.uid).run();
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+// Profile edits (name / phone / photo) persist server-side — they used to
+// be local-only, so a refresh or another device silently lost them and the
+// admin never saw the phone number.
+async function handleProfileUpdate(request, env, auth, body) {
+  const db = env.DB;
+  const me = await getUserRow(db, auth.uid);
+  if (!me) return json(request, { error: "Account not found." }, 404);
+  const stmts = [];
+  if (typeof body.phone === "string") {
+    const ph = body.phone.trim().slice(0, 32);
+    stmts.push(db.prepare("UPDATE users SET phone = ? WHERE id = ?").bind(ph || null, auth.uid));
+  }
+  if (typeof body.fullName === "string" && body.fullName.trim()) {
+    stmts.push(db.prepare("UPDATE user_profiles SET full_name = ? WHERE user_id = ?").bind(body.fullName.trim().slice(0, 80), auth.uid));
+  }
+  if (body.photo === null || (typeof body.photo === "string" && body.photo.startsWith("data:image/") && body.photo.length <= 900000)) {
+    stmts.push(db.prepare("UPDATE user_profiles SET avatar_url = ? WHERE user_id = ?").bind(body.photo, auth.uid));
+  }
+  if (stmts.length) {
+    try { await db.batch(stmts); } catch (e) { return json(request, { error: "Profile save failed: " + String(e?.message || e) }, 500); }
+  }
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
@@ -1571,7 +1604,7 @@ export default {
         return json(request, { ok: true, state });
       }
       if (path === "/v1/directory" && request.method === "GET") {
-        return json(request, { ok: true, users: await loadDirectory(env.DB) });
+        return json(request, { ok: true, users: await loadDirectory(env.DB, auth.role === "admin") });
       }
       if (path === "/v1/admin/overview" && request.method === "GET") {
         if (auth.role !== "admin") return json(request, { error: "admin_only" }, 403);
@@ -1604,6 +1637,7 @@ export default {
           case "/v1/kyc/submit": return await handleKycSubmit(request, env, auth, body);
           case "/v1/paymethods/save": return await handlePayMethodSave(request, env, auth, body);
           case "/v1/paymethods/delete": return await handlePayMethodDelete(request, env, auth, body);
+          case "/v1/profile/update": return await handleProfileUpdate(request, env, auth, body);
           case "/v1/tickets": return await handleTicketCreate(request, env, auth, body);
           case "/v1/tickets/reply": return await handleTicketReply(request, env, auth, body);
           case "/v1/tickets/resolve": return await handleTicketResolve(request, env, auth, body);
