@@ -1020,6 +1020,10 @@ function SupportChat() {
   const [sel, setSel] = useState<string | null>(null)
   const [text, setText] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const scrollRefDesk = useRef<HTMLDivElement | null>(null)
+  // Desktop shows the open chat beside the list; phones keep the modal.
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches)
+  useEffect(() => { const mq = window.matchMedia('(min-width: 1024px)'); const fn = () => setIsDesktop(mq.matches); mq.addEventListener('change', fn); return () => mq.removeEventListener('change', fn) }, [])
   const userOf = (id: string) => db.users.find(u => u.id === id)
   const list = db.tickets.filter(tk => {
     const u = userOf(tk.userId)
@@ -1027,11 +1031,44 @@ function SupportChat() {
     return (filter === 'all' || tk.status === filter) && hay.includes(q.trim().toLowerCase())
   }).slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   const tk = sel ? db.tickets.find(x => x.id === sel) : undefined
-  useEffect(() => { if (tk && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight })
+  useEffect(() => { for (const r of [scrollRef, scrollRefDesk]) if (r.current) r.current.scrollTop = r.current.scrollHeight })
   const send = () => { if (tk && text.trim()) { replyTicket(tk.id, text, 'admin'); setText('') } }
   const tku = tk ? userOf(tk.userId) : undefined
+  // One thread renderer, two homes: a tall side pane on desktop, the
+  // modal on phones. It reads the ticket live from the store, so new
+  // messages appear while the chat stays open.
+  const thread = (ref: React.RefObject<HTMLDivElement | null>, fill: boolean) => tk && (
+    <div className={fill ? 'flex flex-col h-full p-4' : ''}>
+      <div className="flex items-center gap-3 flex-wrap mb-4 shrink-0">
+        <Avatar name={tku?.name ?? '?'} photo={tku?.photo} />
+        <div className="flex-1 min-w-0"><p className="font-extrabold truncate">{tku?.name}</p><p className="text-xs text-slate-400 truncate">@{tku?.username} · {tku?.email}</p></div>
+        <Badge tone={SUP_TONE(tk.status)}>{tk.status}</Badge>
+        {tk.status !== 'resolved' && <Btn className="!py-2 !text-xs !bg-emerald-500" onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }}>✓ Mark Resolved</Btn>}
+      </div>
+      <div ref={ref} className={`${fill ? 'flex-1 min-h-0' : 'h-[46vh]'} overflow-y-auto rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 space-y-2.5 mb-3`}>
+        {tk.messages.map(m => (
+          <div key={m.id} className={`flex ${m.from === 'admin' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'admin' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
+              {m.from === 'user' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{tku?.name}</p>}
+              <p className="whitespace-pre-wrap break-words">{m.text}</p>
+              <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      {tk.status === 'resolved' ? (
+        <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3 shrink-0">This chat is resolved and closed. The customer must open a new chat for further help.</p>
+      ) : (
+        <div className="flex gap-2 shrink-0">
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send() }} placeholder="Type your reply… (first reply: Pending → Processing)" className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
+          <Btn className="!px-5 shrink-0" onClick={send}>Send</Btn>
+        </div>
+      )}
+    </div>
+  )
   return (
-    <div>
+    <div className="lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:gap-4 lg:items-start">
+      <div>
       <div className="flex flex-col gap-3 mb-4">
         <Input placeholder="Search by username or email…" value={q} onChange={e => setQ(e.target.value)} />
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -1040,7 +1077,7 @@ function SupportChat() {
           ))}
         </div>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-2 lg:max-h-[calc(100vh-270px)] lg:overflow-y-auto lg:pr-1">
         {list.length === 0 ? <Card><Empty title="No support chats" body="Nothing matches this search or filter." /></Card> : list.map(x => {
           const u = userOf(x.userId); const last = x.messages[x.messages.length - 1]
           return (
@@ -1060,37 +1097,19 @@ function SupportChat() {
           )
         })}
       </div>
-      <Modal open={!!tk} onClose={() => { setSel(null); setText('') }} title={tk?.subject ?? 'Support chat'}>
-        {tk && (
-          <div>
-            <div className="flex items-center gap-3 flex-wrap mb-4">
-              <Avatar name={tku?.name ?? '?'} photo={tku?.photo} />
-              <div className="flex-1 min-w-0"><p className="font-extrabold truncate">{tku?.name}</p><p className="text-xs text-slate-400 truncate">@{tku?.username} · {tku?.email}</p></div>
-              <Badge tone={SUP_TONE(tk.status)}>{tk.status}</Badge>
-              {tk.status !== 'resolved' && <Btn className="!py-2 !text-xs !bg-emerald-500" onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }}>✓ Mark Resolved</Btn>}
-            </div>
-            <div ref={scrollRef} className="h-[46vh] overflow-y-auto rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 space-y-2.5 mb-3">
-              {tk.messages.map(m => (
-                <div key={m.id} className={`flex ${m.from === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm ${m.from === 'admin' ? 'bg-violet-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/60 rounded-bl-md'}`}>
-                    {m.from === 'user' && <p className="text-[10px] font-extrabold text-violet-500 mb-0.5">{tku?.name}</p>}
-                    <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                    <p className={`text-[10px] mt-1 ${m.from === 'admin' ? 'text-violet-200' : 'text-slate-400'}`}>{fmtDateTime(m.at)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {tk.status === 'resolved' ? (
-              <p className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3">This chat is resolved and closed. The customer must open a new chat for further help.</p>
-            ) : (
-              <div className="flex gap-2">
-                <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send() }} placeholder="Type your reply… (first reply: Pending → Processing)" className="flex-1 min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-medium outline-none focus:border-violet-400" />
-                <Btn className="!px-5 shrink-0" onClick={send}>Send</Btn>
-              </div>
-            )}
-          </div>
+      </div>
+      <div className="hidden lg:block">
+        {tk ? (
+          <Card className="p-0 overflow-hidden"><div className="h-[calc(100vh-220px)] min-h-[520px]">{thread(scrollRefDesk, true)}</div></Card>
+        ) : (
+          <Card className="p-0 overflow-hidden"><div className="h-[calc(100vh-220px)] min-h-[520px] flex items-center justify-center p-6"><Empty title="No chat selected" body="Pick a conversation from the list — it opens here and updates live while you keep it open." /></div></Card>
         )}
-      </Modal>
+      </div>
+      {!isDesktop && (
+        <Modal open={!!tk} onClose={() => { setSel(null); setText('') }} title={tk?.subject ?? 'Support chat'}>
+          {thread(scrollRef, false)}
+        </Modal>
+      )}
     </div>
   )
 }

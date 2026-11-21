@@ -841,6 +841,7 @@ async function loadContent(db) {
     banners: bannerRows.results.map((b) => ({
       id: b.id, title: b.title, subtitle: b.subtitle, gradient: b.gradient, active: !!b.is_active,
     })),
+    levels: await getSettingKey(db, "levels", null),
   };
 }
 
@@ -970,6 +971,47 @@ async function handleLevelRequest(request, env, auth, body) {
     .bind(id, auth.uid, cur, toLevel).run();
   await notifyAdminsServer(db, "upgrade", "⬆️ Level upgrade request", (me.username || "A user") + " requested Level " + toLevel + " — review it in Levels.", "/admin?tab=levels");
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+// Level definitions live in platform_settings ('levels') so admin edits
+// persist server-side and reach every device; mirrors the app seed.
+const LEVEL_DEFAULTS = [
+  { level: 1, name: 'Level 1', tagline: 'Start your wallet journey', dailyLimit: 25000, monthlyLimit: 200000, loanLimit: 10000, depositRequired: 0, feeDiscountPct: 0, requirement: 'Default for every new account', gradient: 'from-slate-500 to-slate-700' },
+  { level: 2, name: 'Level 2', tagline: 'For verified everyday users', dailyLimit: 50000, monthlyLimit: 500000, loanLimit: 30000, depositRequired: 10000, feeDiscountPct: 5, requirement: 'KYC verified', gradient: 'from-slate-400 to-slate-600' },
+  { level: 3, name: 'Level 3', tagline: 'Higher limits, lower fees', dailyLimit: 100000, monthlyLimit: 1000000, loanLimit: 60000, depositRequired: 50000, feeDiscountPct: 10, requirement: 'KYC verified + 20 completed transactions', gradient: 'from-amber-500 to-yellow-600' },
+  { level: 4, name: 'Level 4', tagline: 'Maximum limits, priority support', dailyLimit: 250000, monthlyLimit: 2500000, loanLimit: 100000, depositRequired: 200000, feeDiscountPct: 20, requirement: 'KYC verified + 50 transactions + admin review', gradient: 'from-violet-600 to-indigo-700' },
+];
+
+async function handleAdminSetLevel(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
+  const target = String(body.userId || "");
+  const level = Math.round(Number(body.level));
+  if (!(level >= 1 && level <= 4)) return json(request, { error: "Level must be between 1 and 4." }, 400);
+  const u = await getUserRow(db, target);
+  if (!u) return json(request, { error: "User not found." }, 404);
+  await db.prepare("UPDATE users SET level = ? WHERE id = ?").bind(level, target).run();
+  await auditLog(db, auth, "level.set", target + " → Level " + level);
+  await notifyServer(db, target, "security", "Account level changed", "An admin set your account to Level " + level + ".", null);
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
+async function handleAdminLevelDef(request, env, auth, body) {
+  const db = env.DB;
+  if (!scopeAllowed(auth, ["finance"])) return json(request, { error: "scope_denied" }, 403);
+  const level = Math.round(Number(body.level));
+  const patch = body.patch || {};
+  const defs = await getSettingKey(db, "levels", null) || LEVEL_DEFAULTS.slice();
+  const def = defs.find((x) => x.level === level);
+  if (!def) return json(request, { error: "Level not found." }, 404);
+  for (const k of ["name", "tagline", "requirement", "gradient"]) if (typeof patch[k] === "string") def[k] = patch[k].slice(0, 200);
+  for (const k of ["dailyLimit", "monthlyLimit", "loanLimit", "depositRequired", "feeDiscountPct"]) if (typeof patch[k] === "number" && isFinite(patch[k])) def[k] = Math.max(0, Math.round(patch[k]));
+  await setSettingKey(db, "levels", defs);
+  if (typeof patch.feeDiscountPct === "number") {
+    await db.prepare("UPDATE account_levels SET fee_discount_pct = ? WHERE level = ?").bind(def.feeDiscountPct, level).run();
+  }
+  await auditLog(db, auth, "level.update", "Level " + level + " definition updated");
+  return json(request, { ok: true, overview: await loadOverview(db) });
 }
 
 async function handleAdminLevelDecide(request, env, auth, body) {
@@ -1387,6 +1429,8 @@ export default {
             case "/v1/admin/clear-locked": return await handleAdminClearLocked(request, env, auth, body);
             case "/v1/admin/kyc/decide": return await handleAdminKycDecide(request, env, auth, body);
             case "/v1/admin/levels/decide": return await handleAdminLevelDecide(request, env, auth, body);
+            case "/v1/admin/set-level": return await handleAdminSetLevel(request, env, auth, body);
+            case "/v1/admin/levels/def": return await handleAdminLevelDef(request, env, auth, body);
             case "/v1/admin/news": return await handleAdminNewsSave(request, env, auth, body);
             case "/v1/admin/news/delete": return await handleAdminNewsDelete(request, env, auth, body);
             case "/v1/admin/banners/toggle": return await handleAdminBannerToggle(request, env, auth, body);

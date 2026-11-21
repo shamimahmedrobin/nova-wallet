@@ -424,6 +424,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       d.settings = { ...d.settings, ...state.content.settings }
       d.news = state.content.news
       d.banners = state.content.banners
+      if (Array.isArray(state.content.levels) && state.content.levels.length) d.levels = state.content.levels
     }
     if (state.tickets) {
       const serverIds = new Set(state.tickets.map((t: any) => t.id))
@@ -466,6 +467,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       d.settings = { ...d.settings, ...ov.content.settings }
       d.news = ov.content.news
       d.banners = ov.content.banners
+      if (Array.isArray(ov.content.levels) && ov.content.levels.length) d.levels = ov.content.levels
     }
     if (ov.tickets) {
       const serverIds = new Set(ov.tickets.map((t: any) => t.id))
@@ -1270,17 +1272,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   const replyTicket: Ctx['replyTicket'] = (ticketId, text, as) => {
     if (!user || !text.trim()) return
+    // Optimistic append: the bubble shows instantly in the open chat; the
+    // server response then replaces the thread wholesale with the real row.
+    const tempId = uid('MSG')
+    mutate(d => {
+      const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
+      tk.messages.push({ id: tempId, from: as, text: text.trim(), at: nowISO() })
+      tk.updatedAt = nowISO()
+      if (as === 'admin' && tk.status === 'pending') tk.status = 'processing'
+    })
     void (async () => {
       try { const r = await apiPost('/v1/tickets/reply', { ticketId, text: text.trim(), asAdmin: as === 'admin' }); applyMoneyResult(r) }
-      catch {
-        // Legacy local-only ticket (created before the server migration)
-        // or a network failure: keep the conversation going locally.
+      catch (e: any) {
         mutate(d => {
-          const tk = d.tickets.find(x => x.id === ticketId); if (!tk || tk.status === 'resolved') return
-          tk.messages.push({ id: uid('MSG'), from: as, text: text.trim(), at: nowISO() })
-          tk.updatedAt = nowISO()
-          if (as === 'admin' && tk.status === 'pending') tk.status = 'processing'
+          const tk = d.tickets.find(x => x.id === ticketId); if (!tk) return
+          tk.messages = tk.messages.filter(m => m.id !== tempId)
         })
+        toast({ kind: 'error', title: 'Message not sent', body: e.message })
       }
     })()
   }
@@ -1333,15 +1341,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       catch (e: any) { toast({ kind: 'error', title: e.message }) }
     })()
   }
-  const updateLevelDef: Ctx['updateLevelDef'] = (level, patch) => mutate(d => {
-    const def = d.levels.find(x => x.level === level); if (!def) return
+  const updateLevelDef: Ctx['updateLevelDef'] = (level, patch) => {
     const clean = { ...patch }
-    ;(['dailyLimit', 'monthlyLimit', 'loanLimit', 'depositRequired'] as const).forEach(k => { if (typeof clean[k] === 'number') clean[k] = Math.round(clean[k]) })
-    Object.assign(def, clean); audit(d, 'admin', 'level.update', 'Level ' + level)
-  })
-  const setUserLevel: Ctx['setUserLevel'] = (userId2, level) => mutate(d => {
-    const u = d.users.find(x => x.id === userId2); if (u) { u.level = level; audit(d, 'admin', 'level.set', `${userId2} → Level ${level}`); notify(d, userId2, 'Account level changed', 'An admin set your account to Level ' + level + '.', 'security') }
-  })
+    ;(['dailyLimit', 'monthlyLimit', 'loanLimit', 'depositRequired', 'feeDiscountPct'] as const).forEach(k => { if (typeof clean[k] === 'number') clean[k] = Math.round(clean[k] as number) })
+    // Optimistic local mirror, then persist on the server so the edit
+    // survives refresh and reaches every device.
+    mutate(d => {
+      const def = d.levels.find(x => x.level === level); if (!def) return
+      Object.assign(def, clean); audit(d, 'admin', 'level.update', 'Level ' + level)
+    })
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/levels/def', { level, patch: clean }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: 'Level save failed', body: e.message }) }
+    })()
+  }
+  const setUserLevel: Ctx['setUserLevel'] = (userId2, level) => {
+    mutate(d => {
+      const u = d.users.find(x => x.id === userId2); if (u) { u.level = level; audit(d, 'admin', 'level.set', `${userId2} → Level ${level}`); notify(d, userId2, 'Account level changed', 'An admin set your account to Level ' + level + '.', 'security') }
+    })
+    const suid = serverUidOf(userId2); if (!suid) return
+    void (async () => {
+      try { const r = await apiPost('/v1/admin/set-level', { userId: suid, level }); applyMoneyResult(r) }
+      catch (e: any) { toast({ kind: 'error', title: 'Level change failed', body: e.message }) }
+    })()
+  }
   const setUserLoanLimit: Ctx['setUserLoanLimit'] = (userId2, bdt) => mutate(d => {
     const u = d.users.find(x => x.id === userId2); if (!u) return
     if (bdt === null) delete u.loanLimitOverride; else u.loanLimitOverride = bdt
