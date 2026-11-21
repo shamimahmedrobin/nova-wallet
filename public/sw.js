@@ -1,7 +1,7 @@
 // NovaWallet service worker — enables app install + fast repeat loads.
 // Strategy: navigations are network-first (a new deploy is never masked by a
 // stale page), hashed /assets/ files are cache-first (they are immutable).
-const CACHE = 'novawallet-pwa-v8'
+const CACHE = 'novawallet-pwa-v9'
 const INDEX = new URL('index.html', self.registration.scope)
 
 self.addEventListener('install', () => self.skipWaiting())

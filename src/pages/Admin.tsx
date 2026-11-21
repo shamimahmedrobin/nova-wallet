@@ -1154,15 +1154,15 @@ function SupportChat() {
   // messages appear while the chat stays open.
   const thread = (ref: React.RefObject<HTMLDivElement | null>, fill: boolean) => tk && (
     <div className={fill ? 'flex flex-col h-full p-4' : ''}>
-      <div className="flex items-center gap-3 flex-wrap mb-4 shrink-0">
+      <div className="flex items-center gap-2.5 flex-wrap mb-4 shrink-0">
         <Avatar name={tku?.name ?? '?'} photo={tku?.photo} />
         <div className="flex-1 min-w-0"><p className="font-extrabold truncate">{tku?.name}</p><p className="text-xs text-slate-400 truncate">@{tku?.username} · {tku?.email}</p></div>
         <Badge tone={SUP_TONE(tk.status)}>{tk.status}</Badge>
-        {tk.status !== 'resolved' && <Btn className="!py-2 !text-xs !bg-emerald-500" onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }}>✓ Mark Resolved</Btn>}
+        {tk.status !== 'resolved' && <button onClick={() => { resolveTicket(tk.id); toast({ kind: 'success', title: 'Chat resolved & closed' }) }} title="Mark resolved" className="inline-flex items-center justify-center shrink-0 rounded-full px-3.5 py-2.5 text-white bg-emerald-500 hover:bg-emerald-400 active:scale-[.98] transition"><Check size={16} strokeWidth={3} /></button>}
         {delChatArm ? (
-          <button onClick={() => { deleteTicket(tk.id); setSel(null); setDelChatArm(false); toast({ kind: 'success', title: 'Chat deleted', body: 'The whole conversation was removed.' }) }} title="Tap again to delete this chat" className="inline-flex items-center justify-center rounded-2xl px-3.5 py-2 text-white bg-rose-600 hover:bg-rose-500 active:scale-[.98] transition"><Check size={15} strokeWidth={3} /></button>
+          <button onClick={() => { deleteTicket(tk.id); setSel(null); setDelChatArm(false); toast({ kind: 'success', title: 'Chat deleted', body: 'The whole conversation was removed.' }) }} title="Tap again to delete this chat" className="inline-flex items-center justify-center shrink-0 rounded-full px-3.5 py-2.5 text-white bg-rose-600 hover:bg-rose-500 active:scale-[.98] transition"><Check size={16} strokeWidth={3} /></button>
         ) : (
-          <button onClick={() => setDelChatArm(true)} title="Delete this chat" className="inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold text-rose-600 border border-rose-200 dark:border-rose-500/40 hover:bg-rose-50 dark:hover:bg-rose-500/10 active:scale-[.98] transition"><Trash2 size={13} /> Delete</button>
+          <button onClick={() => setDelChatArm(true)} title="Delete this chat" className="inline-flex items-center justify-center shrink-0 rounded-full px-3.5 py-2.5 text-rose-500 border border-rose-300/60 dark:border-rose-500/40 hover:bg-rose-50 dark:hover:bg-rose-500/10 active:scale-[.98] transition"><Trash2 size={15} /></button>
         )}
       </div>
       <div ref={ref} className={`${fill ? 'flex-1 min-h-0' : 'h-[46vh]'} overflow-y-auto rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 space-y-2.5 mb-3`}>
