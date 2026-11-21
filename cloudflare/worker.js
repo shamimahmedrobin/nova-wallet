@@ -241,10 +241,13 @@ async function loadState(db, uid) {
   const wdrRows = await db.prepare("SELECT * FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all();
   const loanRows = await db.prepare("SELECT * FROM loans WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all();
   const stkRows = await db.prepare("SELECT * FROM stakes WHERE user_id = ? ORDER BY created_at DESC").bind(uid).all();
+  const kycRow = await db.prepare("SELECT status, doc_type, doc_number, created_at FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(uid).first();
   return {
     profile: {
       id: me.id, email: me.email, username: me.username, name: me.full_name || "",
       role: me.role, status: me.status, level: Number(me.level), referralCode: me.referral_code,
+      kyc: kycRow?.status ?? "unverified",
+      ...(kycRow ? { kycDocType: kycRow.doc_type, kycDocNumber: kycRow.doc_number, kycSubmittedAt: isoOf(kycRow.created_at) } : {}),
     },
     wallet: {
       userId: uid,
@@ -281,13 +284,19 @@ async function loadState(db, uid) {
 
 async function loadDirectory(db) {
   const rows = await db.prepare(
-    `SELECT u.id, u.email, u.username, u.role, u.status, u.level, u.referral_code, u.created_at, p.full_name
+    `SELECT u.id, u.email, u.username, u.role, u.status, u.level, u.referral_code, u.created_at, p.full_name,
+       (SELECT status FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_status,
+       (SELECT doc_type FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_doc_type,
+       (SELECT doc_number FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_doc_number,
+       (SELECT created_at FROM kyc_submissions WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS kyc_created_at
        FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id ORDER BY u.created_at ASC`
   ).all();
   return rows.results.map((u) => ({
     id: u.id, email: u.email, username: u.username, name: u.full_name || "",
     role: u.role, status: u.status, level: Number(u.level), referralCode: u.referral_code,
     createdAt: isoOf(u.created_at),
+    kyc: u.kyc_status || "unverified",
+    ...(u.kyc_status ? { kycDocType: u.kyc_doc_type, kycDocNumber: u.kyc_doc_number, kycSubmittedAt: isoOf(u.kyc_created_at) } : {}),
   }));
 }
 
@@ -757,6 +766,49 @@ async function handleEarnClaim(request, env, auth, body) {
   return json(request, { ok: true, state: await loadState(db, auth.uid) });
 }
 
+// ---- KYC ----------------------------------------------------------------------
+// Submissions live in kyc_submissions (photos as data URLs in doc_url /
+// face_url). The latest row's status IS the user's KYC status — state and
+// directory expose the status + document meta, photos are served only by
+// the admin review endpoint so state pulls stay light.
+async function handleKycSubmit(request, env, auth, body) {
+  const db = env.DB;
+  const docType = String(body.docType || "").slice(0, 30);
+  const docNumber = String(body.docNumber || "").trim().slice(0, 60);
+  if (!docType || !docNumber) return json(request, { error: "Document type and number are required." }, 400);
+  const docPhoto = typeof body.docPhoto === "string" && body.docPhoto.startsWith("data:image/") ? body.docPhoto : null;
+  const facePhoto = typeof body.facePhoto === "string" && body.facePhoto.startsWith("data:image/") ? body.facePhoto : null;
+  if ((docPhoto && docPhoto.length > 900000) || (facePhoto && facePhoto.length > 900000)) {
+    return json(request, { error: "A photo is too large — please retake it." }, 400);
+  }
+  const id = pubId("KYC");
+  await db.prepare("INSERT INTO kyc_submissions (id, user_id, doc_type, doc_number, doc_url, face_url, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')")
+    .bind(id, auth.uid, docType, docNumber, docPhoto, facePhoto).run();
+  return json(request, { ok: true, state: await loadState(db, auth.uid) });
+}
+
+async function handleAdminKycGet(request, env, auth, targetUid) {
+  const row = await env.DB.prepare("SELECT * FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(targetUid).first();
+  if (!row) return json(request, { ok: true, kyc: null });
+  return json(request, {
+    ok: true,
+    kyc: {
+      status: row.status, docType: row.doc_type, docNumber: row.doc_number,
+      docPhoto: row.doc_url, facePhoto: row.face_url, submittedAt: isoOf(row.created_at),
+    },
+  });
+}
+
+async function handleAdminKycDecide(request, env, auth, body) {
+  const db = env.DB;
+  const target = String(body.userId || "");
+  const row = await db.prepare("SELECT id FROM kyc_submissions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(target).first();
+  if (!row) return json(request, { error: "No KYC submission found for this user." }, 404);
+  await db.prepare("UPDATE kyc_submissions SET status = ?, reviewed_by = ? WHERE id = ?")
+    .bind(body.ok ? "verified" : "unverified", auth.uid, row.id).run();
+  return json(request, { ok: true, overview: await loadOverview(db) });
+}
+
 // ---- Admin endpoints ----------------------------------------------------------
 
 async function handleDecideDeposit(request, env, auth, body) {
@@ -939,6 +991,10 @@ export default {
         if (auth.role !== "admin") return json(request, { error: "admin_only" }, 403);
         return json(request, { ok: true, overview: await loadOverview(env.DB) });
       }
+      if (path.startsWith("/v1/admin/kyc/") && request.method === "GET") {
+        if (auth.role !== "admin") return json(request, { error: "admin_only" }, 403);
+        return await handleAdminKycGet(request, env, auth, decodeURIComponent(path.slice("/v1/admin/kyc/".length)));
+      }
       if (request.method === "POST") {
         const body = await bodyOf();
         switch (path) {
@@ -955,6 +1011,7 @@ export default {
           case "/v1/loan/repay": return await handleLoanRepay(request, env, auth, body);
           case "/v1/loan/fee": return await handleLoanFee(request, env, auth, body);
           case "/v1/earn/claim": return await handleEarnClaim(request, env, auth, body);
+          case "/v1/kyc/submit": return await handleKycSubmit(request, env, auth, body);
         }
         if (path.startsWith("/v1/admin/")) {
           if (auth.role !== "admin") return json(request, { error: "admin_only" }, 403);
@@ -966,6 +1023,7 @@ export default {
             case "/v1/admin/trade": return await handleTrade(request, env, auth, body, body.side === "sell" ? "sell" : "buy");
             case "/v1/admin/release-stake": return await handleAdminReleaseStake(request, env, auth, body);
             case "/v1/admin/clear-locked": return await handleAdminClearLocked(request, env, auth, body);
+            case "/v1/admin/kyc/decide": return await handleAdminKycDecide(request, env, auth, body);
           }
         }
       }

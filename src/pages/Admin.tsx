@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowLeftRight, Bell, Check, CheckCheck, Copy, CreditCard, LayoutDashboard, Megaphone, MessageCircle, Moon, Newspaper, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, HandCoins, Gift, ScrollText, Award } from 'lucide-react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApp } from '../lib/store'
+import { apiGet } from '../lib/api'
 import { Avatar, Badge, Btn, Card, Empty, Input, Modal, Select, TxDirIcon, statusTone } from '../components/ui'
 import { fmtDateTime, fmtPrice, fmtUSDT, txAmountCls, txDirection, txSign } from '../lib/utils'
 import { COIN_META, useMarket } from '../lib/market'
@@ -46,6 +47,15 @@ export default function Admin() {
   const openUser = (u: any) => { setSelUserId(u.id); setMAdjAmt(''); setMAdjTitle('Charge'); setMAdjNote(''); setMAdjDir('add'); setMTradeAmt(''); setMSide('buy'); setMSym('BTC'); setMClearArm(false); setMLoanLimit(u.loanLimitOverride ? String(Math.round(u.loanLimitOverride / db.settings.bdtPerUsd * 100) / 100) : '') }
   const selUser = selUserId ? db.users.find(x => x.id === selUserId) ?? null : null
   const selWallet = selUser ? db.wallets.find(x => x.userId === selUser.id) : null
+  // KYC photos live on the server (too heavy for the directory sync) —
+  // fetch them on demand when reviewing a pending submission.
+  const [kycDocs, setKycDocs] = useState<{ docPhoto?: string; facePhoto?: string } | null>(null)
+  useEffect(() => {
+    setKycDocs(null)
+    if (!selUser || selUser.kyc !== 'pending' || selUser.kycDocPhoto) return
+    const uid = (selUser as any).fbUid ?? selUser.id
+    apiGet('/v1/admin/kyc/' + uid).then(r => { if (r?.kyc) setKycDocs({ docPhoto: r.kyc.docPhoto ?? undefined, facePhoto: r.kyc.facePhoto ?? undefined }) }).catch(() => { /* ignore */ })
+  }, [selUser?.id, selUser?.kyc])
   // Deep links from notifications: /admin?tab=finance|loans|levels|users|support — and
   // ?user=<id> opens that customer's Manage modal straight away (KYC / new-user alerts).
   useEffect(() => {
@@ -533,6 +543,16 @@ export default function Admin() {
                   </div>
                 )}
               </div>
+              {(selUser.kycDocType || selUser.kycDocPhoto || kycDocs?.docPhoto) && (
+                <div>
+                  <p className="font-extrabold text-sm mb-2">KYC documents{selUser.kycDocType ? ' · ' + (selUser.kycDocType === 'passport' ? 'Passport' : selUser.kycDocType === 'driving' ? 'Driving Licence' : 'National ID') : ''}{selUser.kycDocNumber ? ' · ' + selUser.kycDocNumber : ''}{selUser.kycSubmittedAt ? ' · submitted ' + fmtDateTime(selUser.kycSubmittedAt) : ''}</p>
+                  <div className="flex gap-2">
+                    {(selUser.kycDocPhoto || kycDocs?.docPhoto) && <a href={selUser.kycDocPhoto || kycDocs?.docPhoto} target="_blank" rel="noreferrer"><img src={selUser.kycDocPhoto || kycDocs?.docPhoto} alt="KYC document" className="h-24 w-36 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
+                    {(selUser.kycFacePhoto || kycDocs?.facePhoto) && <a href={selUser.kycFacePhoto || kycDocs?.facePhoto} target="_blank" rel="noreferrer"><img src={selUser.kycFacePhoto || kycDocs?.facePhoto} alt="KYC face scan" className="h-24 w-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700" /></a>}
+                    {!selUser.kycDocPhoto && !kycDocs?.docPhoto && <p className="text-xs text-slate-400">Loading photos…</p>}
+                  </div>
+                </div>
+              )}
               {selUser.role === 'user' && (
                 <div className="flex flex-wrap gap-2">
                   {selUser.status !== 'frozen' ? <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'frozen')}>Freeze wallet</Btn> : <Btn variant="outline" className="!py-2 !text-xs" onClick={() => setUserStatus(selUser.id, 'active')}>Unfreeze</Btn>}

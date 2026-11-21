@@ -451,7 +451,7 @@ export default function Profile() {
                 </ModalRow>
                 <div className="flex gap-2">
                   <Btn variant="ghost" className="flex-1 py-3.5" onClick={() => setKycStep(2)}>{t('kyc_back')}</Btn>
-                  <Btn className="flex-1 py-3.5" onClick={() => { submitKyc({ docType: kycDocType, docNumber: kycDocNumber.trim(), docPhoto: kycDocPhoto, facePhoto: kycFacePhoto }); setModal(null); setOkModal({ title: 'KYC submitted ✓', rows: [['Document', kycDocType], ['Status', 'Pending review'], ['Note', 'You will be notified when an admin approves it.']] }) }}>{t('kyc_submit_approval')}</Btn>
+                  <Btn className="flex-1 py-3.5" onClick={async () => { const err = await submitKyc({ docType: kycDocType, docNumber: kycDocNumber.trim(), docPhoto: kycDocPhoto, facePhoto: kycFacePhoto }); if (err) { toast({ kind: 'error', title: 'KYC submission failed', body: err }); return } setModal(null); setOkModal({ title: 'KYC submitted ✓', rows: [['Document', kycDocType], ['Status', 'Pending review'], ['Note', 'You will be notified when an admin approves it.']] }) }}>{t('kyc_submit_approval')}</Btn>
                 </div>
               </div>
             )}

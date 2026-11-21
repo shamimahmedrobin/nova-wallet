@@ -116,7 +116,7 @@ interface Ctx {
   confirmLoanFee: (loanId: string) => Promise<void>
   decideLoan: (id: string, ok: boolean) => Promise<void>
   repayLoan: (loan: Loan, amount: number) => Promise<string | null>
-  submitKyc: (p: { docType: string; docNumber: string; docPhoto?: string; facePhoto?: string }) => void; decideKyc: (userId: string, ok: boolean) => void
+  submitKyc: (p: { docType: string; docNumber: string; docPhoto?: string; facePhoto?: string }) => Promise<string | null>; decideKyc: (userId: string, ok: boolean) => Promise<string | null>
   setUserStatus: (userId: string, status: User['status']) => void
   adjustBalance: (userId: string, amount: number, title: string, note?: string) => Promise<void>
   /** Support-desk trading on a customer's account (server-settled). */
@@ -311,7 +311,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // admins additionally replace every financial slice from the overview.
   const stubFrom = (su: any): User => ({
     id: su.id, fbUid: su.id, stub: true, name: su.name || su.username, username: su.username, email: su.email,
-    phone: '', passwordHash: '', pinHash: '', role: su.role, status: su.status, kyc: 'unverified',
+    phone: '', passwordHash: '', pinHash: '', role: su.role, status: su.status, kyc: su.kyc ?? 'unverified',
+    ...(su.kycDocType ? { kycDocType: su.kycDocType, kycDocNumber: su.kycDocNumber, kycSubmittedAt: su.kycSubmittedAt } : {}),
     referralCode: su.referralCode || '', referredBy: null, twoFA: false, level: su.level || 1, language: 'en',
     createdAt: su.createdAt || nowISO(), lastLogin: su.createdAt || nowISO(), sessions: [],
   })
@@ -320,7 +321,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const byEmail = d.users.find(x => x.email === su.email)
       if (byEmail) { if (!byEmail.fbUid) byEmail.fbUid = su.id; continue }
       if (d.users.some(x => x.fbUid && x.fbUid === su.id)) continue
-      if (!d.users.some(x => x.id === su.id)) d.users.push(stubFrom(su))
+      const existing = d.users.find(x => x.id === su.id)
+      if (existing?.stub) {
+        // Refresh the stub's server-synced fields — KYC status, level and
+        // account status all move on the server after first sight.
+        existing.kyc = su.kyc ?? existing.kyc
+        existing.level = su.level ?? existing.level
+        existing.status = su.status ?? existing.status
+        existing.role = su.role ?? existing.role
+        if (su.kycDocType) { existing.kycDocType = su.kycDocType; existing.kycDocNumber = su.kycDocNumber; existing.kycSubmittedAt = su.kycSubmittedAt }
+        continue
+      }
+      if (!existing) d.users.push(stubFrom(su))
     }
     // Drop any stub that duplicates a real local account (same server
     // uid): a self-stub poisons the uid map below, which once made the
@@ -381,6 +393,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const lu = d.users.find(x => x.id === localId)
     if (lu && state.profile) {
       lu.role = state.profile.role; lu.level = state.profile.level; lu.status = state.profile.status
+      if (state.profile.kyc) lu.kyc = state.profile.kyc
+      if (state.profile.kycDocType) { lu.kycDocType = state.profile.kycDocType; lu.kycDocNumber = state.profile.kycDocNumber; lu.kycSubmittedAt = state.profile.kycSubmittedAt }
       if (!lu.fbUid) lu.fbUid = state.profile.id
     }
     canonicalizeSelf(d, localId)
@@ -1052,24 +1066,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return null
     } catch (e: any) { return e.message }
   }
-  const submitKyc: Ctx['submitKyc'] = (p) => {
-    if (!user) return
-    mutate(d => {
-      const u = d.users.find(x => x.id === user.id)! 
-      u.kyc = 'pending'; u.kycDocType = p.docType; u.kycDocNumber = p.docNumber
-      if (p.docPhoto) u.kycDocPhoto = p.docPhoto
-      if (p.facePhoto) u.kycFacePhoto = p.facePhoto
-      u.kycSubmittedAt = nowISO()
-      notify(d, user.id, 'KYC submitted', 'Your documents and face scan were submitted for admin approval.', 'security')
-      notifyAdmins(d, '🪪 New KYC submission', user.name + ' submitted KYC documents (' + p.docType + ') — review them in Users.', 'kyc', '/admin?tab=users&user=' + user.id)
-    })
+  const submitKyc: Ctx['submitKyc'] = async (p) => {
+    if (!user) return 'Not signed in'
+    try {
+      const r = await apiPost('/v1/kyc/submit', p)
+      // Mirror the submission onto the local record too, so the user sees
+      // their own documents in Profile right away; the status itself is
+      // synced back from the server state by applyMoneyResult.
+      mutate(d => {
+        const u = d.users.find(x => x.id === user.id)!
+        u.kyc = 'pending'; u.kycDocType = p.docType; u.kycDocNumber = p.docNumber
+        if (p.docPhoto) u.kycDocPhoto = p.docPhoto
+        if (p.facePhoto) u.kycFacePhoto = p.facePhoto
+        u.kycSubmittedAt = nowISO()
+        notify(d, user.id, 'KYC submitted', 'Your documents and face scan were submitted for admin approval.', 'security')
+        notifyAdmins(d, '🪪 New KYC submission', user.name + ' submitted KYC documents (' + p.docType + ') — review them in Users.', 'kyc', '/admin?tab=users&user=' + user.id)
+      })
+      applyMoneyResult(r)
+      return null
+    } catch (e: any) { return e.message }
   }
-  const decideKyc: Ctx['decideKyc'] = (userId2, ok) => mutate(d => {
-    const u = d.users.find(x => x.id === userId2); if (!u) return
-    u.kyc = ok ? 'verified' : 'unverified'
-    audit(d, 'admin', ok ? 'kyc.verify' : 'kyc.reject', userId2)
-    notify(d, userId2, ok ? 'KYC verified' : 'KYC rejected', ok ? 'Your identity is verified. All limits unlocked.' : 'Your KYC documents were not accepted. Please resubmit.', 'security')
-  })
+  const decideKyc: Ctx['decideKyc'] = async (userId2, ok) => {
+    const target = serverUidOf(userId2)
+    if (!target) return 'That user is not on the server yet'
+    try {
+      const r = await apiPost('/v1/admin/kyc/decide', { userId: target, ok })
+      applyMoneyResult(r)
+      mutate(d => {
+        const u = d.users.find(x => x.id === userId2); if (!u) return
+        u.kyc = ok ? 'verified' : 'unverified'
+        audit(d, 'admin', ok ? 'kyc.verify' : 'kyc.reject', userId2)
+        notify(d, userId2, ok ? 'KYC verified' : 'KYC rejected', ok ? 'Your identity is verified. All limits unlocked.' : 'Your KYC documents were not accepted. Please resubmit.', 'security')
+      })
+      return null
+    } catch (e: any) { return e.message }
+  }
   const setUserStatus: Ctx['setUserStatus'] = (userId2, status) => mutate(d => {
     const u = d.users.find(x => x.id === userId2); if (u) { u.status = status; audit(d, 'admin', 'user.' + status, userId2) }
   })
