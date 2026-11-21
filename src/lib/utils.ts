@@ -26,7 +26,7 @@ export const fmtPrice = (p: number) => fmtUSDT(p, priceDecimals(p))
 export const txDirection = (category: string, amount: number): 'in' | 'out' | 'neutral' => {
   switch (category) {
     case 'add_money': case 'receive': case 'referral': case 'loan_disbursement': case 'crypto_sell': case 'earn': return 'in'
-    case 'cash_out': case 'send': case 'loan_repayment': case 'crypto_buy': case 'direct_withdraw': return 'out'
+    case 'cash_out': case 'send': case 'loan_repayment': case 'crypto_buy': case 'direct_withdraw': case 'stake': return 'out'
     case 'adjustment': return amount < 0 ? 'out' : 'in'
     default: return 'neutral'
   }

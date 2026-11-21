@@ -620,7 +620,7 @@ async function handleStake(request, env, auth, body) {
   const cashPart = amount - Math.round(usdtPart * rate);
   if (cashPart > balOf(bals, "BDT")) return json(request, { error: "Insufficient balance. Add money first." }, 400);
   const id = pubId("STK");
-  const t = txStmt(db, { userId: auth.uid, category: "earn", title: "Staked in Earn (" + apy + "% APY)", amount });
+  const t = txStmt(db, { userId: auth.uid, category: "stake", title: "Staked in Earn (" + apy + "% APY)", amount });
   const stmts = [];
   if (usdtPart > 0) stmts.push(adjStmt(db, wallet.id, "USDT", -usdtPart));
   stmts.push(adjStmt(db, wallet.id, "BDT", -cashPart, amount));
@@ -898,6 +898,20 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
     if (path === "/health") return json(request, { ok: true, service: "novawallet-api", version: 2 });
+
+    // Crash reports from the app's error boundary (auth optional — a crash
+    // can happen before sign-in). Stored so the exact error can be read
+    // back and fixed instead of guessed from a screenshot.
+    if (path === "/v1/client-error" && request.method === "POST") {
+      let b = {};
+      try { b = await request.json(); } catch { /* ignore */ }
+      const a = await requireAuth(request).catch(() => null);
+      try {
+        await env.DB.prepare("INSERT INTO client_errors (user_id, message, stack, url) VALUES (?, ?, ?, ?)")
+          .bind(a?.uid ?? null, String(b.message || "").slice(0, 500), String(b.stack || "").slice(0, 2000), String(b.url || "").slice(0, 300)).run();
+      } catch { /* ignore */ }
+      return json(request, { ok: true });
+    }
 
     if (!path.startsWith("/v1/")) return json(request, { error: "not_found" }, 404);
 

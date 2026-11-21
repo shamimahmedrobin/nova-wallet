@@ -9,6 +9,15 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   static getDerivedStateFromError(err: Error) { return { err } }
   componentDidCatch(err: Error, info: React.ErrorInfo) {
     try { console.error('NovaWallet crash:', err, info?.componentStack) } catch { /* ignore */ }
+    // Phone the crash home (fire-and-forget) so it can be diagnosed from
+    // the server log instead of a screenshot.
+    try {
+      import('../lib/api').then(({ apiPost }) => apiPost('/v1/client-error', {
+        message: String((err && err.message) || err || ''),
+        stack: String(info?.componentStack || err?.stack || '').slice(0, 2000),
+        url: window.location.pathname,
+      })).catch(() => { /* ignore */ })
+    } catch { /* ignore */ }
     const msg = String((err && err.message) || err || '')
     if (/loading chunk|dynamically imported module|importing a module script failed|failed to fetch/i.test(msg)) {
       try {
