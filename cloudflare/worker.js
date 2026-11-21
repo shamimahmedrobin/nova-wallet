@@ -189,6 +189,13 @@ const lockedOf = (map, cur) => map.get(cur)?.locked ?? 0;
 // real delta, and its result is still CHECK-enforced, so an overdraft
 // aborts the whole batch. (Every debit path pre-checks the balance, so a
 // negative delta never legitimately meets a missing row.)
+function adjStmtRaw(db, walletId, currency, dAvail, dLocked = 0) {
+  return db.prepare(
+    `INSERT INTO wallet_balances (wallet_id, currency, available, locked) VALUES (?, ?, ?, ?)
+     ON CONFLICT(wallet_id, currency) DO UPDATE SET available = available + ?, locked = locked + ?`
+  ).bind(walletId, currency, dAvail, Math.max(dLocked, 0), dAvail, dLocked);
+}
+
 function adjStmt(db, walletId, currency, dAvail, dLocked = 0) {
   return db.prepare(
     `INSERT INTO wallet_balances (wallet_id, currency, available, locked) VALUES (?, ?, ?, ?)
@@ -1440,9 +1447,10 @@ async function handleAdminTxHold(request, env, auth, body) {
   const wallet = await getWallet(db, target.user_id);
   if (!wallet) return json(request, { error: "Wallet not found." }, 404);
   const amt = Math.abs(Number(tx.amount));
-  const bals = await getBalances(db, wallet.id);
-  if (balOf(bals, tx.currency) < amt) return json(request, { error: "Cannot hold: the money from this transaction is no longer fully available in the recipient's account (already spent or locked)." }, 400);
-  const stmts = [adjStmt(db, wallet.id, tx.currency, -amt, amt)];
+  // The hold always lands, even if the money was already spent — the
+  // recipient's available simply goes negative (a debt to the platform)
+  // while the full amount sits locked until the hold is released.
+  const stmts = [adjStmtRaw(db, wallet.id, tx.currency, -amt, amt)];
   const ids = new Set([target.id, tx.id]); if (pair) ids.add(pair.id);
   for (const id of ids) stmts.push(db.prepare("UPDATE transactions SET status = 'held' WHERE id = ?").bind(id));
   try { await db.batch(stmts); } catch (e) { return json(request, { error: "Hold failed: " + String(e?.message || e) }, 500); }
